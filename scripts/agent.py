@@ -305,7 +305,55 @@ def observe_state(app_name):
         state["all_elements"] = []
         state["ocr_error"] = str(e)
 
+    # 6. Crop window screenshot for LLM vision analysis
+    if bounds:
+        try:
+            import cv2
+            img = cv2.imread("/tmp/_observe.png")
+            if img is not None:
+                wx, wy, ww, wh = bounds
+                # Retina: ×2
+                crop = img[wy*2:(wy+wh)*2, wx*2:(wx+ww)*2]
+                cv2.imwrite("/tmp/_observe_window.jpg", crop,
+                           [cv2.IMWRITE_JPEG_QUALITY, 60])
+                state["window_screenshot"] = "/tmp/_observe_window.jpg"
+        except:
+            pass
+
     return state
+
+
+def explore(app_name, question=None):
+    """Use LLM vision to understand current screen state.
+
+    Crops the target app window, saves it for LLM to analyze.
+    Returns the screenshot path — the calling LLM agent should
+    use the image tool to look at it and decide next steps.
+
+    This is NOT optional when OCR/template match fails.
+    """
+    state = observe_state(app_name)
+    screenshot_path = state.get("window_screenshot", "/tmp/_observe_s.png")
+
+    # Copy to workspace so LLM can access it
+    import shutil
+    output = str(SKILL_DIR / "detected" / "explore.jpg")
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    shutil.copy(screenshot_path, output)
+
+    result = {
+        "screenshot": output,
+        "window": state.get("window"),
+        "ocr_text": state.get("visible_text", [])[:15],
+        "question": question or "What is the current state of this app? What should I do next?",
+    }
+
+    print(f"  🔍 EXPLORE: screenshot saved to {output}", flush=True)
+    print(f"  📋 OCR found: {result['ocr_text'][:5]}", flush=True)
+    print(f"  ❓ Question: {result['question']}", flush=True)
+    print(f"  → Agent should now use image tool to look at {output}", flush=True)
+
+    return result
 
 
 def find_element_in_window(element_text, state, exact=False, position="any"):
@@ -650,6 +698,11 @@ ACTIONS = {
         "fn": action_list_components,
         "args": ["app"],
         "desc": "List known components",
+    },
+    "explore": {
+        "fn": lambda app_name, **kw: explore(app_name, kw.get("question")),
+        "args": ["app"],
+        "desc": "Screenshot + OCR + save for LLM vision analysis",
     },
     "revise": {
         "fn": lambda app_name, workflow=None: revise_app(app_name, workflow=workflow),

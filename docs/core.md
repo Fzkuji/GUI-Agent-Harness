@@ -45,7 +45,7 @@ Screen (0,0) ──────────────────────�
 - **Known bug**: searching for a contact name may match text in OTHER apps' windows if they're visible behind the target app. FIX: capture ONLY the target window screenshot (screencapture -l), not fullscreen
 
 ### Input
-- **NEVER use cliclick type for CJK** — use pbcopy + Cmd+V
+- **NEVER use cliclick t: for ANY text input** — always use pbcopy + Cmd+V. cliclick type goes through system IME and produces garbled text (e.g., "G'lo'ba'l'P'ro'te'c't" instead of "GlobalProtect") when Chinese input method is active. Paste bypasses IME completely.
 - **Set LANG=en_US.UTF-8** before paste — CJK garbles without it
 - **Click input field before typing** — never assume cursor is in the right place
 - **Enter sends in WeChat** — NOT Cmd+Enter
