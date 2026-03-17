@@ -12,7 +12,6 @@
   <p>
     <img src="https://img.shields.io/badge/Platform-macOS_Apple_Silicon-black?logo=apple" />
     <img src="https://img.shields.io/badge/Skill_for-OpenClaw-red" />
-    <img src="https://img.shields.io/badge/Works_with-Claude_Code-blueviolet" />
     <img src="https://img.shields.io/badge/License-MIT-yellow" />
   </p>
 </div>
@@ -53,20 +52,7 @@ Then add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 **That's it.** Your OpenClaw agent will now read `SKILL.md` automatically when you ask it to operate any desktop app.
 
-## 🤖 Use with Claude Code
 
-```bash
-# Clone anywhere
-git clone https://github.com/Fzkuji/GUI-Agent-Skills.git
-cd GUI-Agent-Skills
-bash scripts/setup.sh
-
-# Point Claude Code to the skill
-# Add to your CLAUDE.md or project instructions:
-# "For GUI automation tasks, read skills/gui-agent/SKILL.md first."
-```
-
-Claude Code reads `SKILL.md`, understands the architecture, and uses the scripts directly.
 
 ## 💬 Try It
 
@@ -217,7 +203,6 @@ Any OpenClaw agent, Claude Code instance, or LLM that reads `SKILL.md` can fully
 | Tool | Role |
 |------|------|
 | [OpenClaw](https://github.com/openclaw/openclaw) | AI assistant framework — loads GUI-Agent-Skills as a skill |
-| [Claude Code](https://docs.anthropic.com/en/docs/agents) | Agentic coding — reads SKILL.md for GUI tasks |
 | [GPA-GUI-Detector](https://huggingface.co/Salesforce/GPA-GUI-Detector) | Salesforce's YOLO model for UI element detection |
 
 ## 📄 License
