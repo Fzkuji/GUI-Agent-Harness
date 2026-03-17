@@ -212,24 +212,56 @@ After every `learn`, verify:
 | **VPN Reconnect** | `scenes/vpn-reconnect.yaml` | Reconnect GlobalProtect VPN |
 | **App Exploration** | `scenes/app-explore.yaml` | Map an unfamiliar app's UI |
 
-## Quick Decision Tree
+## How to Use (Unified Entry Point)
 
+**All GUI operations go through `scripts/agent.py`:**
+
+```bash
+source ~/gui-agent-env/bin/activate
+
+# Send a message
+python3 scripts/agent.py send_message --app WeChat --contact "小明" --message "明天见"
+
+# Click a component
+python3 scripts/agent.py click --app WeChat --component search_bar_icon
+
+# Read messages
+python3 scripts/agent.py read_messages --app WeChat --contact "小明"
+
+# Open an app
+python3 scripts/agent.py open --app Discord
+
+# Navigate browser
+python3 scripts/agent.py navigate --url "https://example.com"
+
+# Learn a new app (auto-runs if app not in memory)
+python3 scripts/agent.py learn --app WeChat
+
+# Detect + match known components
+python3 scripts/agent.py detect --app WeChat
+
+# List all known components
+python3 scripts/agent.py list --app WeChat
+
+# Screenshot + OCR
+python3 scripts/agent.py read_screen --app WeChat
 ```
-What do you need to do?
-│
-├── GUI task on any app?
-│   ├── App in memory? → app_memory.py detect/click
-│   └── New app? → app_memory.py learn → then operate
-│
-├── WeChat? → read scenes/wechat/index.yaml
-├── Discord? → read scenes/discord.yaml
-├── Telegram? → read scenes/telegram.yaml
-├── VPN/SSH down? → read scenes/vpn-reconnect.yaml
-├── Need a password? → read scenes/1password.yaml
-├── New app? → read scenes/app-explore.yaml
-├── Atomic operation? → read actions/_actions.yaml
-└── Principles? → read docs/core.md
-```
+
+**agent.py automatically handles:**
+- App not learned yet? → runs `learn` first
+- App name in Chinese? → resolves alias (微信→WeChat, 浏览器→Chrome)
+- Activates the app window before operating
+- Calls the right underlying script (app_memory / gui_agent / ui_detector)
+
+### For OpenClaw agents
+
+When you receive a GUI task, just call `agent.py` with the right action + params.
+Don't call `app_memory.py` or `gui_agent.py` directly — `agent.py` handles the routing.
+
+### Scene files (reference only)
+
+`scenes/*.yaml` files describe operation flows for reference.
+They are NOT executable scripts — the actual logic is in `agent.py` + `gui_agent.py`.
 
 ## ⚠️ CRITICAL SAFETY RULES (READ FIRST)
 
