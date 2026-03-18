@@ -603,6 +603,82 @@ def verify_element_exists(app_name, element_text, state=None, exact=False, posit
     return False, 0, 0
 
 
+def wait_for_component(app_name, component, timeout=120, interval=10):
+    """Wait for a component to appear on screen using template matching.
+    
+    Polls every `interval` seconds using template match (fast, ~0.3s).
+    If component appears, returns (True, x, y).
+    If timeout, saves a screenshot for the agent to inspect and returns (False, 0, 0).
+    
+    Args:
+        app_name: App name
+        component: Component name (must exist in app memory)
+        timeout: Max wait time in seconds (default 120)
+        interval: Poll interval in seconds (default 10)
+    """
+    from app_memory import get_app_dir
+    
+    comp_img = get_app_dir(app_name) / "components" / f"{component}.png"
+    if not comp_img.exists():
+        print(f"❌ Component '{component}' not found in memory", flush=True)
+        return False, 0, 0
+    
+    print(f"⏳ Waiting for '{component}' (timeout={timeout}s, poll={interval}s)...", flush=True)
+    
+    import cv2
+    template = cv2.imread(str(comp_img))
+    if template is None:
+        print(f"❌ Could not load template image: {comp_img}", flush=True)
+        return False, 0, 0
+    
+    scale = get_retina_scale()
+    gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    
+    start = time.time()
+    attempt = 0
+    while time.time() - start < timeout:
+        attempt += 1
+        
+        # Screenshot
+        subprocess.run(["/usr/sbin/screencapture", "-x", "/tmp/_wait_screen.png"],
+                      capture_output=True, timeout=5)
+        screenshot = cv2.imread("/tmp/_wait_screen.png")
+        if screenshot is None:
+            time.sleep(interval)
+            continue
+        
+        gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+        
+        # Template match
+        if (gray_template.shape[0] <= gray_screen.shape[0] and
+            gray_template.shape[1] <= gray_screen.shape[1]):
+            result = cv2.matchTemplate(gray_screen, gray_template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            
+            if max_val >= 0.85:
+                # Convert retina pixels to logical
+                cx = (max_loc[0] + gray_template.shape[1] // 2) / scale
+                cy = (max_loc[1] + gray_template.shape[0] // 2) / scale
+                elapsed = time.time() - start
+                print(f"✅ Found '{component}' at ({int(cx)},{int(cy)}) conf={max_val:.2f} after {elapsed:.1f}s ({attempt} polls)", flush=True)
+                return True, int(cx), int(cy)
+        
+        elapsed = time.time() - start
+        print(f"  ... not found ({elapsed:.0f}s/{timeout}s, conf={max_val:.2f})", flush=True)
+        time.sleep(interval)
+    
+    # Timeout — save screenshot for agent inspection
+    elapsed = time.time() - start
+    app_slug = app_name.lower().replace(" ", "_")
+    pages_dir = SKILL_DIR / "memory" / "apps" / app_slug / "pages"
+    os.makedirs(str(pages_dir), exist_ok=True)
+    timeout_img = str(pages_dir / "wait_timeout.jpg")
+    import shutil
+    shutil.copy("/tmp/_wait_screen.png", timeout_img)
+    print(f"❌ Timeout after {elapsed:.1f}s ({attempt} polls). Screenshot saved: {timeout_img}", flush=True)
+    return False, 0, 0
+
+
 def safe_click(app_name, element_text, state=None, exact=False, position="any"):
     """Click with full verification: observe → verify → click → confirm.
 
@@ -910,6 +986,11 @@ ACTIONS = {
         "fn": action_click_component,
         "args": ["app", "component"],
         "desc": "Click a named UI component",
+    },
+    "wait_for": {
+        "fn": lambda app_name, component, **kw: wait_for_component(app_name, component),
+        "args": ["app", "component"],
+        "desc": "Wait for a component to appear (template match polling, 120s timeout, 10s interval)",
     },
     "open": {
         "fn": action_open_app,
