@@ -28,6 +28,37 @@ SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 MEMORY_DIR = SKILL_DIR / "memory" / "apps"
 
+
+def get_retina_scale():
+    """Detect display scale factor (Retina 2x, non-Retina 1x, etc).
+
+    Screenshots are in physical pixels. cliclick uses logical pixels.
+    Scale = screenshot_pixels / logical_pixels.
+    """
+    try:
+        import cv2
+        subprocess.run(["/usr/sbin/screencapture", "-x", "/tmp/_scale.png"],
+                       capture_output=True, timeout=3)
+        img = cv2.imread("/tmp/_scale.png")
+        pixel_w = img.shape[1]
+        # Get logical width from window manager
+        r = subprocess.run(["osascript", "-e",
+            'tell application "Finder" to get bounds of window of desktop'],
+            capture_output=True, text=True, timeout=3)
+        if r.stdout.strip():
+            parts = r.stdout.strip().split(", ")
+            logical_w = int(parts[2])
+        else:
+            # Fallback: common logical widths
+            logical_w = pixel_w // 2 if pixel_w > 2000 else pixel_w
+        scale = pixel_w / logical_w if logical_w > 0 else 2
+        return max(1, round(scale))
+    except:
+        return 2  # Default to Retina 2x
+
+
+RETINA_SCALE = get_retina_scale()
+
 # Python env
 VENV = os.path.expanduser("~/gui-actor-env/bin/python3")
 if not os.path.exists(VENV):
@@ -294,12 +325,12 @@ def observe_state(app_name):
         for t in raw_text:
             all_text.append({
                 "text": t.get("label", ""),
-                "cx": t.get("cx", 0) // 2,
-                "cy": t.get("cy", 0) // 2,
-                "x": t.get("x", 0) // 2,
-                "y": t.get("y", 0) // 2,
-                "w": t.get("w", 0) // 2,
-                "h": t.get("h", 0) // 2,
+                "cx": t.get("cx", 0) // RETINA_SCALE,
+                "cy": t.get("cy", 0) // RETINA_SCALE,
+                "x": t.get("x", 0) // RETINA_SCALE,
+                "y": t.get("y", 0) // RETINA_SCALE,
+                "w": t.get("w", 0) // RETINA_SCALE,
+                "h": t.get("h", 0) // RETINA_SCALE,
             })
 
         # Filter to target window area
@@ -326,7 +357,7 @@ def observe_state(app_name):
             if img is not None:
                 wx, wy, ww, wh = bounds
                 # Retina: ×2
-                crop = img[wy*2:(wy+wh)*2, wx*2:(wx+ww)*2]
+                crop = img[wy*RETINA_SCALE:(wy+wh)*RETINA_SCALE, wx*RETINA_SCALE:(wx+ww)*RETINA_SCALE]
                 cv2.imwrite("/tmp/_observe_window.jpg", crop,
                            [cv2.IMWRITE_JPEG_QUALITY, 60])
                 state["window_screenshot"] = "/tmp/_observe_window.jpg"
