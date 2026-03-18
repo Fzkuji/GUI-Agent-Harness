@@ -1,6 +1,8 @@
 ---
 name: gui-agent
 description: "Control desktop GUI applications on macOS using visual detection, template matching, and cliclick. Use when asked to operate, click, type, or interact with any desktop application. NOT for web-only tasks (use browser tool) or simple file operations."
+argument-hint: [app-name-and-task, e.g. "open WeChat and send message to 小明"]
+allowed-tools: Read, Write, Edit, Bash(*), image, exec, process
 ---
 
 # GUI Agent Skill
