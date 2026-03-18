@@ -439,8 +439,23 @@ def safe_click(app_name, element_text, state=None, exact=False, position="any"):
 
     subprocess.run(["/opt/homebrew/bin/cliclick", f"c:{cx},{cy}"], check=True)
 
+    # POST-CLICK: verify state changed
     time.sleep(0.5)
-    return True, f"Clicked '{element_text}' at ({cx},{cy})"
+    new_state = observe_state(app_name)
+    old_texts = set(state.get("visible_text", []))
+    new_texts = set(new_state.get("visible_text", []))
+    changed = old_texts != new_texts
+    if not changed:
+        print(f"  ⚠ POST-CLICK: screen did not change after clicking '{element_text}' at ({cx},{cy})", flush=True)
+        # Save screenshot for agent to inspect
+        ss = new_state.get("window_screenshot", "/tmp/_observe_s.png")
+        import shutil
+        output = str(SKILL_DIR / "detected" / "post_click.jpg")
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+        shutil.copy(ss, output)
+        return False, f"Clicked ({cx},{cy}) but screen unchanged — check {output}"
+
+    return True, f"Clicked '{element_text}' at ({cx},{cy}), state changed ✅"
 
 
 def poll_and_click(app_name, target_text, max_wait=30, interval=2,
