@@ -1,6 +1,6 @@
 ---
 name: gui-agent
-description: "Operate any macOS desktop application — open apps, click buttons, type text, send messages, fill forms, navigate menus. Use when the task cannot be accomplished through command-line tools alone and requires interacting with a GUI window on screen."
+description: "Visually operate any application on macOS — native apps, browsers, or anything with a GUI window. Open apps, click buttons, type text, send messages, fill forms, navigate menus, all driven by visual UI detection. Use when the task requires interacting with what's on screen."
 ---
 
 # GUI Agent Skill
