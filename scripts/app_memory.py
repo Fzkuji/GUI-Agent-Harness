@@ -229,6 +229,23 @@ def assign_region(el, win_w, win_h):
     return "default"
 
 
+# macOS traffic light buttons — fixed positions relative to window top-left
+# These are system-level and identical across all apps
+MACOS_SYSTEM_COMPONENTS = {
+    "sys_close":    {"rel_x": 14, "rel_y": 14, "w": 12, "h": 12, "type": "system", "desc": "Close (red)"},
+    "sys_minimize": {"rel_x": 34, "rel_y": 14, "w": 12, "h": 12, "type": "system", "desc": "Minimize (yellow)"},
+    "sys_fullscreen":{"rel_x": 54, "rel_y": 14, "w": 12, "h": 12, "type": "system", "desc": "Fullscreen (green)"},
+}
+
+
+def _is_traffic_light(el, win_w, win_h):
+    """Check if element overlaps with macOS traffic light buttons."""
+    rel_x = el.get("cx", 0) // 2
+    rel_y = el.get("cy", 0) // 2
+    # Traffic lights are at top-left, roughly x < 70, y < 30
+    return rel_x < 70 and rel_y < 30
+
+
 def should_save_component(el, win_w, win_h):
     """Decide whether to save a detected component.
 
@@ -245,6 +262,10 @@ def should_save_component(el, win_w, win_h):
 
     Returns: (should_save, reason)
     """
+    # Skip macOS traffic light buttons (close/minimize/fullscreen)
+    if _is_traffic_light(el, win_w, win_h):
+        return False, "traffic_light"
+
     # Skip tiny elements
     w, h = el.get("w", 0), el.get("h", 0)
     if w < 25 or h < 25:
@@ -564,6 +585,21 @@ def learn_app(app_name, page_name=None):
     profile = load_profile(app_name)
     profile["window_size"] = [win_w, win_h]
     profile["retina_img_size"] = [img_w, img_h]
+
+    # Inject macOS system components (traffic light buttons)
+    for sys_name, sys_data in MACOS_SYSTEM_COMPONENTS.items():
+        if sys_name not in profile["components"]:
+            profile["components"][sys_name] = {
+                "type": sys_data["type"],
+                "source": "system",
+                "rel_x": sys_data["rel_x"],
+                "rel_y": sys_data["rel_y"],
+                "w": sys_data["w"],
+                "h": sys_data["h"],
+                "label": sys_data["desc"],
+                "confidence": 1.0,
+                "page": "all",
+            }
 
     # 4. Read image for cropping
     img = cv2.imread(img_path)
@@ -1059,6 +1095,19 @@ def click_component(app_name, component_name, verify=True):
 
     Returns: (success, message)
     """
+    # 0. System component? Use fixed position, no template match needed
+    if component_name.startswith("sys_") and component_name in MACOS_SYSTEM_COMPONENTS:
+        img_path, win_x, win_y, win_w, win_h = capture_window(app_name)
+        if not img_path:
+            return False, f"Could not capture {app_name} window"
+        sys_comp = MACOS_SYSTEM_COMPONENTS[component_name]
+        screen_x = win_x + sys_comp["rel_x"]
+        screen_y = win_y + sys_comp["rel_y"]
+        print(f"  🎯 System component '{component_name}' → screen({screen_x},{screen_y})")
+        subprocess.run(["/opt/homebrew/bin/cliclick", f"c:{screen_x},{screen_y}"],
+                       capture_output=True, timeout=5)
+        return True, f"Clicked system component {component_name}"
+
     # 1. Capture window
     img_path, win_x, win_y, win_w, win_h = capture_window(app_name)
     if not img_path:
