@@ -19,8 +19,8 @@ Track every GUI task: time, tokens, and operations.
 ```bash
 TRACKER="python3 ~/.openclaw/workspace/skills/gui-agent/skills/gui-report/scripts/tracker.py"
 
-# 1. Start tracking (get baseline tokens from session_status first)
-$TRACKER start --task "CleanMyMac cleanup" --tokens-in 3 --tokens-out 662 --cache-hits 51000
+# 1. Start tracking (get context size from session_status, e.g. "Context: 94k" → 94000)
+$TRACKER start --task "CleanMyMac cleanup" --context 94000
 
 # 2. During task — increment counters as you go
 $TRACKER tick screenshots
@@ -30,20 +30,21 @@ $TRACKER tick image_calls
 $TRACKER tick clicks -n 3    # batch increment
 
 # 3. Optional notes
-$TRACKER note "Clicked Ignore on quit dialog to protect Discord"
+$TRACKER note "Clicked Ignore on quit dialog"
 
-# 4. Final report (get final tokens from session_status, tracker computes deltas)
-$TRACKER report --tokens-in 50 --tokens-out 2500 --cache-hits 55000
+# 4. Final report (get context size again from session_status)
+$TRACKER report --context 100000
 
 # 5. View history
 $TRACKER history
 ```
 
-## Token Baseline
+## Context Baseline
 
-Get token counts from `session_status` tool:
-- **Before task**: record `Tokens in`, `Tokens out`, and cached tokens
-- **After task**: record again, tracker computes the delta
+Get context size from `session_status` tool (the `Context: XXk/1.0m` line):
+- **Before task**: record context size → `tracker start --context XXX`
+- **After task**: record again → `tracker report --context XXX`
+- Tracker computes the delta = how much context this task consumed
 
 ## Output Example
 
@@ -51,11 +52,9 @@ Get token counts from `session_status` tool:
 ============================================================
 📊 GUI Task Report: CleanMyMac cleanup
 ============================================================
-⏱  Duration:    3.2min
-📥 Tokens in:   2.1k (new) + 4.0k (cached)
-📤 Tokens out:  1.8k
-📦 Total:       7.9k
-🔧 Operations:  5×screenshots, 3×clicks, 1×learns, 5×image_calls
+⏱  Duration:    4.4min
+📦 Context:     94.0k → 100.0k (+6.0k)
+🔧 Operations:  3×screenshots, 5×clicks, 3×image_calls
 ============================================================
 ```
 

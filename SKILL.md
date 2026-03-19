@@ -87,11 +87,11 @@ After the full workflow completes:
 
 Use `gui-report` skill's tracker:
 
-1. **Task start**: `session_status` → `tracker.py start --task "..." --tokens-in X --tokens-out Y --cache-hits Z`
+1. **Task start**: `session_status` → note context size → `tracker.py start --task "..." --context X`
 2. **During task**: `tracker.py tick screenshots/clicks/learns/detects/image_calls` after each operation
-3. **Task end**: `session_status` → `tracker.py report --tokens-in X --tokens-out Y --cache-hits Z`
+3. **Task end**: `session_status` → `tracker.py report --context X`
 
-Outputs duration, token deltas, and operation counts. Use `tracker.py history` to review past tasks.
+Outputs duration, context delta, and operation counts. Use `tracker.py history` to review past tasks.
 
 ---
 

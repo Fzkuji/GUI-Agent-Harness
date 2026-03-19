@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GUI task tracker — records baseline and computes deltas for time, tokens, and operations."""
+"""GUI task tracker — records baseline and computes deltas for time, context, and operations."""
 
 import argparse
 import json
@@ -14,9 +14,7 @@ def start(args):
     state = {
         "task": args.task or "unnamed",
         "start_time": time.time(),
-        "tokens_in": args.tokens_in or 0,
-        "tokens_out": args.tokens_out or 0,
-        "cache_hits": args.cache_hits or 0,
+        "context_start": args.context or 0,
         "screenshots": 0,
         "clicks": 0,
         "learns": 0,
@@ -26,7 +24,7 @@ def start(args):
     }
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
-    print(f"📊 Tracker started: {state['task']}")
+    print(f"📊 Tracker started: {state['task']} (context baseline: {_fmt_tokens(state['context_start'])})")
 
 
 def tick(args):
@@ -69,10 +67,7 @@ def report(args):
         state = json.load(f)
 
     elapsed = time.time() - state["start_time"]
-    tokens_in_delta = (args.tokens_in or 0) - state["tokens_in"]
-    tokens_out_delta = (args.tokens_out or 0) - state["tokens_out"]
-    cache_delta = (args.cache_hits or 0) - state["cache_hits"]
-    total_tokens = tokens_in_delta + tokens_out_delta + cache_delta
+    context_delta = (args.context or 0) - state["context_start"]
 
     # Format time
     if elapsed < 60:
@@ -82,16 +77,7 @@ def report(args):
     else:
         time_str = f"{elapsed/3600:.1f}h"
 
-    # Format tokens
-    def fmt_tokens(n):
-        if abs(n) < 1000:
-            return str(n)
-        elif abs(n) < 1_000_000:
-            return f"{n/1000:.1f}k"
-        else:
-            return f"{n/1_000_000:.2f}M"
-
-    # Build report
+    # Build operations list
     ops = []
     for key in ["screenshots", "clicks", "learns", "detects", "image_calls"]:
         v = state.get(key, 0)
@@ -102,9 +88,7 @@ def report(args):
     print(f"📊 GUI Task Report: {state['task']}")
     print("=" * 60)
     print(f"⏱  Duration:    {time_str}")
-    print(f"📥 Tokens in:   {fmt_tokens(tokens_in_delta)} (new) + {fmt_tokens(cache_delta)} (cached)")
-    print(f"📤 Tokens out:  {fmt_tokens(tokens_out_delta)}")
-    print(f"📦 Total:       {fmt_tokens(total_tokens)}")
+    print(f"📦 Context:     {_fmt_tokens(state['context_start'])} → {_fmt_tokens(args.context or 0)} (+{_fmt_tokens(context_delta)})")
     print(f"🔧 Operations:  {', '.join(ops) if ops else 'none tracked'}")
     if state.get("notes"):
         print(f"📝 Notes:")
@@ -119,10 +103,9 @@ def report(args):
         "task": state["task"],
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "duration_s": round(elapsed, 1),
-        "tokens_in": tokens_in_delta,
-        "tokens_out": tokens_out_delta,
-        "cache_hits": cache_delta,
-        "total_tokens": total_tokens,
+        "context_start": state["context_start"],
+        "context_end": args.context or 0,
+        "context_delta": context_delta,
         "operations": {k: state.get(k, 0) for k in ["screenshots", "clicks", "learns", "detects", "image_calls"]},
         "notes": state.get("notes", []),
     }
@@ -146,19 +129,24 @@ def history(args):
     limit = args.limit or 10
     entries = [json.loads(l) for l in lines[-limit:]]
 
-    print(f"{'Task':<30} {'Duration':>10} {'Tokens':>12} {'Date'}")
+    print(f"{'Task':<30} {'Duration':>10} {'Context Δ':>12} {'Date'}")
     print("-" * 70)
     for e in entries:
-        total = e.get("total_tokens", e["tokens_in"] + e["tokens_out"] + e.get("cache_hits", 0))
-        def fmt(n):
-            return f"{n/1000:.1f}k" if abs(n) >= 1000 else str(n)
+        delta = e.get("context_delta", 0)
         dur = f"{e['duration_s']:.0f}s" if e["duration_s"] < 60 else f"{e['duration_s']/60:.1f}m"
-        print(f"{e['task']:<30} {dur:>10} {fmt(total):>12} {e['timestamp']}")
+        print(f"{e['task']:<30} {dur:>10} {_fmt_tokens(delta):>12} {e['timestamp']}")
     print("-" * 70)
-    total_tokens = sum(e.get("total_tokens", e["tokens_in"] + e["tokens_out"] + e.get("cache_hits", 0)) for e in entries)
-    def fmt_t(n):
-        return f"{n/1000:.1f}k" if abs(n) >= 1000 else str(n)
-    print(f"{'Total':>42} {fmt_t(total_tokens):>12}  ({len(entries)} tasks)")
+    total_delta = sum(e.get("context_delta", 0) for e in entries)
+    print(f"{'Total':>42} {_fmt_tokens(total_delta):>12}  ({len(entries)} tasks)")
+
+
+def _fmt_tokens(n):
+    if abs(n) < 1000:
+        return f"{n}"
+    elif abs(n) < 1_000_000:
+        return f"{n/1000:.1f}k"
+    else:
+        return f"{n/1_000_000:.2f}M"
 
 
 def main():
@@ -167,9 +155,7 @@ def main():
 
     p_start = sub.add_parser("start", help="Begin tracking a task")
     p_start.add_argument("--task", help="Task name")
-    p_start.add_argument("--tokens-in", type=int, help="Current input tokens")
-    p_start.add_argument("--tokens-out", type=int, help="Current output tokens")
-    p_start.add_argument("--cache-hits", type=int, help="Current cache hit tokens")
+    p_start.add_argument("--context", type=int, help="Current context size (from session_status)")
 
     p_tick = sub.add_parser("tick", help="Increment a counter")
     p_tick.add_argument("counter", choices=["screenshots", "clicks", "learns", "detects", "image_calls"])
@@ -179,9 +165,7 @@ def main():
     p_note.add_argument("text")
 
     p_report = sub.add_parser("report", help="Generate final report")
-    p_report.add_argument("--tokens-in", type=int, help="Final input tokens")
-    p_report.add_argument("--tokens-out", type=int, help="Final output tokens")
-    p_report.add_argument("--cache-hits", type=int, help="Final cache hit tokens")
+    p_report.add_argument("--context", type=int, help="Final context size (from session_status)")
 
     p_hist = sub.add_parser("history", help="Show task history")
     p_hist.add_argument("--limit", type=int, default=10)

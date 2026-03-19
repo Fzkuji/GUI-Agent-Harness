@@ -1,2 +1,1 @@
-{"task": "CleanMyMac cleanup #3", "timestamp": "2026-03-20 04:08:40", "duration_s": 301.5, "tokens_in": 11, "tokens_out": -2200, "cache_hits": 4000, "total_tokens": 1811, "operations": {"screenshots": 4, "clicks": 4, "learns": 0, "detects": 0, "image_calls": 4}, "notes": []}
-{"task": "CleanMyMac cleanup #3 (manual)", "timestamp": "2026-03-20 04:13:40", "duration_s": 4.3, "tokens_in": 11, "tokens_out": -2200, "cache_hits": 4000, "total_tokens": 1811, "operations": {"screenshots": 3, "clicks": 3, "learns": 0, "detects": 0, "image_calls": 3}, "notes": []}
+
