@@ -751,6 +751,21 @@ def _show_all_workflows():
         print(f"  {wf['name']} — {wf['description']} ({wf['steps']} steps)")
 
 
+def _show_transitions(app_name):
+    """Show state transition graph for an app."""
+    app_name = resolve_app_name(app_name)
+    sys.path.insert(0, str(SCRIPT_DIR))
+    from app_memory import get_transitions
+    transitions = get_transitions(app_name)
+    if not transitions:
+        print(f"No transitions recorded for {app_name}.")
+        print("Click through the app to build the state graph.")
+        return
+    print(f"State graph for {app_name} ({len(transitions)} edges):")
+    for t in transitions:
+        print(f"  {t['from']} --{t['click']}--> {t['to']} (×{t.get('count', 1)})")
+
+
 def _show_workflows(app_name, workflow_name=""):
     """List workflows (name + description) or show a specific workflow's full steps."""
     if workflow_name:
@@ -1471,6 +1486,16 @@ ACTIONS = {
         "fn": action_list_components,
         "args": ["app"],
         "desc": "List known components",
+    },
+    "run_workflow": {
+        "fn": lambda app_name, workflow, **kw: run_workflow(app_name, workflow),
+        "args": ["app", "workflow"],
+        "desc": "Run a workflow (navigate state graph to target state)",
+    },
+    "transitions": {
+        "fn": lambda app_name, **kw: _show_transitions(app_name),
+        "args": ["app"],
+        "desc": "Show state transition graph",
     },
     "workflows": {
         "fn": lambda app_name, **kw: _show_workflows(app_name, kw.get("workflow", "")),
