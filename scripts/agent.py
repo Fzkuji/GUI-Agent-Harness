@@ -35,44 +35,65 @@ BROWSER_APPS = {"Google Chrome", "Safari", "Firefox", "Arc", "Microsoft Edge", "
 SESSION_LOG = SKILL_DIR / "memory" / ".session_log.json"
 
 
-def _log_action(action_name, elapsed, success, app=None):
-    """Append action to session log."""
+def _load_session_log():
+    """Load session log from disk."""
     import json
-    log = []
     if SESSION_LOG.exists():
         try:
             with open(SESSION_LOG) as f:
-                log = json.load(f)
+                return json.load(f)
         except:
-            log = []
-    log.append({
+            pass
+    return {"baseline_tokens": None, "actions": []}
+
+
+def _save_session_log(log):
+    """Save session log to disk."""
+    import json
+    SESSION_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(SESSION_LOG, "w") as f:
+        json.dump(log, f)
+
+
+def _log_action(action_name, elapsed, success, app=None):
+    """Append action to session log."""
+    log = _load_session_log()
+    log["actions"].append({
         "action": action_name,
         "app": app,
         "elapsed": round(elapsed, 1),
         "success": success,
         "time": time.strftime("%H:%M:%S"),
     })
-    SESSION_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with open(SESSION_LOG, "w") as f:
-        json.dump(log, f)
+    _save_session_log(log)
+
+
+def action_baseline(tokens=None):
+    """Record baseline token count at start of GUI task."""
+    log = _load_session_log()
+    if tokens:
+        log["baseline_tokens"] = int(tokens)
+    else:
+        log["baseline_tokens"] = None
+    log["actions"] = []  # reset actions for new task
+    _save_session_log(log)
+    if tokens:
+        print(f"  📊 Baseline set: {int(tokens)//1000}k tokens")
+    else:
+        print(f"  📊 Baseline set (no token count)")
+    return True
 
 
 def _print_session_tally():
     """Print a one-line cumulative session summary after every action."""
-    import json
-    if not SESSION_LOG.exists():
-        return
-    try:
-        with open(SESSION_LOG) as f:
-            log = json.load(f)
-    except:
-        return
-    if not log:
+    log = _load_session_log()
+    actions = log.get("actions", [])
+    if not actions:
         return
 
-    total_time = sum(a["elapsed"] for a in log)
+    total_time = sum(a["elapsed"] for a in actions)
     counts = {}
-    for a in log:
+    for a in actions:
         counts[a["action"]] = counts.get(a["action"], 0) + 1
 
     parts = []
@@ -88,52 +109,50 @@ def _print_session_tally():
     else:
         t = f"{total_time/60:.1f}min"
 
-    print(f"📊 Session: {len(log)} actions, {t} total | {', '.join(parts)}")
+    print(f"📊 Session: {len(actions)} actions, {t} total | {', '.join(parts)}")
 
 
-def action_report():
-    """Print session summary and clear the log."""
-    import json
-    if not SESSION_LOG.exists():
+def action_report(tokens=None):
+    """Print session summary with optional token delta, then clear the log."""
+    log = _load_session_log()
+    actions = log.get("actions", [])
+
+    if not actions:
         print("  📊 No actions logged this session.")
         return True
 
-    with open(SESSION_LOG) as f:
-        log = json.load(f)
-
-    if not log:
-        print("  📊 No actions logged this session.")
-        return True
-
-    total_time = sum(a["elapsed"] for a in log)
-    actions_by_type = {}
-    for a in log:
-        actions_by_type[a["action"]] = actions_by_type.get(a["action"], 0) + 1
-
-    screenshots = actions_by_type.get("read_screen", 0) + actions_by_type.get("explore", 0)
-    clicks = actions_by_type.get("click", 0)
-    learns = actions_by_type.get("learn", 0) + actions_by_type.get("learn_site", 0)
-    navigates = actions_by_type.get("navigate", 0)
-    keys = actions_by_type.get("key", 0)
-    types = actions_by_type.get("type", 0)
+    total_time = sum(a["elapsed"] for a in actions)
+    counts = {}
+    for a in actions:
+        counts[a["action"]] = counts.get(a["action"], 0) + 1
 
     parts = []
-    if learns: parts.append(f"{learns} learn")
-    if screenshots: parts.append(f"{screenshots} screenshot")
-    if clicks: parts.append(f"{clicks} click")
-    if navigates: parts.append(f"{navigates} navigate")
-    if keys: parts.append(f"{keys} keypress")
-    if types: parts.append(f"{types} type")
+    for name, label in [("learn", "learn"), ("learn_site", "learn_site"),
+                         ("read_screen", "screenshot"), ("click", "click"),
+                         ("navigate", "nav"), ("key", "key"), ("type", "type"),
+                         ("open", "open"), ("wait_for", "wait")]:
+        if counts.get(name):
+            parts.append(f"{counts[name]} {label}")
 
     if total_time < 60:
         time_str = f"{total_time:.1f}s"
     else:
         time_str = f"{total_time/60:.1f}min"
 
+    # Token delta
+    token_str = ""
+    baseline = log.get("baseline_tokens")
+    if tokens and baseline:
+        current = int(tokens)
+        delta = current - baseline
+        token_str = f" | 📊 +{delta//1000}k tokens ({baseline//1000}k→{current//1000}k)"
+    elif tokens:
+        token_str = f" | 📊 {int(tokens)//1000}k tokens (no baseline)"
+
     print(f"\n📊 Session Report")
-    print(f"⏱ Total: {time_str} | 🔧 {', '.join(parts) or 'no actions'}")
-    print(f"Actions: {len(log)} total")
-    for a in log:
+    print(f"⏱ {time_str}{token_str} | 🔧 {', '.join(parts) or 'no actions'}")
+    print(f"Actions: {len(actions)} total")
+    for a in actions:
         status = "✅" if a["success"] else "❌"
         app_str = f" ({a['app']})" if a.get("app") else ""
         print(f"  {a['time']} {status} {a['action']}{app_str} — {a['elapsed']}s")
@@ -1449,7 +1468,13 @@ ACTIONS = {
     },
     "report": {
         "fn": action_report,
-        "desc": "Print session summary (all actions, timing) and clear log",
+        "optional": ["tokens"],
+        "desc": "Print session summary (timing, token delta) and clear log",
+    },
+    "baseline": {
+        "fn": action_baseline,
+        "optional": ["tokens"],
+        "desc": "Set baseline token count for this GUI task",
     },
     "summary": {
         "fn": lambda app_name: print(json.dumps(
@@ -1536,6 +1561,7 @@ def main():
     parser.add_argument("--key", help="Key or combo to press (e.g., return, command-v)")
     parser.add_argument("--text", help="Text to type or paste")
     parser.add_argument("--workflow", help="Workflow/page name (for revise logic)")
+    parser.add_argument("--tokens", help="Current token count (for baseline/report)")
     parser.add_argument("--list-actions", action="store_true", help="List available actions")
     args = parser.parse_args()
 
@@ -1578,6 +1604,8 @@ def main():
             kwargs["key"] = args.key
         if args.text:
             kwargs["text"] = args.text
+        if args.tokens:
+            kwargs["tokens"] = args.tokens
         if args.workflow:
             kwargs["workflow"] = args.workflow
 
