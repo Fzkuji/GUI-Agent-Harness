@@ -6,7 +6,9 @@
   <p>
     <strong>看见屏幕。学会按钮。精准点击。</strong>
     <br />
-    基于视觉的 macOS 桌面自动化技能，为 <a href="https://github.com/openclaw/openclaw">OpenClaw</a> 智能体打造。
+    基于视觉的桌面自动化技能，构建于 <a href="https://github.com/openclaw/openclaw">OpenClaw</a> 之上。
+    <br />
+    <em>需要 OpenClaw 作为运行时 — 不是独立的 API 或库。</em>
   </p>
 
   <p>

@@ -4,7 +4,9 @@
 
 ## Overview
 
-**GUIClaw** is evaluated on [OSWorld](https://github.com/xlang-ai/OSWorld), a real-computer benchmark for multimodal agents. GUIClaw uses **GPA-GUI-Detector (a general-purpose UI element detection model) + Apple Vision OCR** with a general-purpose LLM orchestrator — no task-specific fine-tuning, no dedicated vision-language model.
+**GUIClaw** is evaluated on [OSWorld](https://github.com/xlang-ai/OSWorld), a real-computer benchmark for multimodal agents. GUIClaw is an [OpenClaw](https://github.com/openclaw/openclaw) skill that uses **Salesforce/GPA-GUI-Detector + Apple Vision OCR** for UI detection, with OpenClaw's LLM orchestrator for reasoning and action planning — no task-specific fine-tuning, no dedicated vision-language model, no external API calls for detection.
+
+> **Note:** GUIClaw requires OpenClaw as the runtime. The LLM (e.g. Claude, GPT) is provided through OpenClaw's configuration. GUIClaw itself only handles visual detection (GPA-GUI-Detector + OCR) and action execution (pyautogui) — all reasoning is done by the LLM within OpenClaw.
 
 ### Architecture
 

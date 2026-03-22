@@ -6,7 +6,9 @@
   <p>
     <strong>See your screen. Learn every button. Click precisely.</strong>
     <br />
-    Vision-based desktop automation skills for <a href="https://github.com/openclaw/openclaw">OpenClaw</a> agents on macOS.
+    Vision-based desktop automation skills built on <a href="https://github.com/openclaw/openclaw">OpenClaw</a>.
+    <br />
+    <em>Requires OpenClaw as the runtime — not a standalone API or library.</em>
   </p>
 
   <p>
@@ -158,6 +160,16 @@ CONFIRM  → Screenshot → process list empty → terminated ✅
 
 </details>
 
+## ⚠️ Prerequisites
+
+GUIClaw is an **OpenClaw skill** — it runs inside [OpenClaw](https://github.com/openclaw/openclaw) and uses OpenClaw's LLM orchestration to reason about UI actions. It is **not** a standalone API, CLI tool, or Python library. You need:
+
+1. **[OpenClaw](https://github.com/openclaw/openclaw)** installed and running
+2. **macOS with Apple Silicon** (for GPA-GUI-Detector and Apple Vision OCR)
+3. **Accessibility permissions** granted to OpenClaw/Terminal
+
+The LLM (Claude, GPT, etc.) is provided by your OpenClaw configuration — GUIClaw itself does not call any external APIs directly.
+
 ## 🚀 Quick Start
 
 **1. Clone & install**
@@ -171,14 +183,14 @@ bash scripts/setup.sh
 
 System Settings → Privacy & Security → Accessibility → Add Terminal / OpenClaw
 
-**3. Enable in [OpenClaw](https://github.com/openclaw/openclaw)** (recommended)
+**3. Enable in OpenClaw**
 
 Add to `~/.openclaw/openclaw.json`:
 ```json
 { "skills": { "entries": { "gui-agent": { "enabled": true } } } }
 ```
 
-Then just chat with your agent — it reads `SKILL.md` and handles everything automatically.
+Then just chat with your OpenClaw agent — it reads `SKILL.md` and handles everything automatically.
 
 ## 🧠 How It Works
 
