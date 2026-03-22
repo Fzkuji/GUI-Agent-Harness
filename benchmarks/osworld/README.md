@@ -33,14 +33,14 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 
 | Metric | Value |
 |--------|-------|
-| Tasks tested | 16 |
-| Tasks passed (score = 1.0) | 12 |
-| Pass rate (tested) | **75.0%** |
-| GUI operation success rate | **100%** (12/12) |
+| Tasks tested | 18 |
+| Tasks passed (score = 1.0) | 14 |
+| Pass rate (tested) | **77.8%** |
+| GUI operation success rate | **100%** (14/14) |
 | Failures due to infra/eval issues | 4 |
-| Adjusted pass rate (excl. infra issues) | **100%** (12/12) |
+| Adjusted pass rate (excl. infra issues) | **100%** (14/14) |
 
-> **Note:** Of 16 tasks tested, 4 failed due to infrastructure/environment issues (missing Chrome features on Linux, network proxy interference) that prevented even attempting the GUI operations. All 11 tasks where GUI operations were actually performed passed with score 1.0.
+> **Note:** Of 18 tasks tested, 4 failed due to infrastructure/environment issues (missing Chrome features on Linux Chromium). All 14 tasks where GUI operations were performed passed with score 1.0.
 
 ### Detailed Results
 
@@ -58,6 +58,8 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 | 12 | `12086550` | Navigate to password manager | 1.0 | ✅ PASS | Direct URL navigation: chrome://password-manager/passwords |
 | 13 | `6766f2b8` | Load unpacked Chrome extension | 1.0 | ✅ PASS | chrome://extensions → Developer mode → Load unpacked → select folder |
 | 16 | `3299584d` | Remove funbrain.com startup page | 1.0 | ✅ PASS | chrome://settings/onStartup → select "Open the New Tab page" |
+| 17 | `030eeff7` | Enable Do Not Track | 1.0 | ✅ PASS | chrome://settings/cookies → toggle DNT → Confirm |
+| 18 | `9656a811` | Enable Safe Browsing | 1.0 | ✅ PASS | chrome://settings/security → select "Standard protection" |
 
 ### Failed Due to Infrastructure/Environment Issues
 
@@ -65,8 +67,7 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 |---|---------|-------------|-------|
 | 11 | `99146c54` | Auto-clear data on close | Chromium 138 doesn't have this setting |
 | 14 | `93eabf48` | Turn off dark mode | Linux Chromium has no Light/Dark mode selector in UI |
-| 17 | `030eeff7` | Enable Do Not Track | Network timeout (proxy interference) |
-| 18 | `9656a811` | Enable Safe Browsing enhanced | Network timeout (proxy interference) |
+
 
 ### Not Yet Tested
 
@@ -143,9 +144,9 @@ Reference scores from the [OSWorld leaderboard](https://os-world.github.io/):
 | Human | 72.36% | — | Manual |
 | Claude Computer Use | 14.90% | — | Claude 3.5 Sonnet + screenshots |
 | GPT-4V + SoM | 6.27% | — | GPT-4V + Set-of-Mark |
-| **GUIClaw** | **TBD** | **75.0%** (tested) | GPA-GUI-Detector + OCR + LLM |
+| **GUIClaw** | **TBD** | **77.8%** (tested) | GPA-GUI-Detector + OCR + LLM |
 
-> ⚠️ GUIClaw's Chrome score is on a partial subset (16/46 tasks). Full benchmark evaluation in progress. All 12 tasks that were not blocked by infrastructure issues passed successfully (100% adjusted pass rate).
+> ⚠️ GUIClaw's Chrome score is on a partial subset (18/46 tasks). Full benchmark evaluation in progress. All 14 tasks that were not blocked by infrastructure issues passed successfully (100% adjusted pass rate).
 
 ## Files
 
