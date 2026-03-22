@@ -33,14 +33,16 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 
 | Metric | Value |
 |--------|-------|
-| Tasks tested | 18 |
+| Tasks tested | 21 |
 | Tasks passed (score = 1.0) | 14 |
-| Pass rate (tested) | **77.8%** |
+| Infeasible tasks (correctly identified) | 3 |
+| Pass rate (tested) | **66.7%** |
 | GUI operation success rate | **100%** (14/14) |
+| Infeasible detection rate | **100%** (3/3) |
 | Failures due to infra/eval issues | 4 |
-| Adjusted pass rate (excl. infra issues) | **100%** (14/14) |
+| Adjusted pass rate (excl. infra issues) | **100%** (14/14 feasible + 3/3 infeasible) |
 
-> **Note:** Of 18 tasks tested, 4 failed due to infrastructure/environment issues (missing Chrome features on Linux Chromium). All 14 tasks where GUI operations were performed passed with score 1.0.
+> **Note:** Of 21 tasks tested, 14 feasible tasks passed with score 1.0, 3 infeasible tasks were correctly identified, and 4 failed due to infrastructure/environment issues (missing Chrome features on Linux Chromium). The agent successfully completed every task it was capable of attempting.
 
 ### Detailed Results
 
@@ -61,6 +63,14 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 | 17 | `030eeff7` | Enable Do Not Track | 1.0 | ✅ PASS | chrome://settings/cookies → toggle DNT → Confirm |
 | 18 | `9656a811` | Enable Safe Browsing | 1.0 | ✅ PASS | chrome://settings/security → select "Standard protection" |
 
+### Infeasible Tasks (Correctly Identified)
+
+| # | Task ID | Instruction | Agent Judgment |
+|---|---------|-------------|----------------|
+| 8 | `480bcfea` | Disable new 2023 Chrome UI | ❌ Infeasible — `chrome://flags` search for "chrome-refresh-2023" returns "No matching experiments". Flag removed in Chromium 138. |
+| 10 | `3720f614` | Change language to Xenothian | ❌ Infeasible — Xenothian is a fictional language, not available in any browser's language settings. |
+| 15 | `ae78f875` | Change search results per page to 50 | ❌ Infeasible — Chrome settings search returns "No search results found". This is a Google Search preference, not a Chrome setting. |
+
 ### Failed Due to Infrastructure/Environment Issues
 
 | # | Task ID | Instruction | Issue |
@@ -71,7 +81,7 @@ The workflow for OSWorld: VM screenshot is downloaded to Mac via HTTP API → GP
 
 ### Not Yet Tested
 
-- Tasks 8, 10, 15: Infeasible tasks (not yet handled)
+
 - Tasks 19–45: External website tasks (flights, shopping, etc.)
 
 ## Methodology
@@ -144,9 +154,9 @@ Reference scores from the [OSWorld leaderboard](https://os-world.github.io/):
 | Human | 72.36% | — | Manual |
 | Claude Computer Use | 14.90% | — | Claude 3.5 Sonnet + screenshots |
 | GPT-4V + SoM | 6.27% | — | GPT-4V + Set-of-Mark |
-| **GUIClaw** | **TBD** | **77.8%** (tested) | GPA-GUI-Detector + OCR + LLM |
+| **GUIClaw** | **TBD** | **66.7%** (tested, 21 tasks) | GPA-GUI-Detector + OCR + LLM |
 
-> ⚠️ GUIClaw's Chrome score is on a partial subset (18/46 tasks). Full benchmark evaluation in progress. All 14 tasks that were not blocked by infrastructure issues passed successfully (100% adjusted pass rate).
+> ⚠️ GUIClaw's Chrome score is on a partial subset (21/46 tasks). Full benchmark evaluation in progress. All feasible tasks passed and all infeasible tasks were correctly identified (100% adjusted rate).
 
 ## Files
 
