@@ -36,6 +36,8 @@
 
 ## 🔥 News
 
+- **[03/22/2026]** 🏆 **OSWorld benchmark**: 14/14 feasible tasks passed (100%), 3/3 infeasible correctly identified. [See results →](benchmarks/osworld/)
+- **[03/21/2026]** v0.5.0 — **Cross-platform detection**: GPA-GUI-Detector works on any OS screenshot (Linux, Windows, mobile). First OSWorld evaluation on Ubuntu VM.
 - **[03/19/2026]** v0.4.0 — **Workflow memory + async polling**: Saved workflows auto-matched by LLM intent; `wait_for` command (template-match polling, no blind clicks); mandatory timing & token delta reporting; multi-window fix (selects largest window).
 - **[03/19/2026]** v0.3.0 — **Click-graph state architecture**: UI modeled as a graph of states; each click creates a new state entry; state identification via OCR text matching. Removed pages/regions/overlays complexity.
 - **[03/17/2026]** v0.2.0 — Workflow-based revise, event-driven polling, mandatory operation protocol (observe→verify→act→confirm), per-app visual memory with auto-cleanup.
@@ -429,6 +431,17 @@ If you find GUIClaw useful in your research, please cite:
   url          = {https://github.com/Fzkuji/GUIClaw},
 }
 ```
+
+---
+
+<p align="center">
+  <a href="https://github.com/Fzkuji/GUIClaw/stargazers"><img src="https://img.shields.io/github/stars/Fzkuji/GUIClaw?style=social" alt="Stars" /></a>
+  <a href="https://github.com/Fzkuji/GUIClaw/network/members"><img src="https://img.shields.io/github/forks/Fzkuji/GUIClaw?style=social" alt="Forks" /></a>
+  <a href="https://github.com/Fzkuji/GUIClaw/issues"><img src="https://img.shields.io/github/issues/Fzkuji/GUIClaw" alt="Issues" /></a>
+  <a href="https://github.com/Fzkuji/GUIClaw/pulls"><img src="https://img.shields.io/github/issues-pr/Fzkuji/GUIClaw" alt="PRs" /></a>
+  <a href="https://github.com/Fzkuji/GUIClaw/graphs/contributors"><img src="https://img.shields.io/github/contributors/Fzkuji/GUIClaw" alt="Contributors" /></a>
+  <a href="https://github.com/Fzkuji/GUIClaw/commits/main"><img src="https://img.shields.io/github/last-commit/Fzkuji/GUIClaw" alt="Last Commit" /></a>
+</p>
 
 <p align="center">
   <sub>Built with 🦞 by the GUIClaw team · Powered by <a href="https://github.com/openclaw/openclaw">OpenClaw</a></sub>
