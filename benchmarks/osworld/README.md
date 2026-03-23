@@ -87,7 +87,7 @@ GUIClaw runs on the following stack:
 | 8 | `480bcfea` | Disable new 2023 Chrome UI | — | ✅ | Infeasible: `chrome://flags` "No matching experiments" (flag removed in Chromium 138) |
 | 9 | `af630914` | Set font size to largest | 1.0 | ✅ | OCR found "Huge" label → click slider endpoint |
 | 10 | `3720f614` | Change language to Xenothian | — | ✅ | Infeasible: fictional language, not available in any browser |
-| 11 | `99146c54` | Auto-clear data on close | 1.0 | ✅ | 2nd attempt. 1st failed: searched `chrome://settings/cookies`, concluded feature missing. After web search, found at `chrome://settings/content/siteData` (moved in newer Chrome) |
+| 11 | `99146c54` | Auto-clear data on close | 1.0 | ⚠️ | 2nd attempt. 1st failed: searched `chrome://settings/cookies`, concluded feature missing. After web search, found at `chrome://settings/content/siteData` (moved in newer Chrome) |
 | 12 | `12086550` | Navigate to password manager | 1.0 | ✅ | URL navigation: chrome://password-manager/passwords |
 | 13 | `6766f2b8` | Load unpacked Chrome extension | 1.0 | ✅ | Extensions → Developer mode → Load unpacked → select folder |
 | 14 | `93eabf48` | Turn off dark mode | 1.0 | ✅ | Settings → Appearance → "Use Classic" resets dark mode to light |
@@ -95,7 +95,7 @@ GUIClaw runs on the following stack:
 | 16 | `3299584d` | Remove startup page | 1.0 | ✅ | Settings → On startup → "Open the New Tab page" |
 | 17 | `030eeff7` | Enable Do Not Track | 1.0 | ✅ | Settings → Cookies → toggle DNT → Confirm |
 | 18 | `9656a811` | Enable Safe Browsing | 1.0 | ✅ | Settings → Security → select "Standard protection" |
-| 19 | `fc6d8143` | Find JFK→ORD flights on Delta | 1.0 | ✅ | 2nd attempt (1st blocked by cookie consent). CDP JS dismiss → pyautogui form fill |
+| 19 | `fc6d8143` | Find JFK→ORD flights on Delta | 1.0 | ⚠️ | 2nd attempt (1st blocked by cookie consent). CDP JS dismiss → pyautogui form fill |
 | 20 | `a96b564e` | Find discussion with most replies on FlightAware | 1.0 | ✅ | Footer → Community → Discussion → Top → All time → sort by Replies → "The Banter Thread" |
 | 21 | `1704f00f` | Rent large car in Zurich, Mon-Fri, sort by price | 1.0 | ✅ | Multiple auto-corrections during execution: fixed city (Airport→city), date (Apr→Mar), day (24→23). Final: Zürich, Mar 23-27, Large, Price |
 | 22 | `f3b19d1e` | Find FAQ page about ticket delivery on Ticketek | 1.0 | ✅ | ⚠️ Website restructured: old URL `Ticket-Delivery-FAQs` no longer exists (now `Ticket-Delivery`). Eval passed on URL pattern match but actual page shows 404. |
