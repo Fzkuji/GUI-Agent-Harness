@@ -105,7 +105,7 @@ GUIClaw runs on the following stack:
 | 27 | `6c4c23a1` | Find SEA→NYC flights with Miles on Delta | 1.0 | ✅ | Privacy dialog dismissed → From/To/Date → Shop with Miles checkbox (click text, not icon) |
 | 28 | `f79439ad` | Search DUB→VIE one-way flight on Ryanair | 1.0 | ✅ | Cookie dismiss → Dublin/Vienna → One way → Apr 10 → 2 adults |
 | 29 | `b7895e80` | Find NYC hotel, lowest price, next weekend | 1.0 | ✅ | TripAdvisor: Mar 28-29, 1 Room 2 Guests, Sort Price low to high |
-| 30 | `9f3f70fc` | Browse women's Nike jerseys over $60 on NBA Store | 0.0 | ❌ | **Site changed**: Fanatics platform has no `filter-selector-link` sidebar |
+| 30 | `9f3f70fc` | Browse women's Nike jerseys over $60 on NBA Store | 0.0 | ⚠️ | Env change: store.nba.com (Fanatics) restructured — Women category is a landing page without product listing/filters. Team-specific pages have filters but no global Women+Jerseys+Nike+Over $60 combination available. |
 | 31 | `7f52cab9` | Drip coffee makers on sale, $25-60, black | 1.0 | ✅ | Google Shopping: On sale + $25-$60 + Black filters applied via UI |
 | 32 | `82279c77` | Find electric cars under $50k near 10001 | 1.0 | ✅ | Cars.com: URL params match all expected filters |
 | 33 | `2888b4e6` | Men's large short-sleeve shirts 50%+ off | 1.0 | ✅ | Macys: Size=L + Discount Range=50% off & more via filter panel |
