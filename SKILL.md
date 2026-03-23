@@ -220,9 +220,17 @@ Both save functions are automated — no manual cropping or JSON editing:
 For memory structure details (split storage format, forgetting mechanism, browser sites/): `read {baseDir}/skills/gui-memory/SKILL.md`
 
 ### STEP 3: REPORT
-→ **MUST `read {baseDir}/skills/gui-report/SKILL.md` first**
 
-Track task performance: duration, token usage, operation counts. Call at START and END of each task (not per-click).
+Report is mostly automatic (detect_all auto-starts tracker, functions auto-tick counters).
+At the END of a GUI task, run this one command to generate and save the report:
+
+```bash
+source ~/gui-actor-env/bin/activate
+python3 ~/.openclaw/workspace/skills/gui-agent/skills/gui-report/scripts/tracker.py report
+```
+
+This prints a one-line summary + saves full data to `logs/task_history.jsonl`.
+If you forget, data is auto-saved next time tracker starts.
 
 ---
 
