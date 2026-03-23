@@ -192,11 +192,14 @@ Add to `~/.openclaw/openclaw.json`:
 ```json
 {
   "skills": { "entries": { "gui-agent": { "enabled": true } } },
-  "tools": { "exec": { "timeoutSec": 60 } }
+  "tools": { "exec": { "timeoutSec": 60 } },
+  "messages": { "queue": { "mode": "steer" } }
 }
 ```
 
-> ⚠️ The `timeoutSec: 60` is important — GUIClaw operations (screenshot → detect → click → wait) often take 15-30s. The default timeout is too short and will kill commands mid-execution.
+> ⚠️ **`timeoutSec: 60`** is important — GUIClaw operations (screenshot → detect → click → wait) often take 15-30s. The default timeout is too short and will kill commands mid-execution.
+
+> 💡 **`queue.mode: "steer"`** is recommended — GUI operations take time, and steer mode lets you send corrections or new instructions that immediately interrupt the current action at the next tool-call boundary. Without it, your messages queue up and the agent won't see them until it finishes.
 
 Then just chat with your OpenClaw agent — it reads `SKILL.md` and handles everything automatically.
 
