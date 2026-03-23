@@ -917,10 +917,8 @@ def learn_app(app_name, page_name=None):
 
     print(f"  📸 Window at ({win_x},{win_y}) {win_w}x{win_h}")
 
-    # 2. Detect
-    icon_elements, img_w, img_h = ui_detector.detect_icons(img_path, conf=0.1, iou=0.3)
-    text_elements = ui_detector.detect_text(img_path)
-    all_elements = ui_detector.merge_elements(icon_elements, text_elements, iou_threshold=0.3)
+    # 2. Detect (GPA required + OCR optional via detect_all)
+    icon_elements, text_elements, all_elements, img_w, img_h = ui_detector.detect_all(img_path)
 
     print(f"  🔍 Detected {len(all_elements)} elements ({len(icon_elements)} icons, {len(text_elements)} text)")
 
@@ -1157,11 +1155,9 @@ def learn_site(app_name="Google Chrome", page_name="main"):
     if not img_path:
         return False
 
-    # Detect
-    icon_elements, img_w, img_h = ui_detector.detect_icons(img_path, conf=0.1, iou=0.3)
-    text_elements = ui_detector.detect_text(img_path)
-    all_elements = ui_detector.merge_elements(icon_elements, text_elements, iou_threshold=0.3)
-    print(f"  🔍 Detected {len(all_elements)} elements")
+    # Detect (GPA required + OCR optional via detect_all)
+    icon_elements, text_elements, all_elements, img_w, img_h = ui_detector.detect_all(img_path)
+    print(f"  🔍 Detected {len(all_elements)} elements ({len(icon_elements)} icons, {len(text_elements)} text)")
 
     # Save to site directory
     site_dir = get_site_dir(app_name, domain)
@@ -1293,12 +1289,10 @@ def learn_from_screenshot(img_path, domain=None, app_name="chromium", page_name=
     print(f"🧠 Learning from screenshot: {img_path}")
     print(f"  Size: {img_w}x{img_h}, domain: {domain}, page: {page_name}")
 
-    # Detect
-    icon_elements, det_w, det_h = ui_detector.detect_icons(img_path, conf=0.1, iou=0.3)
+    # Detect (GPA required + OCR optional via detect_all)
+    icon_elements, text_elements, all_elements, det_w, det_h = ui_detector.detect_all(img_path)
     _tracker_auto_tick("detector_calls")
-    text_elements = ui_detector.detect_text(img_path)
     _tracker_auto_tick("ocr_calls")
-    all_elements = ui_detector.merge_elements(icon_elements, text_elements, iou_threshold=0.3)
     print(f"  🔍 Detected {len(all_elements)} elements ({len(icon_elements)} icons, {len(text_elements)} text)")
 
     _tracker_auto_tick("screenshots")
@@ -1663,12 +1657,12 @@ def detect_with_memory(app_name, threshold=0.8):
     if not img_path:
         return [], [], None
 
-    # Get visible text for state identification (from window crop)
+    # Detect all elements (GPA required + OCR optional via detect_all)
     import ui_detector
-    text_elements = ui_detector.detect_text(img_path)
+    icon_elements, text_elements, all_elements, _, _ = ui_detector.detect_all(img_path)
     visible_text = [t.get("label", "") for t in text_elements]
     
-    # Identify current state
+    # Identify current state using detected text
     current_state, match_ratio = identify_state(app_name, visible_text)
     if current_state:
         print(f"  📊 Identified state: '{current_state}' ({match_ratio:.0%} match)")
@@ -1699,10 +1693,6 @@ def detect_with_memory(app_name, threshold=0.8):
     if state_components:
         match_rate = len(known) / len(state_components)
         print(f"  📊 State match rate: {match_rate:.1%} ({len(known)}/{len(state_components)})")
-
-    # Detect new elements
-    icon_elements, _, _ = ui_detector.detect_icons(img_path, conf=0.1, iou=0.3)
-    all_elements = ui_detector.merge_elements(icon_elements, text_elements)
 
     # Filter out known (matched) elements
     unknown = []
