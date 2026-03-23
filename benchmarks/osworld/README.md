@@ -65,12 +65,15 @@ GUIClaw runs on the following stack:
 
 | Metric | Value |
 |--------|-------|
-| Tasks tested | 40 / 46 |
-| Tasks passed | **38** |
-| Tasks failed | 2 |
-| **Pass rate** | **95.0%** (38/40) |
+| Tasks tested | 44 / 46 |
+| ✅ First-try pass | 39 |
+| ⚠️ Retry / env-issue pass | 4 (×0.5) |
+| ❌ Failed | 1 |
+| ⏭️ Skipped | 1 |
+| **Score** | **41.0 / 44** (93.2%) |
 
-> 38 of 40 tested tasks passed. 2 failures due to external website changes (not agent errors).
+> Scoring: ✅ = 1.0, ⚠️ = 0.5 (retry needed or env change), ❌ = 0, ⏭️ = excluded.
+> 1 failure (Task 30: NBA Store filter navigation). 1 skip (Task 45: needs CDP history setup).
 
 ### Detailed Results
 
@@ -177,8 +180,4 @@ Reference scores from the [OSWorld leaderboard](https://os-world.github.io/) (Ch
 
 | Metric | Value |
 |--------|-------|
-| Tasks tested | 43 / 46 |
-| Tasks passed | **41** |
-| Tasks failed | 2 |
-| Tasks skipped | 1 |
-| **Pass rate** | **95.3%** (41/43 tested, excl. skip) |
+| **Score** | **41.0 / 44** (93.2%) |
