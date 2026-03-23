@@ -36,6 +36,7 @@
 
 ## 🔥 News
 
+- **[03/24/2026]** v0.8.0 — **Workflow v2 + Report automation**: Target state verification (no pixel comparison), tiered verification (Level 0/1/2), auto tracker via detect_all, one-command report.
 - **[03/23/2026]** 🏆 **OSWorld benchmark**: **45.0/46 Chrome tasks (97.8%)**. [See results →](benchmarks/osworld/)
 - **[03/23/2026]** v0.7.0 — **Memory refactor**: Split storage (components/states/transitions), component forgetting mechanism, state merging by Jaccard similarity, transition dedup.
 - **[03/22/2026]** v0.6.0 — **Unified action flow**: Three visual methods (OCR/GPA-GUI-Detector/image tool) with clear boundaries; detect→match→execute→diff→save as one atomic operation.
@@ -229,7 +230,10 @@ Browsers are special — they host many websites, so each site gets its own **ne
 ```
 memory/apps/
 ├── wechat/
-│   ├── profile.json              # Components + click-graph states
+│   ├── meta.json                 # Metadata (detect_count, forget_threshold)
+│   ├── components.json           # Component registry + activity tracking
+│   ├── states.json               # States defined by component sets
+│   ├── transitions.json          # State transitions (dict, deduped)
 │   ├── components/               # Cropped UI element images
 │   │   ├── search_bar.png
 │   │   ├── emoji_button.png
@@ -239,80 +243,116 @@ memory/apps/
 │   └── pages/
 │       └── main_annotated.jpg
 ├── cleanmymac_x/
-│   ├── profile.json
+│   ├── meta.json
+│   ├── components.json
+│   ├── states.json
+│   ├── transitions.json
 │   ├── components/
 │   ├── workflows/
 │   │   └── smart_scan_cleanup.json
 │   └── pages/
 ├── claude/
-│   ├── profile.json
+│   ├── meta.json
+│   ├── components.json
+│   ├── states.json
+│   ├── transitions.json
 │   ├── components/
 │   ├── workflows/
 │   │   └── check_usage.json
 │   └── pages/
 └── chromium/
-    ├── profile.json              # Browser-level UI (toolbar, settings)
+    ├── meta.json                 # Browser-level metadata
+    ├── components.json           # Browser UI components (toolbar, settings)
+    ├── states.json
+    ├── transitions.json
     ├── components/               # Browser UI element templates
     ├── pages/
     └── sites/                    # ⭐ Per-website memory (same structure as any app)
         ├── united.com/
-        │   ├── profile.json      # Site UI: nav bar, forms, links
+        │   ├── meta.json
+        │   ├── components.json   # Site UI: nav bar, forms, links
+        │   ├── states.json
+        │   ├── transitions.json
         │   ├── components/       # Cropped site-specific UI elements
         │   └── pages/            # Page screenshots
         ├── delta.com/
-        │   ├── profile.json
+        │   ├── meta.json
+        │   ├── components.json
+        │   ├── states.json
+        │   ├── transitions.json
         │   ├── components/
         │   └── pages/
         └── amazon.com/
-            ├── profile.json
+            ├── meta.json
+            ├── components.json
+            ├── states.json
+            ├── transitions.json
             ├── components/
             └── pages/
 ```
 
 ### Click Graph
 
-The UI is modeled as a **graph of states**. Each state is defined by which components are visible on screen.
+The UI is modeled as a **graph of states**. Each state is defined by a `defining_components` set — the collection of components detected on screen. States are matched using **Jaccard similarity** between the current screen's components and each saved state's defining set.
 
-**profile.json structure:**
+**components.json structure:**
 ```json
 {
-  "app": "Claude",
-  "window_size": [1512, 828],
-  "components": {
-    "Search": { "type": "icon", "rel_x": 115, "rel_y": 143, "icon_file": "components/Search.png", ... },
-    "Settings": { ... }
+  "Search": {
+    "type": "icon",
+    "rel_x": 115, "rel_y": 143,
+    "icon_file": "components/Search.png",
+    "last_seen": "2026-03-24T01:30:00",
+    "seen_count": 12,
+    "consecutive_misses": 0
   },
-  "states": {
-    "initial": {
-      "visible": ["Chat_tab", "Cowork_tab", "Code_tab", "Search", "Ideas", ...],
-      "description": "Main app view when first opened"
-    },
-    "click:Settings": {
-      "trigger": "Settings",
-      "trigger_pos": [63, 523],
-      "visible": ["Chat_tab", "Account", "Billing", "Usage", "General", ...],
-      "disappeared": ["Ideas", "Customize", ...],
-      "description": "Settings page"
-    },
-    "click:Usage": {
-      "trigger": "Usage",
-      "visible": ["Chat_tab", "Account", "Billing", "Usage", "Developer", ...],
-      "description": "Settings > Usage tab"
-    }
+  "Settings": {
+    "type": "icon",
+    "rel_x": 63, "rel_y": 523,
+    "icon_file": "components/Settings.png",
+    "last_seen": "2026-03-24T01:30:00",
+    "seen_count": 8,
+    "consecutive_misses": 2
+  }
+}
+```
+
+**states.json structure:**
+```json
+{
+  "state_0": {
+    "defining_components": ["Chat_tab", "Cowork_tab", "Code_tab", "Search", "Ideas"],
+    "description": "Main app view when first opened"
+  },
+  "state_1": {
+    "defining_components": ["Chat_tab", "Account", "Billing", "Usage", "General"],
+    "description": "Settings page"
+  },
+  "state_2": {
+    "defining_components": ["Chat_tab", "Account", "Billing", "Usage", "Developer"],
+    "description": "Settings > Usage tab"
   }
 }
 ```
 
 **How it works:**
-1. **Initial state** = what's visible when the app first opens (captured during first `learn`)
-2. **Click creates state** = every click that changes the screen creates a new `click:ComponentName` state
-3. **State identification** = OCR screen → match visible text against each state's `visible` list → highest match ratio wins
-4. **Components belong to states** = a component can appear in multiple states (e.g., `Chat_tab` is visible in `initial`, `click:Settings`, `click:Usage`)
-5. **Matching is state-specific** = only match components that belong to the identified state
+1. **State = component set** — each state is defined by which components are present (its `defining_components`)
+2. **Jaccard matching** — current screen's detected components are compared against each state: `|A ∩ B| / |A ∪ B|`
+3. **Match threshold > 0.7** — identifies the current state
+4. **Merge threshold > 0.85** — if a new state is too similar to an existing one, they merge automatically
+5. **Components belong to states** = a component can appear in multiple states (e.g., `Chat_tab` is in `state_0`, `state_1`, `state_2`)
+6. **Matching is state-specific** = only match components that belong to the identified state
+
+**Component forgetting:**
+- Each component tracks `last_seen`, `seen_count`, and `consecutive_misses`
+- When a component is not detected for **15 consecutive detect_all runs**, it is automatically deleted
+- This keeps memory clean as apps update their UI over time
 
 **Why this works:**
 - No need to predefine "pages" or "regions" — states are discovered through interaction
-- State identification is fast (OCR text matching, no vision model needed)
+- State identification is fast (Jaccard on component sets, no vision model needed)
+- Similar states auto-merge, preventing state explosion
+- Stale components auto-forget, keeping memory lean
 - Handles overlays, popups, nested navigation naturally
 - Scales to complex apps with many UI states
 
@@ -331,6 +371,25 @@ memory/apps/claude/workflows/check_usage.json
 3. **LLM semantic matching** (not string matching) — the agent IS the LLM
 4. Match found → load workflow steps, observe current state, resume from correct step
 5. No match → operate normally, save new workflow after success
+
+**Tiered verification (Workflow v2):**
+
+Each workflow step is verified using a tiered approach — fast checks first, expensive ones only if needed:
+
+| Level | Method | Speed | When |
+|-------|--------|-------|------|
+| **Level 0** | `quick_template_check` — template match target component | ~0.3s | Default first check |
+| **Level 1** | `detect_all` + `identify_current_state` — full detection | ~2s | Level 0 fails or ambiguous |
+| **Level 2** | LLM vision fallback | ~5s+ | Level 1 can't determine state |
+
+**Execution modes:**
+- **Auto mode** — follows saved workflow steps, verifying each with tiered checks
+- **Explore mode** — no saved workflow; agent discovers steps interactively, saves on success
+
+**`execute_workflow()` returns:**
+- `success` — all steps completed and verified
+- `fallback` — workflow diverged, fell back to explore mode
+- `error` — unrecoverable failure
 
 **Example workflow** (`smart_scan_cleanup.json`):
 ```json
@@ -421,9 +480,14 @@ GUIClaw/
 │   ├── gui_agent.py           # 🖱️ Legacy task executor
 │   └── template_match.py      # 🎯 Template matching utilities
 ├── memory/                    # 🔒 Visual memory (gitignored but ESSENTIAL)
-│   ├── apps/<appname>/        #   Per-app: profile.json, components/, pages/
+│   ├── apps/<appname>/        #   Per-app memory:
+│   │   ├── meta.json          #     Metadata (detect_count, forget_threshold)
+│   │   ├── components.json    #     Component registry + activity tracking
+│   │   ├── states.json        #     States defined by component sets
+│   │   ├── transitions.json   #     State transitions (dict, deduped)
+│   │   ├── components/        #     Template images
+│   │   ├── pages/             #     Page screenshots
 │   │   └── sites/<domain>/    #   Per-website memory (browsers only, same structure)
-│   └── meta_workflows/        #   Cross-app orchestration
 ├── benchmarks/osworld/        # 📈 OSWorld benchmark results
 ├── assets/                    # 🎨 Architecture diagrams, banners
 ├── actions/_actions.yaml      # 📋 Atomic operation definitions
