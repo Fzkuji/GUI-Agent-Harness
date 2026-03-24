@@ -73,6 +73,30 @@ DETECT → MATCH → SAVE → EXECUTE → DETECT AGAIN → DIFF → SAVE TRANSIT
 - Mac Retina: retina=True, 坐标 ÷2
 - VM: retina=False, 坐标 1:1
 
+## 坐标系统
+
+两个坐标空间：
+- 检测空间（screencapture 像素）：GPA、OCR、模板匹配、cv2 图片裁剪
+- 点击空间（OS logical）：pynput、pyautogui、osascript 窗口边界
+
+映射函数（在 `ui_detector.py`）：
+- `detect_to_click(x, y)`: 检测 → 点击
+- `click_to_detect(x, y)`: 点击 → 检测
+- `refresh_screen_info(img_w, img_h)`: 每次 detect_all 时更新
+- `get_screen_info()`: 获取当前屏幕信息
+
+每个工具的空间：
+| 工具 | 空间 |
+|------|------|
+| detect_icons | 检测 |
+| detect_text | 检测 |
+| template_match | 检测 |
+| detect_all 输出 | 点击 |
+| pynput click_at | 点击 |
+| cv2 图片裁剪 | 检测 |
+
+scale 在 detect_all 调用时动态计算（`refresh_screen_info`），不硬编码。
+
 ## 操作前后验证
 
 点击后需要验证的原因：

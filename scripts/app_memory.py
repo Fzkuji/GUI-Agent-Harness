@@ -834,10 +834,10 @@ def capture_window(app_name, out_path=None):
     subprocess.run(["/usr/sbin/screencapture", "-x", "/tmp/_full.png"],
                    check=True, timeout=5)
     img = cv2.imread("/tmp/_full.png")
-    # Convert logical window bounds to screenshot pixel coords for cropping
-    from ui_detector import get_backing_scale
-    bs = get_backing_scale()
-    rx, ry, rw, rh = int(win_x * bs), int(win_y * bs), int(win_w * bs), int(win_h * bs)
+    # Convert click-space window bounds to detection-space for cropping
+    from ui_detector import click_to_detect
+    rx, ry = click_to_detect(win_x, win_y)
+    rw, rh = click_to_detect(win_w, win_h)
     crop = img[ry:ry+rh, rx:rx+rw]
     cv2.imwrite(out_path, crop)
 
@@ -1465,10 +1465,10 @@ def match_component(app_name, component_name, img=None, threshold=0.8):
 
     If img is None, takes a full screen screenshot automatically.
     Templates are learned from app window crops but matched on any image.
-    Returns: (found, logical_x, logical_y, confidence) or (False, 0, 0, 0)
-    Coordinates are in logical (pynput) pixels.
+    Returns: (found, click_x, click_y, confidence) or (False, 0, 0, 0)
+    Coordinates are in click space (OS logical pixels).
     """
-    from ui_detector import get_backing_scale
+    from ui_detector import detect_to_click
     app_dir = get_app_dir(app_name)
     profile = load_profile(app_name)
 
@@ -1505,13 +1505,11 @@ def match_component(app_name, component_name, img=None, threshold=0.8):
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
     if max_val >= threshold:
-        # Template match returns screenshot pixel coords — convert to logical
-        scale = get_backing_scale()
-        phys_cx = max_loc[0] + template.shape[1] // 2
-        phys_cy = max_loc[1] + template.shape[0] // 2
-        logical_x = int(phys_cx / scale)
-        logical_y = int(phys_cy / scale)
-        return True, logical_x, logical_y, round(max_val, 4)
+        # Template match returns detection-space pixel coords — convert to click space
+        det_cx = max_loc[0] + template.shape[1] // 2
+        det_cy = max_loc[1] + template.shape[0] // 2
+        click_x, click_y = detect_to_click(det_cx, det_cy)
+        return True, click_x, click_y, round(max_val, 4)
 
     return False, 0, 0, 0
 
@@ -1520,7 +1518,7 @@ def match_all_components(app_name, img=None, threshold=0.8):
     """Match all saved components against an image (or full screen).
 
     If img is None, takes a full screen screenshot automatically.
-    Returns: list of (component_name, logical_x, logical_y, confidence)
+    Returns: list of (component_name, click_x, click_y, confidence)
     """
     # Take screenshot once, reuse for all components
     if img is None:
@@ -1652,13 +1650,10 @@ def learn_app(app_name, page_name=None):
                 break
 
         # --- Crop icon from screenshot image ---
-        # detect_all returns logical coords; convert back to screenshot pixels for cropping
-        from ui_detector import get_backing_scale
-        bs = get_backing_scale()
-        px_x = int(el["x"] * bs)
-        px_y = int(el["y"] * bs)
-        px_w = int(el["w"] * bs)
-        px_h = int(el["h"] * bs)
+        # detect_all returns click-space coords; convert back to detection space for cropping
+        from ui_detector import click_to_detect
+        px_x, px_y = click_to_detect(el["x"], el["y"])
+        px_w, px_h = click_to_detect(el["w"], el["h"])
         pad = 4
         y1 = max(0, px_y - pad)
         x1 = max(0, px_x - pad)
@@ -1841,8 +1836,7 @@ def learn_site(app_name="Google Chrome", page_name="main"):
     dup_count = 0
     icons_dir = site_dir / "components"
 
-    from ui_detector import get_backing_scale
-    bs = get_backing_scale()
+    from ui_detector import click_to_detect
 
     for el in all_elements:
         if el.get("label"):
@@ -1856,7 +1850,7 @@ def learn_site(app_name="Google Chrome", page_name="main"):
                 rel_y = el["cy"]
                 comp_name = f"unlabeled_{rel_x}_{rel_y}"
 
-        # Dedup by position (coords already logical from detect_all)
+        # Dedup by position (coords already click-space from detect_all)
         is_new = True
         for existing_name, existing in components.items():
             if (abs(existing.get("rel_x", 0) - el["cx"]) < 15 and
@@ -1865,11 +1859,9 @@ def learn_site(app_name="Google Chrome", page_name="main"):
                 comp_name = existing_name
                 break
 
-        # Crop from screenshot image (convert logical → screenshot pixels)
-        px_x = int(el["x"] * bs)
-        px_y = int(el["y"] * bs)
-        px_w = int(el["w"] * bs)
-        px_h = int(el["h"] * bs)
+        # Crop from screenshot image (convert click-space → detection space)
+        px_x, px_y = click_to_detect(el["x"], el["y"])
+        px_w, px_h = click_to_detect(el["w"], el["h"])
         pad = 4
         y1, x1 = max(0, px_y-pad), max(0, px_x-pad)
         y2 = min(img.shape[0], px_y+px_h+pad)
@@ -1953,11 +1945,10 @@ def learn_from_screenshot(img_path, domain=None, app_name="chromium", page_name=
         return {"saved": 0, "components": []}
 
     img_h, img_w = img.shape[:2]
-    # DEPRECATED: retina parameter no longer used for coordinate conversion.
-    # detect_all() now handles all coordinate conversion internally.
-    # The scale variable is kept only for backwards compatibility in cropping.
-    from ui_detector import get_backing_scale
-    scale = get_backing_scale() if retina else 1
+    # detect_all() handles all coordinate conversion internally (detection → click space).
+    # Elements returned are already in click space. For cropping, use click_to_detect().
+    # The `retina` parameter is DEPRECATED and ignored.
+    from ui_detector import click_to_detect
 
     # Auto-generate page_name from domain + timestamp if not provided
     if not page_name:
@@ -2016,6 +2007,7 @@ def learn_from_screenshot(img_path, domain=None, app_name="chromium", page_name=
             continue
 
         # Smart naming: OCR text > nearest text > positional
+        # el coords are already in click space (from detect_all)
         if el.get("label"):
             comp_name = el["label"].replace(" ", "_").replace("/", "-")[:30]
         else:
@@ -2023,25 +2015,24 @@ def learn_from_screenshot(img_path, domain=None, app_name="chromium", page_name=
             if nearest_label:
                 comp_name = nearest_label.replace(" ", "_").replace("/", "-")[:30]
             else:
-                rx = el["cx"] // scale
-                ry = el["cy"] // scale
-                comp_name = f"unlabeled_{rx}_{ry}"
+                comp_name = f"unlabeled_{el['cx']}_{el['cy']}"
 
-        # Dedup by position against existing components
+        # Dedup by position against existing components (click-space)
         is_new = True
         for existing_name, existing in components.items():
-            if (abs(existing.get("rel_x", 0) - el["cx"] // scale) < 15 and
-                abs(existing.get("rel_y", 0) - el["cy"] // scale) < 15):
+            if (abs(existing.get("rel_x", 0) - el["cx"]) < 15 and
+                abs(existing.get("rel_y", 0) - el["cy"]) < 15):
                 is_new = False
                 comp_name = existing_name
                 break
 
-        # Crop
-        x, y = el["x"], el["y"]
+        # Crop from screenshot (convert click-space → detection-space for pixel access)
+        det_x, det_y = click_to_detect(el["x"], el["y"])
+        det_w, det_h = click_to_detect(w, h)
         pad = 4
-        y1, x1 = max(0, y - pad), max(0, x - pad)
-        y2 = min(img.shape[0], y + h + pad)
-        x2 = min(img.shape[1], x + w + pad)
+        y1, x1 = max(0, det_y - pad), max(0, det_x - pad)
+        y2 = min(img.shape[0], det_y + det_h + pad)
+        x2 = min(img.shape[1], det_x + det_w + pad)
         crop = img[y1:y2, x1:x2]
         if crop.size == 0:
             continue
@@ -2058,14 +2049,15 @@ def learn_from_screenshot(img_path, domain=None, app_name="chromium", page_name=
         icon_path = icons_dir / f"{safe_name}.png"
         cv2.imwrite(str(icon_path), crop)
 
-        rel_x = el["cx"] // scale
-        rel_y = el["cy"] // scale
+        # Coordinates are already in click space from detect_all
+        rel_x = el["cx"]
+        rel_y = el["cy"]
 
         components[comp_name] = {
             "type": el["type"],
             "source": el.get("source", "detection"),
             "rel_x": rel_x, "rel_y": rel_y,
-            "w": w // scale, "h": h // scale,
+            "w": w, "h": h,
             "icon_file": f"components/{safe_name}.png",
             "label": el.get("label"),
             "confidence": el.get("confidence", 0),
@@ -2406,10 +2398,12 @@ def detect_with_memory(app_name, threshold=0.8):
         print(f"  📊 State match rate: {match_rate:.1%} ({len(known)}/{len(state_components)})")
 
     # Filter out known (matched) elements
+    # Both all_elements (from detect_all) and known (from match_component)
+    # are in click space — compare directly.
     unknown = []
     for el in all_elements:
-        el_rx = el["cx"] // 2
-        el_ry = el["cy"] // 2
+        el_rx = el["cx"]
+        el_ry = el["cy"]
         is_known = False
         for name, rx, ry, conf in known:
             if abs(el_rx - rx) < 20 and abs(el_ry - ry) < 20:
@@ -2480,25 +2474,23 @@ def match_on_fullscreen(app_name, component_name, threshold=0.8, screen_img=None
     if max_val < threshold:
         return False, 0, 0, 0
 
-    # Physical pixel center → logical screen coords
-    from ui_detector import get_backing_scale
-    scale = get_backing_scale()
-    phys_x = max_loc[0] + template.shape[1] // 2
-    phys_y = max_loc[1] + template.shape[0] // 2
-    logical_x = int(phys_x / scale)
-    logical_y = int(phys_y / scale)
+    # Detection-space pixel center → click-space coords
+    from ui_detector import detect_to_click
+    det_x = max_loc[0] + template.shape[1] // 2
+    det_y = max_loc[1] + template.shape[0] // 2
+    click_x, click_y = detect_to_click(det_x, det_y)
 
     # Validate: match must be within app's window (reject matches from other apps)
     bounds = get_window_bounds(app_name)
     if bounds:
         wx, wy, ww, wh = bounds
-        margin = 30  # logical pixels tolerance for shadows/titlebar
-        if not (wx - margin <= logical_x <= wx + ww + margin and
-                wy - margin <= logical_y <= wy + wh + margin):
+        margin = 30  # click-space pixels tolerance for shadows/titlebar
+        if not (wx - margin <= click_x <= wx + ww + margin and
+                wy - margin <= click_y <= wy + wh + margin):
             # Match is outside the app window — likely a false match from another app
             return False, 0, 0, 0
 
-    return True, logical_x, logical_y, round(max_val, 4)
+    return True, click_x, click_y, round(max_val, 4)
 
 
 def _detect_visible_components(app_name, screen_img=None):
@@ -2551,10 +2543,9 @@ def _detect_visible_components(app_name, screen_img=None):
             # Validate match is within app window
             if bounds:
                 wx, wy, ww, wh = bounds
-                from ui_detector import get_backing_scale as _gbs
-                _s = _gbs()
-                lx = int((max_loc[0] + template.shape[1] // 2) / _s)
-                ly = int((max_loc[1] + template.shape[0] // 2) / _s)
+                from ui_detector import detect_to_click as _d2c
+                lx, ly = _d2c(max_loc[0] + template.shape[1] // 2,
+                               max_loc[1] + template.shape[0] // 2)
                 margin = 30
                 if not (wx - margin <= lx <= wx + ww + margin and
                         wy - margin <= ly <= wy + wh + margin):

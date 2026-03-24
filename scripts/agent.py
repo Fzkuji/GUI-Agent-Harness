@@ -187,33 +187,34 @@ def action_report(tokens=None):
 
 
 def get_retina_scale():
-    """Detect display scale factor (Retina 2x, non-Retina 1x, etc).
+    """DEPRECATED: use ui_detector.detect_to_click() / click_to_detect() instead.
 
-    Screenshots are in physical pixels. cliclick uses logical pixels.
-    Scale = screenshot_pixels / logical_pixels.
+    Returns an approximate integer scale factor for backwards compatibility.
+    New code should use the dual-space coordinate system in ui_detector.py.
     """
     try:
-        import cv2
-        subprocess.run(["/usr/sbin/screencapture", "-x", "/tmp/_scale.png"],
-                       capture_output=True, timeout=3)
-        img = cv2.imread("/tmp/_scale.png")
-        pixel_w = img.shape[1]
-        # Get logical width from window manager
-        r = subprocess.run(["osascript", "-e",
-            'tell application "Finder" to get bounds of window of desktop'],
-            capture_output=True, text=True, timeout=3)
-        if r.stdout.strip():
-            parts = r.stdout.strip().split(", ")
-            logical_w = int(parts[2])
-        else:
-            # Fallback: common logical widths
-            logical_w = pixel_w // 2 if pixel_w > 2000 else pixel_w
-        scale = pixel_w / logical_w if logical_w > 0 else 2
-        return max(1, round(scale))
-    except:
-        return 2  # Default to Retina 2x
+        sys.path.insert(0, str(SCRIPT_DIR))
+        from ui_detector import get_screen_info
+        info = get_screen_info()
+        if info["scale_x"] != 1.0:
+            return max(1, round(info["scale_x"]))
+    except Exception:
+        pass
+    # Fallback: probe OS
+    import platform as _plat
+    if _plat.system() == "Darwin":
+        try:
+            r = subprocess.run(
+                ["swift", "-e", 'import AppKit; print(NSScreen.main!.backingScaleFactor)'],
+                capture_output=True, text=True, timeout=10
+            )
+            return max(1, round(float(r.stdout.strip())))
+        except Exception:
+            return 2
+    return 1
 
 
+# DEPRECATED: use ui_detector.detect_to_click() / click_to_detect() instead.
 RETINA_SCALE = get_retina_scale()
 
 # Python env
@@ -440,16 +441,16 @@ def observe_state(app_name, include_gpa=False):
             try:
                 icon_elements, img_w, img_h = ui_detector.detect_icons(
                     "/tmp/_observe.png", conf=0.2, iou=0.3)
-                scale = RETINA_SCALE
+                from ui_detector import detect_to_click
                 for el in icon_elements:
+                    cx, cy = detect_to_click(el.get("cx", 0), el.get("cy", 0))
+                    x, y = detect_to_click(el.get("x", 0), el.get("y", 0))
+                    w, h = detect_to_click(el.get("w", 0), el.get("h", 0))
                     all_text.append({
                         "text": "",
-                        "cx": el.get("cx", 0) // scale,
-                        "cy": el.get("cy", 0) // scale,
-                        "x": el.get("x", 0) // scale,
-                        "y": el.get("y", 0) // scale,
-                        "w": el.get("w", 0) // scale,
-                        "h": el.get("h", 0) // scale,
+                        "cx": cx, "cy": cy,
+                        "x": x, "y": y,
+                        "w": w, "h": h,
                         "type": "icon",
                         "confidence": el.get("confidence", 0),
                     })
@@ -477,11 +478,14 @@ def observe_state(app_name, include_gpa=False):
     if bounds:
         try:
             import cv2
+            from ui_detector import click_to_detect
             img = cv2.imread("/tmp/_observe.png")
             if img is not None:
                 wx, wy, ww, wh = bounds
-                # Retina: ×2
-                crop = img[wy*RETINA_SCALE:(wy+wh)*RETINA_SCALE, wx*RETINA_SCALE:(wx+ww)*RETINA_SCALE]
+                # Convert click-space bounds to detection-space for cropping
+                dx, dy = click_to_detect(wx, wy)
+                dw, dh = click_to_detect(ww, wh)
+                crop = img[dy:dy+dh, dx:dx+dw]
                 cv2.imwrite("/tmp/_observe_window.jpg", crop,
                            [cv2.IMWRITE_JPEG_QUALITY, 60])
                 state["window_screenshot"] = "/tmp/_observe_window.jpg"
@@ -1178,7 +1182,7 @@ def wait_for_component(app_name, component, timeout=120, interval=10):
         print(f"❌ Could not load template image: {comp_img}", flush=True)
         return False, 0, 0
     
-    scale = get_retina_scale()
+    from ui_detector import detect_to_click
     gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
     
     start = time.time()
@@ -1203,9 +1207,10 @@ def wait_for_component(app_name, component, timeout=120, interval=10):
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
             
             if max_val >= 0.85:
-                # Convert retina pixels to logical
-                cx = (max_loc[0] + gray_template.shape[1] // 2) / scale
-                cy = (max_loc[1] + gray_template.shape[0] // 2) / scale
+                # Convert detection-space pixels to click space
+                cx, cy = detect_to_click(
+                    max_loc[0] + gray_template.shape[1] // 2,
+                    max_loc[1] + gray_template.shape[0] // 2)
                 elapsed = time.time() - start
                 print(f"✅ Found '{component}' at ({int(cx)},{int(cy)}) conf={max_val:.2f} after {elapsed:.1f}s ({attempt} polls)", flush=True)
                 return True, int(cx), int(cy)

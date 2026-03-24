@@ -28,43 +28,115 @@ SCREEN_W = 1512
 SCREEN_H = 982
 
 # ═══════════════════════════════════════════
-# Coordinate system utilities
+# Coordinate system — dual-space + mapping
 # ═══════════════════════════════════════════
 # Two coordinate spaces:
-#   - Screenshot pixels (2x on Retina): used by screencapture, GPA, template match, cv2
-#   - Logical pixels (pynput): used by pynput click_at, osascript window bounds
-# Conversion: logical = screenshot / backing_scale
-# detect_all() is the single exit point — it returns logical (pynput) coords.
-# Functions that crop/annotate images must convert back: px = logical * scale.
+#   - Detection space (screencapture pixels): GPA, OCR, template match, cv2 crop
+#   - Click space (OS logical pixels): pynput click_at, pyautogui, osascript bounds
+#
+# detect_all() is the single exit point — it returns click-space coords.
+# Functions that crop/annotate images must convert back with click_to_detect().
+#
+# Scale is computed dynamically each time detect_all runs (not hardcoded).
 
-_backing_scale_cache = None
+_screen_info = {
+    "detect_w": None, "detect_h": None,  # screenshot pixel dimensions
+    "click_w": None, "click_h": None,    # OS logical dimensions
+    "scale_x": 1.0, "scale_y": 1.0,     # detect / click
+}
 
 
-def get_backing_scale():
-    """Get Mac display backing scale factor (2.0 for Retina, 1.0 otherwise).
+def refresh_screen_info(img_w=None, img_h=None):
+    """Update screen info. Called by detect_all() each time.
 
-    Uses NSScreen.main.backingScaleFactor via Swift.
-    Re-fetched every call to handle runtime resolution changes.
-    Non-Mac environments return 1.0 (cached).
+    img_w/img_h: current screenshot pixel dimensions (from detect_icons).
+    Click-space dimensions are obtained from the OS:
+      - Mac: NSScreen.main.frame.width/height (logical)
+      - Linux: xdpyinfo dimensions
+      - Fallback: assume 1:1 (scale = 1.0)
     """
-    global _backing_scale_cache
+    global _screen_info
+    import platform as _plat
 
-    import platform
-    if platform.system() != "Darwin":
-        _backing_scale_cache = 1.0
-        return 1.0
+    if img_w and img_h:
+        _screen_info["detect_w"] = img_w
+        _screen_info["detect_h"] = img_h
 
-    try:
-        r = subprocess.run(
-            ["swift", "-e", 'import AppKit; print(NSScreen.main!.backingScaleFactor)'],
-            capture_output=True, text=True, timeout=10
-        )
-        val = float(r.stdout.strip())
-        _backing_scale_cache = val
-        return val
-    except Exception:
-        _backing_scale_cache = 2.0  # Safe default for Mac Retina
-        return 2.0
+    click_w, click_h = img_w, img_h  # fallback 1:1
+
+    if _plat.system() == "Darwin":
+        try:
+            r = subprocess.run(
+                ["swift", "-e",
+                 'import AppKit; let s=NSScreen.main!; '
+                 'print("\\(Int(s.frame.width)) \\(Int(s.frame.height))")'],
+                capture_output=True, text=True, timeout=10
+            )
+            parts = r.stdout.strip().split()
+            if len(parts) == 2:
+                click_w, click_h = int(parts[0]), int(parts[1])
+        except Exception:
+            pass  # keep fallback
+    elif _plat.system() == "Linux":
+        try:
+            r = subprocess.run(["xdpyinfo"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.split('\n'):
+                if 'dimensions:' in line:
+                    dims = line.split(':')[1].strip().split()[0]
+                    click_w, click_h = map(int, dims.split('x'))
+                    break
+        except Exception:
+            pass  # keep fallback
+
+    _screen_info["click_w"] = click_w
+    _screen_info["click_h"] = click_h
+
+    if img_w and click_w and click_w > 0:
+        _screen_info["scale_x"] = img_w / click_w
+    else:
+        _screen_info["scale_x"] = 1.0
+
+    if img_h and click_h and click_h > 0:
+        _screen_info["scale_y"] = img_h / click_h
+    else:
+        _screen_info["scale_y"] = 1.0
+
+
+def detect_to_click(x, y):
+    """Detection-space coordinates → click-space coordinates."""
+    return int(x / _screen_info["scale_x"]), int(y / _screen_info["scale_y"])
+
+
+def click_to_detect(x, y):
+    """Click-space coordinates → detection-space coordinates (for image cropping)."""
+    return int(x * _screen_info["scale_x"]), int(y * _screen_info["scale_y"])
+
+
+def get_screen_info():
+    """Return a copy of the current screen info dict."""
+    return dict(_screen_info)
+
+
+# Legacy alias — DEPRECATED. Use detect_to_click / click_to_detect instead.
+def get_backing_scale():
+    """DEPRECATED: use detect_to_click() / click_to_detect() instead.
+
+    Returns the scale factor (detection / click). Kept for backwards compat.
+    """
+    if _screen_info["scale_x"] != 1.0:
+        return _screen_info["scale_x"]
+    # If refresh_screen_info hasn't been called yet, probe the OS once.
+    import platform as _plat
+    if _plat.system() == "Darwin":
+        try:
+            r = subprocess.run(
+                ["swift", "-e", 'import AppKit; print(NSScreen.main!.backingScaleFactor)'],
+                capture_output=True, text=True, timeout=10
+            )
+            return float(r.stdout.strip())
+        except Exception:
+            return 2.0
+    return 1.0
 
 
 # ═══════════════════════════════════════════
@@ -417,13 +489,14 @@ def detect_all(img_path, conf=0.1, iou=0.3):
         # OCR may not be available on non-Mac platforms — that's OK
         pass
 
-    merged = merge_elements(icons, texts)  # screenshot pixels
+    merged = merge_elements(icons, texts)  # detection space
 
-    # ── Unified coordinate conversion: screenshot pixels → logical (pynput) ──
-    # Only convert merged (which contains all elements). icons/texts are views
-    # into merged's objects, so converting merged converts them all exactly once.
-    scale = get_backing_scale()
-    if scale != 1.0:
+    # ── Unified coordinate conversion: detection space → click space ──
+    # merged contains all elements (icons/texts are views into merged objects),
+    # so converting merged converts them all exactly once.
+    refresh_screen_info(img_w, img_h)
+    info = get_screen_info()
+    if info["scale_x"] != 1.0 or info["scale_y"] != 1.0:
         coord_keys = ("cx", "cy", "x", "y", "w", "h")
         converted = set()
         for el in merged:
@@ -433,7 +506,7 @@ def detect_all(img_path, conf=0.1, iou=0.3):
             converted.add(eid)
             for k in coord_keys:
                 if k in el:
-                    el[k] = int(el[k] / scale)
+                    el[k] = int(el[k] / info["scale_x"])  # scale_x ≈ scale_y typically
 
     # Auto-tick tracker (best-effort, never fail)
     try:
@@ -529,9 +602,9 @@ def merge_elements(icon_elements, text_elements, ax_elements=None, iou_threshold
 def annotate_image(img_path, elements, out_path=None, retina_scale=2):
     """Draw bounding boxes and labels on image.
 
-    Elements may be in logical (pynput) coordinates if they came from detect_all().
-    The function auto-scales them back to screenshot pixels for drawing using
-    get_backing_scale(). The retina_scale parameter is DEPRECATED.
+    Elements may be in click-space coordinates if they came from detect_all().
+    The function auto-scales them back to detection space for drawing using
+    click_to_detect(). The retina_scale parameter is DEPRECATED.
     """
     import cv2
 
@@ -540,11 +613,11 @@ def annotate_image(img_path, elements, out_path=None, retina_scale=2):
         return None
 
     # Auto-detect if coordinates need scaling up for annotation.
-    # If elements are in logical coords (from detect_all), scale them up.
-    # Heuristic: if image width > 2x the max element x+w, coords are logical.
-    scale = get_backing_scale()
+    # If elements are in click-space (from detect_all), scale them up.
+    # Heuristic: if image width > 1.5x the max element x+w, coords are click-space.
+    info = get_screen_info()
     needs_upscale = False
-    if scale != 1.0 and elements:
+    if info["scale_x"] != 1.0 and elements:
         max_right = max((el.get("x", 0) + el.get("w", 0)) for el in elements) if elements else 0
         if max_right > 0 and img.shape[1] / max_right > 1.5:
             needs_upscale = True
@@ -558,10 +631,10 @@ def annotate_image(img_path, elements, out_path=None, retina_scale=2):
 
     for el in elements:
         if needs_upscale:
-            x = int(el["x"] * scale)
-            y = int(el["y"] * scale)
-            w = int(el["w"] * scale)
-            h = int(el["h"] * scale)
+            x = int(el["x"] * info["scale_x"])
+            y = int(el["y"] * info["scale_y"])
+            w = int(el["w"] * info["scale_x"])
+            h = int(el["h"] * info["scale_y"])
         else:
             x, y, w, h = el["x"], el["y"], el["w"], el["h"]
         color = colors.get(el["type"], (255, 255, 255))
@@ -635,17 +708,18 @@ def detect_all_mac(app_name=None, fullscreen=False, include_ax=False,
                                    iou_threshold=merge_iou)
     print(f"  🔗 Merged: {len(all_elements)} total ({time.time()-t0:.1f}s)")
 
-    # 6. Annotate (must use screenshot pixel coords — annotation draws on raw image)
+    # 6. Annotate (must use detection-space coords — annotation draws on raw image)
     annotated_path = annotate_image(img_path, all_elements)
 
-    # 7. Convert all coordinates to logical (pynput) space
-    scale = get_backing_scale()
-    if scale != 1.0:
+    # 7. Convert all coordinates to click space
+    refresh_screen_info(img_w, img_h)
+    info = get_screen_info()
+    if info["scale_x"] != 1.0 or info["scale_y"] != 1.0:
         coord_keys = ("cx", "cy", "x", "y", "w", "h")
         for el in all_elements:
             for k in coord_keys:
                 if k in el:
-                    el[k] = int(el[k] / scale)
+                    el[k] = int(el[k] / info["scale_x"])
 
     return all_elements, img_path, annotated_path
 

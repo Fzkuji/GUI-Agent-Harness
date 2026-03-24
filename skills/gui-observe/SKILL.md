@@ -37,14 +37,31 @@ Use template matching instead of full detection:
 3. If state is known → proceed with `click_component` (no GPA-GUI-Detector needed)
 4. If state is unknown → Phase 1 (full observation)
 
-## Coordinate System
+## Coordinate System (Dual-Space)
 
-- **Screen**: 1512×982 logical pixels (Retina 2x → 3024×1964 physical)
-- **Templates**: saved in physical pixels (from full-screen screenshot)
-- **Matching**: full-screen template match → physical center ÷ 2 = logical coords
-- **Clicking**: logical coordinates via `platform_input.click_at(x, y)`
-- **Window validation**: match position checked against `get_window_bounds()` to reject other apps
-- **Remote VMs (OSWorld)**: 1920×1080 (no Retina), coordinates are 1:1
+Two coordinate spaces:
+- **Detection space** = screencapture pixels (GPA, OCR, template match, cv2 crops)
+- **Click space** = OS logical pixels (pynput click_at, pyautogui, osascript bounds)
+
+Mapping functions (in `ui_detector.py`):
+- `detect_to_click(x, y)` — detection → click
+- `click_to_detect(x, y)` — click → detection (for image cropping)
+
+Scale is computed dynamically each time `detect_all()` runs via `refresh_screen_info()`.
+
+| Tool | Space |
+|------|-------|
+| detect_icons | detection |
+| detect_text | detection |
+| template_match raw | detection |
+| detect_all output | **click** |
+| pynput click_at | click |
+| cv2 image crop | detection |
+
+- **Mac Retina**: detection space is 2× click space (e.g., 3024×1964 vs 1512×982)
+- **Remote VMs (OSWorld)**: 1920×1080, scale = 1:1 (detection == click)
+- **Templates**: saved in detection-space pixels
+- **Window validation**: match position converted to click space, checked against `get_window_bounds()`
 
 ## State Detection
 
