@@ -213,14 +213,11 @@ Add to `~/.openclaw/openclaw.json`:
 ```json
 {
   "skills": { "entries": { "gui-agent": { "enabled": true } } },
-  "tools": { "exec": { "timeoutSec": 300 } },
-  "messages": { "queue": { "mode": "interrupt" } }
+  "tools": { "exec": { "timeoutSec": 300 } }
 }
 ```
 
 > ⚠️ **`timeoutSec: 300`** is important — GUI Agent Skills operation chains (screenshot → detect → click → wait → verify) can take a while. A 5-minute timeout is recommended. The default is too short and will kill commands mid-execution.
-
-> 💡 **`queue.mode: "interrupt"`** is recommended — GUI operations take time, and interrupt mode lets you send any message to immediately abort the current agent operation. Without it, your messages queue up and the agent won't see them until it finishes.
 
 Then just chat with your OpenClaw agent — it reads `SKILL.md` and handles everything automatically.
 
