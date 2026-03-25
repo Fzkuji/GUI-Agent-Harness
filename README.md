@@ -192,7 +192,7 @@ CONFIRM  → Screenshot → process list empty → terminated ✅
 
 GUI Agent Skills transforms GUI agents from **stateless** (re-perceive everything every step) to **stateful** (learn, remember, reuse) through three core mechanisms:
 
-### 1. Adaptive Component Memory
+### 1. Unified Component Memory
 
 > **Problem**: Existing GUI agents treat every screenshot as a fresh perception task — even on interfaces they've seen hundreds of times before.
 
