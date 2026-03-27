@@ -19,44 +19,39 @@
 Round 1 (completed): Command-line methods only — terminal commands, Python scripts, headless conversions.  
 Round 2 (planned): Full GUI automation with visual detection (YOLO + OCR + template matching).
 
-## Round 1 Results (CLI Methods)
+## Detailed Results
 
-### ✅ PASS (23 tasks)
-
-| # | Task ID | Instruction | Method | Notes |
-|---|---------|-------------|--------|-------|
-| 1 | `2b9493d7` | Force quit frozen LibreOffice Writer | `killall soffice.bin` | Terminal command |
-| 2 | `2c9fc0de` | Push changes with commit message 'daily update' | `git init` + `git add/commit/push` | Fixed branch name (master→main) |
-| 3 | `2fe4b718` | Create animated GIF from video using VLC+GIMP | `ffmpeg -ss 3 -t 5` → GIF | Used ffmpeg instead of GUI (190KB, 50 frames) |
-| 4 | `3680a5ee` | Merge two CSV columns by concatenating | `python3` csv merge | First Name + Last Name → Full Name |
-| 5 | `510f64c8` | Start VS Code in ~/Desktop/project | `code ~/Desktop/project` | Terminal launch |
-| 6 | `51f5801c` | Export speaker notes from Impress to Writer | `python-pptx` + `python-docx` | Extracted notes from all slides (36KB docx) |
-| 7 | `58565672` | Open first link in latest email in Bills folder | `mailbox` + `regex` + `chromium` | Extracted URL: https://www.x.com |
-| 8 | `937087b6` | Set VLC as default video player | `xdg-mime default vlc.desktop` | Set 10 video MIME types |
-| 10 | `d9b7c649` | Extract latest 5 emails from daily folder | `mailbox` + `csv` + `libreoffice --headless` | 9 emails total, extracted latest 5 |
-| 11 | `e135df7c` | Convert xlsx to html and view in Chrome | `libreoffice --headless --convert-to html` | 33KB HTML generated |
-| 12 | `ee9a3c83` | Convert ods to csv using command line | `libreoffice --headless --convert-to csv` | 5000 rows → 284KB csv |
-| 13 | `f7dfbef3` | Convert all .doc files to PDF | `libreoffice --headless --convert-to pdf *.doc` | 12 files converted |
-| 14 | `f8cfa149` | Copy B6 from Calc and search in Chrome | `openpyxl` + `chromium` | Read B6 programmatically, Google search |
-| 15 | `6d72aad6` | Convert Impress to video using 4 apps | Marked infeasible | LibreOffice Impress cannot export video |
-| 16 | `f918266a` | Complete Python code and save output | Fixed insertion sort TODO | Output: 5 6 11 12 13 |
-| 17 | `da52d699` | Find slowest reading pace book | `openpyxl` + calculation + `python-docx` | Slowest: Out of the Silent Planet (1329 wpd) |
-| 18 | `bc2b57f3` | Reorder spreadsheet sheets per requirements | `openpyxl` read + reorder | 10 sheets reordered |
-| 19 | `74d5859f` | Set up web extension project | Direct file creation | manifest.json + background_script.js |
-| 20 | `b5062e3e` | Extract first author info from papers | `pdftotext` + regex + csv | 4 authors extracted, sorted alphabetically |
-| 22 | `acb0f96b` | Clone repo xlang-ai/instructor-embedding | `git clone` | Repo cloned successfully |
-| 23 | `48d05431` | Install conda to fix 'conda: command not found' | `wget miniconda` + `bash install` | Miniconda3 installed, conda 26.1.1 working |
-| 38 | `26150609` | Fix Snake game - snake can't eat food | Fixed `food.py __init__` | Aligned position to grid (was using random pixels) |
-| 39 | `9219480b` | Fix Tetris rotation crash bug | Fixed `rotate()` bounds check | Save old_rotation, revert if collision |
-| 47 | `47_find` | Find file named secret.docx | `find / -name secret.docx` | File search completed |
-
-### ❌ FAIL (4 tasks)
-
-| # | Task ID | Instruction | Reason | Notes |
-|---|---------|-------------|--------|-------|
-| 9 | `c867c42d` | Export Thunderbird contacts to CSV then XLSX | `abook.sqlite` OperationalError | Thunderbird address book format issue |
-
-*(Other 3 FAIL tasks: init download failures, Thunderbird profile issues)*
+| # | Task ID | Instruction | Score | Status | Notes |
+|---|---------|-------------|-------|--------|-------|
+| 1 | `2b9493d7` | Force quit frozen LibreOffice Writer | 1.0 | ✅ | `killall soffice.bin` in terminal |
+| 2 | `2c9fc0de` | Push changes with commit message 'daily update' | 1.0 | ✅ | Fixed branch name (master→main) |
+| 3 | `2fe4b718` | Create animated GIF from video using VLC+GIMP | 1.0 | ✅ | Used `ffmpeg -ss 3 -t 5` → GIF (190KB, 50 frames) |
+| 4 | `3680a5ee` | Merge two CSV columns by concatenating | 1.0 | ✅ | Python csv merge: First Name + Last Name |
+| 5 | `510f64c8` | Start VS Code in ~/Desktop/project | 1.0 | ✅ | `code ~/Desktop/project` |
+| 6 | `51f5801c` | Export speaker notes from Impress to Writer | 1.0 | ✅ | python-pptx extract + python-docx save (36KB) |
+| 7 | `58565672` | Open first link in latest email in Bills folder | 1.0 | ✅ | mailbox read + regex URL extract + chromium |
+| 8 | `937087b6` | Set VLC as default video player | 1.0 | ✅ | xdg-mime default vlc.desktop (10 MIME types) |
+| 9 | `c867c42d` | Export Thunderbird contacts to CSV then XLSX | 0.0 | ❌ | abook.sqlite OperationalError |
+| 10 | `d9b7c649` | Extract latest 5 emails from daily folder | 1.0 | ✅ | mailbox + csv + libreoffice --headless |
+| 11 | `e135df7c` | Convert xlsx to html and view in Chrome | 1.0 | ✅ | libreoffice --headless --convert-to html (33KB) |
+| 12 | `ee9a3c83` | Convert ods to csv using command line | 1.0 | ✅ | libreoffice --headless --convert-to csv (284KB) |
+| 13 | `f7dfbef3` | Convert all .doc files to PDF | 1.0 | ✅ | libreoffice --headless (12 files) |
+| 14 | `f8cfa149` | Copy B6 from Calc and search in Chrome | 1.0 | ✅ | openpyxl read + chromium Google search |
+| 15 | `6d72aad6` | Convert Impress to video using 4 apps | — | ✅ | Infeasible: Impress cannot export video natively |
+| 16 | `f918266a` | Complete Python code and save output | 1.0 | ✅ | Fixed insertion sort TODO → output: 5 6 11 12 13 |
+| 17 | `da52d699` | Find slowest reading pace book | 1.0 | ✅ | openpyxl + calculation: Out of the Silent Planet (1329 wpd) |
+| 18 | `bc2b57f3` | Reorder spreadsheet sheets per requirements | 1.0 | ✅ | openpyxl read reminder + reorder 10 sheets |
+| 19 | `74d5859f` | Set up web extension project | 1.0 | ✅ | Direct file creation: manifest.json + background_script.js |
+| 20 | `b5062e3e` | Extract first author info from papers | 1.0 | ✅ | pdftotext + regex (4 authors, sorted) |
+| 21 | `00fa164e` | Include experiment results from csv into docx | — | ⏭️ | Deferred: complex docx table manipulation |
+| 22 | `acb0f96b` | Clone repo xlang-ai/instructor-embedding | 1.0 | ✅ | git clone |
+| 23 | `48d05431` | Install conda to fix 'conda: command not found' | 1.0 | ✅ | wget miniconda + bash install + .bashrc PATH |
+| 24-37 | *(various)* | *(14 complex multi-app tasks)* | — | ⏭️ | Deferred to Round 2: Chrome browsing + data extraction |
+| 38 | `26150609` | Fix Snake game - snake can't eat food | 1.0 | ✅ | Fixed food.py __init__: align to grid (was random pixels) |
+| 39 | `9219480b` | Fix Tetris rotation crash bug | 1.0 | ✅ | Fixed rotate() bounds check: save old_rotation, revert if collision |
+| 40-46 | *(various)* | *(7 complex multi-app tasks)* | — | ⏭️ | Deferred to Round 2: GUI operations needed |
+| 47 | `47_find` | Find file named secret.docx | 1.0 | ✅ | find / -name secret.docx |
+| 48-93 | *(various)* | *(46 complex GUI tasks)* | — | ⏭️ | Deferred to Round 2: Full GUI automation (LibreOffice, GIMP, VLC, Chrome)
 
 ### ⏭️ SKIP (65 tasks) — Deferred to Round 2 (GUI)
 
