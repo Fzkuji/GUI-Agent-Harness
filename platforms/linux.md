@@ -126,7 +126,7 @@ text = pytesseract.image_to_string(Image.open("screenshot.png"))
 | tesseract | tesseract-ocr | `sudo apt install tesseract-ocr` |
 
 ## LibreOffice-Specific Notes
-- **Number format:** When typing numbers into Calc cells, they auto-convert to scientific notation for large numbers. Prefix with `'` (apostrophe) to force text: `xdotool type "'28208580"`
+- **Number display:** Large numbers may show as `3E+07` in narrow columns — this is a **display issue only**, data is intact. Widen the column to verify. Do NOT prefix with apostrophe unless the evaluator explicitly expects text type — apostrophe changes the data type from number to string, which may cause comparison failures.
 - **Save dialog:** After Ctrl+S on xlsx, press Enter to confirm "Keep Current Format"
 - **Name Box:** Click the cell reference box (top-left) → type cell reference (e.g., "A2") → Enter to navigate
 - **Close file without quitting:** Ctrl+W (not Ctrl+Q which quits LO entirely)
