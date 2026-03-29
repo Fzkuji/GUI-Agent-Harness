@@ -1,6 +1,6 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 81 tasks tested (#21-101) | **44 / 81** (54.3%) | 2026-03-28
+> 81 tasks tested (#21-101) | **44 / 81** (54.3%) | 2026-03-29
 
 ## Summary
 
@@ -37,7 +37,7 @@
 | 33 | `0c825995` | Extract from Google Drive doc | — | ⚠️ | Setup failed: Google Drive auth needed |
 | 34 | `c7c1e4c3` | Fill professor email addresses | 1.0 | ✅ | Download xlsx → local edit → upload |
 | 35 | `d1acdb87` | Fill HK restaurant info sheet | 1.0 | ✅ | pyautogui typing failed (Chrome hijacked); local edit + upload |
-| 36 | `deec51c9` | Find arxiv daily LLM paper list | 1.0 | ✅ | Download xlsx → fill 4 papers → upload |
+| 36 | `deec51c9` | Find arxiv daily LLM paper list | 1.0 | ✅ | GUI: Name Box nav + pyautogui.typewrite in LO Calc |
 | 37 | `8e116af7` | Update bookkeeping from receipts | — | ⚠️ | Evaluator crash: formulas lack `<v>` + LO recovery dialog |
 | 38 | `337d318b` | Cross-check invoices vs bank statement | 1.0 | ✅ | Invoice #243729 → problematic/ folder |
 | 39 | `82e3c869` | Extract presenter (Tao Yu) photos | 1.0 | ✅ | 4 photos → presenter/ + zip |
@@ -113,6 +113,7 @@
 | openpyxl default sheet name "Sheet" ≠ evaluator "Sheet1" | Always set `ws.title = 'Sheet1'` |
 | openpyxl formulas lack `<v>` cached values | Write numeric values, or use LO to re-save |
 | pyautogui `typewrite()` triggers Chrome on URL-like text | Use clipboard paste or local edit + upload |
+| xdotool not pre-installed on OSWorld VMs | Use pyautogui.typewrite() (always available); http_remote.py fixed in c22ce63 |
 | pip install on VM times out (HuggingFace SSL errors) | Modify files locally on Mac, upload via base64 |
 | Google Drive tasks need OAuth | Requires credentials setup in settings.yml |
 | PPTX shape EMU mismatch (pre-existing in gold) | Accept 0 score, not fixable |
