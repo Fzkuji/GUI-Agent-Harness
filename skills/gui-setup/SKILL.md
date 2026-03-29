@@ -8,8 +8,8 @@ description: "First-time setup for GUI Agency Pack — install dependencies for 
 ## Quick Start
 
 ```bash
-git clone https://github.com/Fzkuji/GUI-Agency-Pack.git
-cd GUI-Agency-Pack
+git clone https://github.com/Fzkuji/GUI-Agent-Skills.git
+cd GUI-Agent-Skills
 bash scripts/setup.sh
 ```
 
@@ -89,7 +89,7 @@ Add to `~/.openclaw/openclaw.json`:
 
 ```bash
 source ~/gui-agent-env/bin/activate
-cd path/to/GUI-Agency-Pack
+cd path/to/GUI-Agent-Skills
 
 # Local operations (default)
 python3 scripts/gui_action.py click 500 300
