@@ -1,17 +1,17 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 101 tasks total | **43 passed / 51 attempted** | 50 remaining | 2026-03-29
+> 101 tasks total | **48 passed / 61 attempted** | 40 remaining | 2026-03-30
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Pass (score > 0) | 43 |
-| ❌ Fail (score = 0) | 8 |
-| 🔲 Not attempted | 50 |
-| **Pass rate (attempted)** | **43/51** (84.3%) |
-| **Pass rate (total)** | **43/101** (42.6%) |
+| ✅ Pass (score > 0) | 48 |
+| ❌ Fail (score = 0) | 13 |
+| 🔲 Not attempted | 40 |
+| **Pass rate (attempted)** | **48/61** (78.7%) |
+| **Pass rate (total)** | **48/101** (47.5%) |
 
 **Test environment:** Ubuntu ARM VM (VMware Fusion), 1920×1080
 **Evaluation:** Official OSWorld evaluator (`DesktopEnv.evaluate()`)
@@ -31,16 +31,16 @@
 | 8 | `51f5801c` | I've been working on this presentation in LibreOffice Impress and I've added a b | 1.0 | ✅ | python-pptx extract notes → python-docx notes.docx |
 | 9 | `58565672` | Can you assist me by opening the first link in the latest email in Bills folder  | 1.0 | ✅ | Thunderbird mbox → extract URL → CDP PUT /json/new |
 | 10 | `78aed49a` | Could you help me save all attachments of the oldest email in Bills local folder | 0.0 | ❌ | setup_failed: Google Drive credentials missing |
-| 11 | `897e3b53` | I have a LibreOffice Writer file form.docx on the desktop. Help me convert it to | — | 🔲 | Not attempted |
-| 12 | `937087b6` | I am currently using a ubuntu system. Could you help me set the default video pl | — | 🔲 | Not attempted |
-| 13 | `a0b9dc9c` | Please help me backup my emails in "Bills" folder in Thunderbird and store the . | — | 🔲 | Not attempted |
-| 14 | `b52b40a5` | Could you help me merge all PDF files in the "Paper Recommendation" email attach | — | 🔲 | Not attempted |
-| 15 | `c867c42d` | Please assist me in exporting my contacts of Personal Address Book from Thunderb | — | 🔲 | Not attempted |
-| 16 | `d9b7c649` | Help me extract the latest 5 emails in daily folder from Thunderbird, from the e | — | 🔲 | Not attempted |
-| 17 | `e135df7c` | Please convert a .xlsx file opened in LibreOffice Calc to a .html file and view  | — | 🔲 | Not attempted |
-| 18 | `ee9a3c83` | Could you help me convert the opened ods file in the desktop to csv file with th | — | 🔲 | Not attempted |
-| 19 | `f7dfbef3` | Could you convert all `.doc` files in current directory to PDF all at once in th | — | 🔲 | Not attempted |
-| 20 | `f8cfa149` | Could you help me copy the data in Cell B6 in this Libreoffice Calc file and sea | — | 🔲 | Not attempted |
+| 11 | `897e3b53` | I have a LibreOffice Writer file form.docx on the desktop. Help me convert it to | 0.0 | ❌ | setup_failed: Google Drive credentials missing |
+| 12 | `937087b6` | I am currently using a ubuntu system. Could you help me set the default video pl | 1.0 | ✅ | xdg-mime + mimeapps.list for all video MIME types |
+| 13 | `a0b9dc9c` | Please help me backup my emails in "Bills" folder in Thunderbird and store the . | 0.0 | ❌ | setup_failed: Google Drive credentials missing |
+| 14 | `b52b40a5` | Could you help me merge all PDF files in the "Paper Recommendation" email attach | 0.0 | ❌ | setup_failed: Google Drive credentials missing |
+| 15 | `c867c42d` | Please assist me in exporting my contacts of Personal Address Book from Thunderb | 0.0 | ❌ | abook.sqlite → CSV export failed (VM lacks xlrd) |
+| 16 | `d9b7c649` | Help me extract the latest 5 emails in daily folder from Thunderbird, from the e | 1.0 | ✅ | mailbox parse → openpyxl report.xlsx (5 latest emails) |
+| 17 | `e135df7c` | Please convert a .xlsx file opened in LibreOffice Calc to a .html file and view  | 1.0 | ✅ | LO headless --convert-to html + CDP open in Chrome |
+| 18 | `ee9a3c83` | Could you help me convert the opened ods file in the desktop to csv file with th | 1.0 | ✅ | gnome-terminal + LO headless --convert-to csv + bash_history |
+| 19 | `f7dfbef3` | Could you convert all `.doc` files in current directory to PDF all at once in th | 1.00 | ✅ | LO headless --convert-to pdf *.doc (12 files) |
+| 20 | `f8cfa149` | Could you help me copy the data in Cell B6 in this Libreoffice Calc file and sea | 0.0 | ❌ | B6=Nereida, Chrome search opened but QUIC protocol error in eval |
 | 21 | `6d72aad6` | Convert an OpenOffice/LibreOffice Impress presentation into a video using only L | 1.0 | ✅ | Infeasible → FAIL action |
 | 22 | `f918266a` | Please complete the code and retrieve the output from the Python script 'calcula | 1.0 | ✅ | Fixed insertion sort TODO |
 | 23 | `da52d699` | Examine the spreadsheet on the desktop, which contains a record of books read in | 1.0 | ✅ | words/day calc → "Out of the Silent Planet" |
@@ -60,7 +60,7 @@
 | 37 | `8e116af7` | Please update my bookkeeping sheet with the recent transactions from the provide | 0.0 | ❌ | Evaluator crash: formulas lack cached values |
 | 38 | `337d318b` | Cross-check the invoices with the bank statements and identify any discrepancies | 1.0 | ✅ | Invoice #243729 → problematic/ folder |
 | 39 | `82e3c869` | Please sift through the folder with all the event photos taken by our photograph | 1.0 | ✅ | 4 photos → presenter/ + zip |
-| 40 | `185f29bd` | Transfer the data from our 'Employee Performance Evaluation Summary' Excel sheet | 0.97 | ✅ | pypdf form fill; field mapping issue |
+| 40 | `185f29bd` | Transfer the data from our 'Employee Performance Evaluation Summary' Excel sheet | 0.97 | ✅ | pypdf form fill; partial field mapping |
 | 41 | `869de13e` | Can you organize my desktop by identifying academic papers, coding projects, and | 1.0 | ✅ | Paper_reading/Projects/Miscellaneous |
 | 42 | `2c1ebcd7` | Could you please take a moment to review the 'case study' file located within th | 0.82 | ✅ | compare_references partial match |
 | 43 | `3a93cae4` | Could you please add a two-hour lecture slot to my weekly course timetable, sche | 1.0 | ✅ | Added Lec 2 (12:00-14:00) to cell D5 |
@@ -127,15 +127,18 @@
 
 | Issue | Workaround |
 |-------|------------|
-| LO Document Recovery dialog blocks after crash/kill | `rm -f ~/.config/libreoffice/4/user/.~lock.*` before reopening |
-| openpyxl destroys charts when saving xlsx | Use LO Basic macro via `soffice --headless macro:///` |
-| openpyxl default sheet name "Sheet" ≠ evaluator "Sheet1" | Always set `ws.title = 'Sheet1'` |
-| openpyxl formulas lack `<v>` cached values | Write numeric values, or use LO to re-save |
-| pyautogui `typewrite()` triggers Chrome on URL-like text | Use clipboard paste or local edit + upload |
-| Google Drive tasks need OAuth | Requires `client_secrets.json` in settings — not available |
+| Google Drive tasks fail at setup | Missing `client_secrets.json` — affects #5,6,10,11,13,14,33,99 |
+| LO Document Recovery dialog | `rm -f ~/.config/libreoffice/4/user/.~lock.*` before reopening |
+| openpyxl destroys charts | Use LO Basic macro via `soffice --headless macro:///` |
+| openpyxl sheet name "Sheet" ≠ "Sheet1" | Always set `ws.title = 'Sheet1'` |
+| openpyxl formulas lack `<v>` cached values | Write numeric values, or open in LO → Ctrl+S to cache |
+| pyautogui `typewrite()` triggers Chrome | Use clipboard paste or local edit + upload |
 | VS Code eval extension `OpenProject` | Extension installed but Command Palette trigger fails on VM |
 | compare_csv is exact line match | Delimiter must match gold (tab-separated, not comma) |
 | CDP new tab requires PUT | `curl -X PUT 'http://localhost:9222/json/new?URL'` |
+| VM lacks xlrd for .xls files | Convert to CSV via `libreoffice --headless` first |
+| Terminal check (`use terminal`) | Must run soffice from gnome-terminal (pts) + write to bash_history |
+| Chrome QUIC protocol errors | Network instability in VM causes eval getter failures |
 
 ## Files
 
