@@ -37,8 +37,8 @@
 
 ## 🔥 更新日志
 
+- **[2026-03-30]** 📐 **ImageContext 坐标系统** — 用 `ImageContext` 类替代双空间模型。`detect_all()` 返回图片像素坐标（不做转换），裁剪与 scale 无关。`pixel_scale` 从 `backingScaleFactor` 获取（不再用 `图片尺寸/屏幕尺寸`）。修复非全屏截图的组件裁剪偏移 bug。[测试 →](../tests/test_image_context.py)
 - **[2026-03-29]** 🎬 **v0.3 — 统一操作接口 & 跨平台 GUI** — `gui_action.py` 作为所有 GUI 操作的统一入口。平台后端（`mac_local.py`、`http_remote.py`）通过 `--remote` 自动切换。`activate.py` 负责平台检测。OSWorld Multi-Apps：**54.3%**（44/81）。[查看结果 →](../benchmarks/osworld/multi_apps.md)
-- **[2026-03-24]** 📐 **坐标系统重构** — 双空间模型（检测空间 vs 点击空间），每次 `detect_all()` 调用时通过 `refresh_screen_info()` 动态计算 scale。不再硬编码 Retina ÷2。
 - **[2026-03-24]** 🧠 **智能工作流导航** — 目标状态分层验证（模板匹配 → 全量检测 → LLM 回退）。通过 `detect_all` 自动跟踪性能。
 - **[2026-03-23]** 🏆 **OSWorld 基准测试（Chrome）** — **单轮尝试：93.5%**（43/46），**最多两轮尝试：97.8%**（45/46）。[查看结果 →](../benchmarks/osworld/)
 - **[2026-03-23]** 🔄 **记忆系统重构** — 拆分存储、组件自动遗忘（连续 15 次未命中 → 删除）、基于 Jaccard 相似度的状态合并。

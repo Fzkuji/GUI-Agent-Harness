@@ -37,8 +37,8 @@
 
 ## 🔥 News
 
+- **[2026-03-30]** 📐 **ImageContext coordinate system** — Replaced dual-space model with `ImageContext` class. `detect_all()` now returns image pixel coords (no conversion). Cropping is scale-independent. `pixel_scale` from `backingScaleFactor` (not `img_size/screen_size`). Fixes component crop bugs on non-fullscreen images. [Tests →](tests/test_image_context.py)
 - **[2026-03-29]** 🎬 **v0.3 — Unified Actions & Cross-Platform GUI** — `gui_action.py` as single entry point for all GUI operations. Platform-specific backends (`mac_local.py`, `http_remote.py`) auto-selected via `--remote`. `activate.py` for platform detection. OSWorld Multi-Apps: **54.3%** (44/81). [Results →](benchmarks/osworld/multi_apps.md)
-- **[2026-03-24]** 📐 **Coordinate system refactoring** — Dual-space model (detection space vs click space) with dynamic scale computed per `detect_all()` call via `refresh_screen_info()`. No more hardcoded Retina ÷2.
 - **[2026-03-24]** 🧠 **Smart workflow navigation** — Target state verification with tiered fallback (template match → full detection → LLM). Auto performance tracking via `detect_all`.
 - **[2026-03-23]** 🏆 **OSWorld benchmark (Chrome)** — **one attempt: 93.5%** (43/46), **up to two attempts: 97.8%** (45/46). [Results →](benchmarks/osworld/)
 - **[2026-03-23]** 🔄 **Memory overhaul** — Split storage, automatic component forgetting (15 consecutive misses → removed), state merging by Jaccard similarity.
