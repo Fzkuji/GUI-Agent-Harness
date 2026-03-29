@@ -254,14 +254,19 @@ def detect_icons(img_path, conf=0.1, iou=0.3):
 
 
 # ═══════════════════════════════════════════
-# Apple Vision OCR
+# OCR — Apple Vision (macOS) or EasyOCR (cross-platform fallback)
 # ═══════════════════════════════════════════
 
 def detect_text(img_path, return_logical=False):
-    """Detect text using Apple Vision framework.
+    """Detect text using Apple Vision (macOS) or EasyOCR (Linux/fallback).
 
     Returns coordinates in screenshot pixel space (same as GPA detect_icons).
     Coordinate conversion to logical (pynput) space happens in detect_all().
+
+    Platform selection:
+    - macOS with Swift available → Apple Vision (fastest, best quality)
+    - Linux or macOS without Swift → EasyOCR (requires: pip install easyocr)
+    - Neither available → returns empty list
 
     Args:
         img_path: path to screenshot image
@@ -269,6 +274,60 @@ def detect_text(img_path, return_logical=False):
                        Previously auto-converted retina coords to logical coords.
                        Now defaults to False — callers should use detect_all() instead.
     """
+    import platform
+    if platform.system() == "Darwin":
+        return _detect_text_apple_vision(img_path, return_logical)
+    else:
+        return _detect_text_easyocr(img_path)
+
+
+# ── EasyOCR fallback (Linux / cross-platform) ──
+
+_easyocr_reader = None
+
+def _detect_text_easyocr(img_path):
+    """Detect text using EasyOCR. Works on any platform with PyTorch.
+
+    Requires: pip install easyocr
+    First call downloads language models (~100MB for en, ~200MB for ch_sim).
+    """
+    global _easyocr_reader
+    try:
+        import easyocr
+    except ImportError:
+        print("⚠️ EasyOCR not installed. Run: pip install easyocr")
+        return []
+
+    if _easyocr_reader is None:
+        # Initialize once — English + Chinese simplified (covers most use cases).
+        # ch_sim and ch_tra cannot be loaded together in EasyOCR.
+        _easyocr_reader = easyocr.Reader(['en', 'ch_sim'], gpu=True, verbose=False)
+
+    results = _easyocr_reader.readtext(img_path)
+    elements = []
+    for bbox, text, conf in results:
+        # bbox is [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
+        x1 = int(min(p[0] for p in bbox))
+        y1 = int(min(p[1] for p in bbox))
+        x2 = int(max(p[0] for p in bbox))
+        y2 = int(max(p[1] for p in bbox))
+        w = x2 - x1
+        h = y2 - y1
+        elements.append({
+            "type": "text",
+            "source": "easyocr",
+            "x": x1, "y": y1, "w": w, "h": h,
+            "cx": x1 + w // 2, "cy": y1 + h // 2,
+            "confidence": round(float(conf), 3),
+            "label": text,
+        })
+    return elements
+
+
+# ── Apple Vision OCR (macOS native) ──
+
+def _detect_text_apple_vision(img_path, return_logical=False):
+    """Detect text using Apple Vision framework (macOS only)."""
     swift_code = r'''
 import Vision
 import AppKit

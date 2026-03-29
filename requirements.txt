@@ -12,6 +12,9 @@ huggingface-hub
 transformers
 accelerate
 
+# OCR: EasyOCR for Linux/cross-platform (macOS uses Apple Vision natively)
+easyocr>=1.7.0
+
 # Optional: for Claude/GPT API integration
 anthropic
 openai
