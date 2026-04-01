@@ -7,11 +7,11 @@
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Verified (official eval) | 17 |
-| ⏳ Pending eval | 46 |
+| ✅ Verified (official eval) | 18 |
+| ⏳ Pending eval | 45 |
 | ❌ Blocked | 20 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **11.843/17 = 69.7%** |
+| **Verified score** | **12.843/18 = 71.4%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -42,7 +42,7 @@
 | 21 | `6d72aad6` | Convert Impress to video | **1.0** | infeasible任务，正确回复FAIL |
 | 22 | `f918266a` | Complete Python calculator code | **1.0** | 补充insertionSort缺失行+运行保存log.txt |
 | 23 | `da52d699` | Find slowest reading pace book | **1.0** | 答案: Out of the Silent Planet |
-| 24 | `bc2b57f3` | Reorder spreadsheet sheets | | |
+| 24 | `bc2b57f3` | Reorder spreadsheet sheets | **1.0** | 读reminder.docx获取顺序，openpyxl重排10个sheet |
 | 25 | `74d5859f` | Web extension project setup | | |
 | 26 | `b5062e3e` | Extract author info from PDFs | | |
 | 27 | `00fa164e` | Insert GPT-4 results table | | |
