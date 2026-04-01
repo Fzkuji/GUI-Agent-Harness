@@ -155,10 +155,17 @@ def run_detector(image_path: str, conf: float = 0.1) -> DetectResult:
 
 def detect_all(image_path: str, conf: float = 0.1) -> DetectAllResult:
     """Run full detection pipeline: OCR + GPA-GUI-Detector + merge.
-    Returns all elements in click-space coordinates."""
-    from ui_detector import detect_all as _detect_all, get_screen_info
-    elements = _detect_all(image_path, conf=conf)
-    info = get_screen_info()
+    Returns all elements in click-space coordinates.
+    Gracefully degrades if detector is unavailable (OCR-only mode)."""
+    try:
+        from ui_detector import detect_all as _detect_all, get_screen_info
+        elements = _detect_all(image_path, conf=conf)
+        info = get_screen_info()
+    except (ImportError, Exception):
+        # Fallback: OCR-only
+        ocr = run_ocr(image_path)
+        elements = ocr.texts
+        info = {}
     return DetectAllResult(
         elements=elements,
         count=len(elements),
@@ -169,16 +176,27 @@ def detect_all(image_path: str, conf: float = 0.1) -> DetectAllResult:
 
 def template_match(app_name: str, image_path: str = None) -> TemplateMatchResult:
     """Match known components from memory against the current screen."""
-    from app_memory import quick_template_check, get_app_dir
+    from app_memory import quick_template_check, get_app_dir, load_components
     app_dir = get_app_dir(app_name)
     if not app_dir or not Path(app_dir).exists():
         return TemplateMatchResult(matched=[], count=0)
 
-    from app_memory import load_components
     components = load_components(app_dir)
     comp_names = [c["name"] for c in components if "name" in c]
 
-    matched = quick_template_check(app_dir, comp_names, img=image_path)
+    # quick_template_check returns (matched_names: set, total: int, ratio: float)
+    matched_names, total, ratio = quick_template_check(app_dir, comp_names, img=image_path)
+
+    # Convert to list of dicts with component info
+    matched = []
+    for comp in components:
+        if comp.get("name") in matched_names:
+            matched.append({
+                "name": comp["name"],
+                "cx": comp.get("cx", 0),
+                "cy": comp.get("cy", 0),
+            })
+
     return TemplateMatchResult(matched=matched, count=len(matched))
 
 
@@ -186,9 +204,8 @@ def identify_state(app_name: str) -> StateResult:
     """Identify the current state of an app from visual memory."""
     from app_memory import (
         identify_state_by_components, get_app_dir,
-        load_components, load_states
+        load_components, load_states, quick_template_check
     )
-    from app_memory import quick_template_check
 
     app_dir = get_app_dir(app_name)
     if not app_dir or not Path(app_dir).exists():
@@ -196,8 +213,10 @@ def identify_state(app_name: str) -> StateResult:
 
     components = load_components(app_dir)
     comp_names = [c["name"] for c in components if "name" in c]
-    matched = quick_template_check(app_dir, comp_names)
-    visible_names = [m["name"] for m in matched]
+
+    # quick_template_check returns (matched_names: set, total: int, ratio: float)
+    matched_names, total, ratio = quick_template_check(app_dir, comp_names)
+    visible_names = list(matched_names)
 
     state_name, conf = identify_state_by_components(app_name, visible_names)
     return StateResult(
