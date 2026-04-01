@@ -1,17 +1,17 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 101 tasks total | Last updated: 2026-04-01 21:10 HKT
+> 101 tasks total | Last updated: 2026-04-01 22:42 HKT
 
 ## Current Status
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Verified (official eval) | 20 |
-| ⏳ Pending eval | 43 |
+| ✅ Verified (official eval) | 21 |
+| ⏳ Pending eval | 42 |
 | ❌ Blocked | 20 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **14.443/20 = 72.2%** |
+| **Verified score** | **15.443/21 = 73.5%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -45,7 +45,7 @@
 | 24 | `bc2b57f3` | Reorder spreadsheet sheets | **1.0** | 读reminder.docx获取顺序，openpyxl重排10个sheet |
 | 25 | `74d5859f` | Web extension project setup | **0.6** | 操作正确，manifest/index.html/style.css满分；background_script.js和script.js的gold文件被Google Drive病毒扫描HTML替换(数据集bug) |
 | 26 | `b5062e3e` | Extract author info from PDFs | **1.0** | pdftotext提取4篇论文首作者name/email/affiliation，openpyxl写xlsx按名字排序 |
-| 27 | `00fa164e` | Insert GPT-4 results table | | |
+| 27 | `00fa164e` | Insert GPT-4 results table | **1.0** | 从xlsx提取GPT-4行数据(4位小数)，python-docx插入表格到docx的Main Results节 |
 | 28 | `acb0f96b` | Clone GitHub repo | | |
 | 29 | `69acbb55` | Configure word embeddings | | |
 | 30 | `48d05431` | Install conda | | |
