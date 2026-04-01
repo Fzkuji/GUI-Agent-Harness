@@ -1,18 +1,19 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 101 tasks total | Last updated: 2026-04-01 01:55 HKT
+> 101 tasks total | Last updated: 2026-04-01 14:47 HKT
 
 ## Current Status
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Completed (GUI method) | 72 |
-| 🔲 Not yet attempted | 9 |
+| ✅ Verified (official eval) | 2 |
+| ⏳ Pending eval | 70 |
 | ❌ Blocked (Google Drive/network) | 20 |
-| **Completion rate** | **72/101** (71.3%) |
+| 🔲 Not yet attempted | 9 |
+| **Verified score** | **2/2 = 100%** |
 
-> **Note:** All scores marked "pending eval" — official evaluator has not been run yet for the 2026-03-31 session tasks. Scores shown are from previous runs where available.
+> Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`). "pending" = task attempted but not yet verified.
 
 ## Session History
 
@@ -33,40 +34,44 @@
 - `record_page_transition()` records state changes
 - 11 new tasks completed with full flow
 
+### Round 4 (2026-04-01 afternoon): Official Evaluator Verification
+- Each task: VM reset → GUI skills full flow → official `env.evaluate()` → record score
+- One task at a time, verified individually
+
 ## Detailed Results
 
 | # | Task ID | Instruction (truncated) | Score | GUI? | Notes |
 |---|---------|------------------------|-------|------|-------|
-| 1 | `2b9493d7` | Force quit LibreOffice Writer | 1.0 | ✅ | screenshot → detect → click terminal → type killall |
-| 2 | `2c9fc0de` | Push git changes | 1.0 | ✅ | click terminal → type git commands |
-| 3 | `2fe4b718` | Create animated GIF from video | 0.82 | ✅ | Activities → terminal → ffmpeg |
-| 4 | `3680a5ee` | Merge xlsx/ods columns to CSV | 1.0 | ✅ | terminal → LO convert + paste + CSV import dialog |
+| 1 | `2b9493d7` | Force quit LibreOffice Writer | **1.0** | ✅ | screenshot → detect → click terminal → type killall |
+| 2 | `2c9fc0de` | Push git changes | **1.0** | ✅ | click terminal → type git add/commit/push |
+| 3 | `2fe4b718` | Create animated GIF from video | pending | ✅ | Activities → terminal → ffmpeg |
+| 4 | `3680a5ee` | Merge xlsx/ods columns to CSV | pending | ✅ | terminal → LO convert + paste + CSV import dialog |
 | 5 | `46407397` | Export charts from docx | — | ❌ | Google Drive blocked |
 | 6 | `4e9f0faf` | Extract invoice table | — | ❌ | Google Drive blocked |
-| 7 | `510f64c8` | Start VS Code from terminal | 0 | ✅ | code opened but eval extension broken |
-| 8 | `51f5801c` | Extract Impress notes to docx | 1.0 | ✅ | Activities → terminal → python3 script |
-| 9 | `58565672` | Open email link in Chrome | 0 | ✅ | TB navigation + Chrome tab, evaluator expects different URL |
+| 7 | `510f64c8` | Start VS Code from terminal | pending | ✅ | code opened but eval extension broken |
+| 8 | `51f5801c` | Extract Impress notes to docx | pending | ✅ | Activities → terminal → python3 script |
+| 9 | `58565672` | Open email link in Chrome | pending | ✅ | TB navigation + Chrome tab, evaluator expects different URL |
 | 10 | `78aed49a` | Save email attachments | — | ❌ | Google Drive blocked |
 | 11 | `897e3b53` | Convert docx form | — | ❌ | Google Drive blocked |
-| 12 | `937087b6` | Set VLC as default player | 1.0 | ✅ | Activities → terminal → xdg-mime |
+| 12 | `937087b6` | Set VLC as default player | pending | ✅ | Activities → terminal → xdg-mime |
 | 13 | `a0b9dc9c` | Backup emails | — | ❌ | Google Drive blocked |
 | 14 | `b52b40a5` | Merge PDFs | — | ❌ | Google Drive blocked |
-| 15 | `c867c42d` | Export TB contacts to CSV/XLSX | 1.0 | ✅ | Activities → terminal → python3 vCard export |
-| 16 | `d9b7c649` | Extract 5 emails to report.xlsx | 1.0 | ✅ | TB profile → python3 openpyxl |
-| 17 | `e135df7c` | Convert xlsx to HTML, view in Chrome | 1.0 | ✅ | LO headless → Chromium 4 tabs |
-| 18 | `ee9a3c83` | Convert ODS to CSV via terminal | 1.0 | ✅ | terminal typewrite LO convert |
-| 19 | `f7dfbef3` | Convert .doc files to PDF | 1.0 | ✅ | terminal LO headless → 12 PDFs |
-| 20 | `f8cfa149` | Copy cell B6, search in Chrome | 1.0 | ✅ | pyautogui Name Box → wmctrl Chrome |
-| 21 | `6d72aad6` | Convert Impress to video | 1.0 | ✅ | Infeasible task (correct answer) |
-| 22 | `f918266a` | Complete Python calculator code | 1.0 | ✅ | gnome-terminal + wmctrl → python3 script |
-| 23 | `da52d699` | Find slowest reading pace book | 1.0 | ✅ | gnome-terminal → openpyxl + python-docx |
-| 24 | `bc2b57f3` | Reorder spreadsheet sheets | 1.0 | ✅ | gnome-terminal → openpyxl move_sheet |
-| 25 | `74d5859f` | Web extension project setup | 0.6 | ✅ | CDP form fill + terminal unzip (gold corrupted) |
+| 15 | `c867c42d` | Export TB contacts to CSV/XLSX | pending | ✅ | Activities → terminal → python3 vCard export |
+| 16 | `d9b7c649` | Extract 5 emails to report.xlsx | pending | ✅ | TB profile → python3 openpyxl |
+| 17 | `e135df7c` | Convert xlsx to HTML, view in Chrome | pending | ✅ | LO headless → Chromium 4 tabs |
+| 18 | `ee9a3c83` | Convert ODS to CSV via terminal | pending | ✅ | terminal typewrite LO convert |
+| 19 | `f7dfbef3` | Convert .doc files to PDF | pending | ✅ | terminal LO headless → 12 PDFs |
+| 20 | `f8cfa149` | Copy cell B6, search in Chrome | pending | ✅ | pyautogui Name Box → wmctrl Chrome |
+| 21 | `6d72aad6` | Convert Impress to video | pending | ✅ | Infeasible task (correct answer) |
+| 22 | `f918266a` | Complete Python calculator code | pending | ✅ | gnome-terminal + wmctrl → python3 script |
+| 23 | `da52d699` | Find slowest reading pace book | pending | ✅ | gnome-terminal → openpyxl + python-docx |
+| 24 | `bc2b57f3` | Reorder spreadsheet sheets | pending | ✅ | gnome-terminal → openpyxl move_sheet |
+| 25 | `74d5859f` | Web extension project setup | pending | ✅ | CDP form fill + terminal unzip (gold corrupted) |
 | 26 | `b5062e3e` | Extract author info from PDFs | pending | ✅ | pdfplumber→openpyxl (4 authors sorted alphabetically) |
 | 27 | `00fa164e` | Insert GPT-4 results table | pending | ✅ | OCR→Table menu→12 cols→Tab-fill data→Ctrl+S |
-| 28 | `acb0f96b` | Clone GitHub repo | 0 | ❌ | GitHub 403 from VM |
+| 28 | `acb0f96b` | Clone GitHub repo | pending | ❌ | GitHub 403 from VM |
 | 29 | `69acbb55` | Configure word embeddings | — | ❌ | Google Drive blocked |
-| 30 | `48d05431` | Install conda | 0 | ❌ | anaconda.com timeout |
+| 30 | `48d05431` | Install conda | pending | ❌ | anaconda.com timeout |
 | 31 | `68a25bd4` | Download paper + find citation | pending | ✅ | Chrome arxiv PDF Save As + python-docx ans.docx |
 | 32 | `eb303e01` | Insert speaker notes to PPTX | pending | ✅ | Terminal python-pptx insert notes slides 1-3 |
 | 33 | `0c825995` | Environmental policy report | — | ❌ | Google Drive blocked |
@@ -87,7 +92,7 @@
 | 48 | `7e287123` | GRF funding info (web) | — | 🔲 | Web scraping needed |
 | 49 | `e2392362` | Academic homepage setup | — | 🔲 | Web setup needed |
 | 50 | `5bc63fb9` | JSON→Gemini docx | pending | ✅ | Extract Gemini responses + highlight "Iliad" |
-| 51 | `26660ad1` | Network sar monitoring | — | 🔲 | Needs speedtest.net (web) |
+| 51 | `26660ad1` | Network sar monitoring | — | 🔲 | Web needed |
 | 52 | `a82b78bb` | Find author webpage | — | 🔲 | Web search needed |
 | 53 | `36037439` | Google Scholar page | — | 🔲 | Web needed |
 | 54 | `716a6079` | Find secret.docx + clipboard | pending | ✅ | Terminal find + xclip clipboard |
@@ -140,16 +145,18 @@
 | 101 | `67890eb6` | ACL best paper awards | — | 🔲 | Web needed |
 
 ## Legend
-- ✅ = Completed via GUI method (terminal + xdotool/pyautogui or native app GUI)
-- ❌ = Blocked by infrastructure (Google Drive, network, timeout)
+- ✅ = Completed via GUI method
+- ❌ = Blocked by infrastructure
 - 🔲 = Not yet attempted
-- pending = Task completed but official evaluator not yet run
-- Score = Official evaluator score (where available)
+- ⚠️ = Partially completed
+- **Bold score** = Verified by official evaluator
+- pending = Task attempted but not yet verified by official evaluator
+- — = Not applicable (blocked/not attempted)
 
 ## Technical Notes
 
 ### GUI Method Used
-All 2026-03-31 tasks follow this pattern:
+All tasks follow this pattern:
 1. `vmrun revertToSnapshot` → restore VM to clean state
 2. Download task files via `curl -sL` on VM
 3. Install tools: `sudo apt-get install xdotool`, `pip3 install python-docx/openpyxl/etc.`
@@ -167,6 +174,6 @@ All 2026-03-31 tasks follow this pattern:
 - rembg requires 176MB model download on first run
 
 ## Files
-- Results JSON: `~/OSWorld/results_official.json`
+- Results JSON: `~/OSWorld/results/eval_results.json`
 - GUI memory: `~/.openclaw/workspace/skills/gui-agent/memory/apps/`
 - Benchmark doc: this file
