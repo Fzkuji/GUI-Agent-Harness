@@ -35,16 +35,27 @@ def plan_next_action(task: str, obs: dict, step: int, max_steps: int,
     - The current screen observation (app, visible text, elements)
     - Previous action history
 
+    GUI knowledge:
+    - Desktop files/icons need DOUBLE_CLICK to open (single click only selects)
+    - Spreadsheet cells: click to select, double_click to edit, type to input, Enter to confirm
+    - If an action caused NO screen change, try a DIFFERENT approach (don't repeat the same action)
+    - Dialog boxes usually have OK/Cancel buttons — click them to dismiss
+    - Use keyboard shortcuts when efficient (Ctrl+S to save, Ctrl+Z to undo, etc.)
+    - After typing in a cell, press Enter to commit (use key_press "return")
+
     Choose ONE action. Options:
     - "click": click an element (specify target name/description)
     - "type": type text into a field (specify target + text)
-    - "double_click": double-click an element
+    - "double_click": double-click an element (use for opening files, editing cells)
     - "right_click": right-click an element
     - "shortcut": keyboard shortcut (specify keys like "ctrl+c")
     - "key_press": single key press (specify key like "return", "escape", "delete")
-    - "done": task is already completed, stop
+    - "done": task is FULLY completed (all required content has been entered/saved)
 
-    Return JSON:
+    IMPORTANT: only return "done" when the task is truly finished.
+    If you still need to type content or verify results, do NOT return "done".
+
+    Return ONLY valid JSON (no markdown, no explanation):
     {
       "action": "click" or "type" or "double_click" or "right_click" or "shortcut" or "key_press" or "done",
       "target": "what to click/interact with",
@@ -82,7 +93,12 @@ Step {step}/{max_steps}.{history_summary}"""
     try:
         return _parse_json(reply)
     except Exception:
-        return {"action": "done", "reasoning": f"Could not parse plan: {reply[:200]}"}
+        # Parse failed — try to extract action from raw text
+        reply_lower = reply.lower()
+        if '"done"' in reply_lower or 'task is complete' in reply_lower:
+            return {"action": "done", "reasoning": f"Parsed from text: {reply[:200]}"}
+        # NOT done — ask LLM to retry with stricter format
+        return {"action": "retry", "reasoning": f"Could not parse plan: {reply[:200]}"}
 
 
 def execute_task(task: str, runtime=None, max_steps: int = 15) -> dict:
@@ -122,7 +138,16 @@ def execute_task(task: str, runtime=None, max_steps: int = 15) -> dict:
 
         action = plan.get("action", "done")
 
-        # 3. DONE?
+        # 3. PARSE FAILED? Skip this step, re-observe next iteration
+        if action == "retry":
+            history.append({
+                "step": step + 1, "action": "retry",
+                "reasoning": plan.get("reasoning", "parse failed"),
+                "success": False, "screen_changed": False,
+            })
+            continue
+
+        # 4. DONE?
         if action == "done":
             completed = True
             history.append({"step": step + 1, "action": "done", "reasoning": plan.get("reasoning", "")})
