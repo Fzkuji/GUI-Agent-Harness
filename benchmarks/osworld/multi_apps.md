@@ -1,17 +1,17 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 101 tasks total | Last updated: 2026-04-02 17:10 HKT
+> 101 tasks total | Last updated: 2026-04-04 13:45 HKT
 
 ## Current Status
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Verified (official eval) | 28 |
-| ⏳ Pending eval | 34 |
+| ✅ Verified (official eval) | 29 |
+| ⏳ Pending eval | 33 |
 | ❌ Blocked | 21 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **22.443/28 = 80.2%** |
+| **Verified score** | **23.443/29 = 80.8%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -54,7 +54,7 @@
 | 33 | `0c825995` | Environmental policy report | **N/A** | ❌ Blocked: 需要Google Drive登录+API credentials，settings只有template |
 | 34 | `c7c1e4c3` | Collect professor emails | **1.0** | 访问3位HKU教授主页获取邮箱，openpyxl填入xlsx的Email列 |
 | 35 | `d1acdb87` | Hong Kong restaurant info | **1.0** | 从Google Maps获取5家HK餐厅的地址/电话/网址，fuzzy match地址+includes电话 |
-| 36 | `deec51c9` | arxiv paper list | | |
+| 36 | `deec51c9` | arxiv paper list | **1.0** | arxiv API查Oct 11 cs.CL papers→筛选new foundation LLMs(LEMUR/Mistral 7B/Sheared LLaMA)→openpyxl写xlsx→LO Calc打开验证 |
 | 37 | `8e116af7` | Update bookkeeping from receipts | **1.0** | 5张收据(grocery/CashApp/soup/bike repair/McDonald's)→OCR读取→GUI输入LO Calc→Balance公式 |
 | 38 | `337d318b` | Cross-check invoices | | |
 | 39 | `82e3c869` | Sort event photos | | |
