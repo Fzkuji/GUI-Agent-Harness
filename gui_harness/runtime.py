@@ -93,15 +93,16 @@ class GUIRuntime(Runtime):
         """
         Call the LLM via OpenClaw gateway.
 
-        IMPORTANT: context is always ignored (set to ""). The gateway
-        manages its own conversation history. We only send this call's
-        content blocks.
+        Context injection is controlled by each @agentic_function's
+        `summarize` parameter:
+          - API mode: summarize=None (default) → full context injected
+          - Session mode: summarize={"depth": 0, "siblings": 0} → no injection
 
-        The Context tree still records inputs/outputs via @agentic_function,
-        but summarize() output is never injected into the LLM prompt.
+        When using OpenClaw as the runtime (session mode), set
+        summarize={"depth": 0, "siblings": 0} on your @agentic_function
+        decorators so only the current call's content is sent.
         """
-        # Force context to empty — gateway handles session history
-        return super().exec(content=content, context="", response_format=response_format, model=model)
+        return super().exec(content=content, context=context, response_format=response_format, model=model)
 
     def _call(
         self,

@@ -28,7 +28,7 @@ def _get_runtime():
     return _runtime
 
 
-@agentic_function
+@agentic_function(summarize={"depth": 0, "siblings": 0})
 def observe(task: str, app_name: str = None, runtime=None) -> dict:
     """Observe the current screen state.
 

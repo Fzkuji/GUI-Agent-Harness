@@ -22,7 +22,7 @@ def _get_runtime():
     return _runtime
 
 
-@agentic_function
+@agentic_function(summarize={"depth": 0, "siblings": 0})
 def learn(app_name: str, runtime=None) -> dict:
     """Learn the UI of an app by labeling its components.
 

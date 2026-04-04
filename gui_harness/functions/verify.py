@@ -20,7 +20,7 @@ def _get_runtime():
     return _runtime
 
 
-@agentic_function
+@agentic_function(summarize={"depth": 0, "siblings": 0})
 def verify(expected: str, runtime=None) -> dict:
     """Verify whether a previous action produced the expected result.
 

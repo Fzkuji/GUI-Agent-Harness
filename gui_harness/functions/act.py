@@ -29,7 +29,7 @@ def _get_runtime():
     return _runtime
 
 
-@agentic_function
+@agentic_function(summarize={"depth": 0, "siblings": 0})
 def act(action: str, target: str, text: str = None,
         app_name: str = None, runtime=None) -> dict:
     """Perform a GUI action on a target element.
