@@ -1,3 +1,4 @@
 [submodule "agentic"]
 	path = agentic
 	url = https://github.com/Fzkuji/Agentic-Programming.git
+	branch = main
