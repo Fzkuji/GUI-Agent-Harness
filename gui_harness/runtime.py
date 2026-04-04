@@ -1,30 +1,32 @@
 """
-gui_harness.runtime — GUIRuntime: routes LLM calls through OpenClaw gateway.
+gui_harness.runtime — GUIRuntime: auto-detect the best available LLM provider.
 
-OpenClaw agent IS the runtime. It accumulates context in its own session,
-so each @agentic_function only sends its own content (no Context tree injection).
+Priority order:
+  1. Anthropic API (ANTHROPIC_API_KEY env var)
+  2. OpenAI API (OPENAI_API_KEY env var)
+  3. Claude Code CLI (claude binary in PATH)
 
-This is configured via summarize={"depth": 0, "siblings": 0} on each
-@agentic_function decorator.
+OpenClaw users: OpenClaw sets ANTHROPIC_API_KEY or OPENAI_API_KEY in its
+environment, so GUIRuntime auto-detects and works out of the box.
+No manual configuration needed.
+
+Session mode: @agentic_function(summarize={"depth": 0, "siblings": 0})
+ensures the OpenClaw agent's session handles context accumulation.
+Each function only sends its own content to the LLM.
 
 Usage:
     from gui_harness.runtime import GUIRuntime
 
-    runtime = GUIRuntime()  # uses localhost:18789 by default
-
-    @agentic_function(summarize={"depth": 0, "siblings": 0})
-    def observe(task):
-        return runtime.exec(content=[
-            {"type": "text", "text": f"Find: {task}"},
-            {"type": "image", "path": "/tmp/screenshot.png"},
-        ])
+    runtime = GUIRuntime()  # auto-detects provider
+    # or explicitly:
+    runtime = GUIRuntime(provider="anthropic", model="claude-sonnet-4-20250514")
+    runtime = GUIRuntime(provider="openai", model="gpt-4o")
 """
 
 from __future__ import annotations
 
-import base64
-import mimetypes
 import os
+import shutil
 from typing import Optional
 
 from agentic.runtime import Runtime
@@ -45,39 +47,95 @@ Rules:
 """
 
 
+def _detect_provider() -> tuple[str, str]:
+    """Auto-detect the best available provider.
+
+    Returns (provider_name, default_model).
+    """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic", "claude-sonnet-4-20250514"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai", "gpt-4o"
+    if shutil.which("claude"):
+        return "claude-code", "sonnet"
+    raise RuntimeError(
+        "No LLM provider found. Set one of:\n"
+        "  - ANTHROPIC_API_KEY (recommended)\n"
+        "  - OPENAI_API_KEY\n"
+        "  - Install Claude Code CLI: npm install -g @anthropic-ai/claude-code\n"
+        "\n"
+        "OpenClaw users: OpenClaw sets these automatically. "
+        "Make sure OpenClaw is running."
+    )
+
+
 class GUIRuntime(Runtime):
     """
-    Routes LLM calls through OpenClaw gateway (/v1/chat/completions).
+    Auto-detecting GUI runtime.
 
-    OpenClaw agent accumulates context in its own session, so we use
-    summarize={"depth": 0, "siblings": 0} on @agentic_function decorators
-    to skip Context tree injection. Each exec() call sends only its own
-    content blocks.
+    Picks the best available provider based on environment:
+      - ANTHROPIC_API_KEY → AnthropicRuntime (Claude, with prompt caching)
+      - OPENAI_API_KEY → OpenAIRuntime (GPT-4o vision)
+      - claude CLI → ClaudeCodeRuntime (no API key, uses subscription)
+
+    OpenClaw users: OpenClaw manages API keys in its environment.
+    GUIRuntime auto-detects them — zero configuration needed.
 
     Args:
-        gateway_url:  OpenClaw gateway URL (default: http://localhost:18789).
-        auth_token:   Gateway auth token (or OPENCLAW_GATEWAY_TOKEN env var).
-        model:        Model name (default: anthropic/claude-sonnet-4-6).
-        system:       System prompt.
-        max_tokens:   Max response tokens.
-        timeout:      Request timeout in seconds.
+        provider:   Force a provider ("anthropic", "openai", "claude-code").
+                    If None, auto-detects.
+        model:      Model name override.
+        system:     System prompt override.
+        max_tokens: Max response tokens (default: 4096).
+        **kwargs:   Forwarded to the provider Runtime.
     """
 
     def __init__(
         self,
-        gateway_url: str = "http://localhost:18789",
-        auth_token: str = None,
-        model: str = "anthropic/claude-sonnet-4-6",
+        provider: str = None,
+        model: str = None,
         system: str = None,
         max_tokens: int = 4096,
-        timeout: float = 120.0,
+        **kwargs,
     ):
-        super().__init__(model=model)
-        self.gateway_url = gateway_url.rstrip("/")
-        self.auth_token = auth_token or os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
-        self.system = system or GUI_SYSTEM_PROMPT
-        self.max_tokens = max_tokens
-        self.timeout = timeout
+        # Detect or use specified provider
+        if provider:
+            detected_provider = provider
+            detected_model = model or "default"
+        else:
+            detected_provider, detected_model = _detect_provider()
+
+        use_model = model or detected_model
+        use_system = system or GUI_SYSTEM_PROMPT
+
+        # Create the actual provider runtime
+        if detected_provider == "anthropic":
+            from agentic.providers.anthropic import AnthropicRuntime
+            self._inner = AnthropicRuntime(
+                model=use_model,
+                system=use_system,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        elif detected_provider == "openai":
+            from agentic.providers.openai import OpenAIRuntime
+            self._inner = OpenAIRuntime(
+                model=use_model,
+                system_prompt=use_system,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        elif detected_provider == "claude-code":
+            from agentic.providers.claude_code import ClaudeCodeRuntime
+            self._inner = ClaudeCodeRuntime(
+                model=use_model,
+                **kwargs,
+            )
+        else:
+            raise ValueError(f"Unknown provider: {detected_provider}")
+
+        super().__init__(model=use_model)
+        self.provider = detected_provider
 
     def _call(
         self,
@@ -85,66 +143,5 @@ class GUIRuntime(Runtime):
         model: str = "default",
         response_format: Optional[dict] = None,
     ) -> str:
-        """Send content to OpenClaw gateway."""
-        import httpx
-
-        use_model = model if model != "default" else self.model
-
-        # Convert content blocks to OpenAI format
-        user_content = []
-        for block in content:
-            converted = self._convert_block(block)
-            if converted:
-                user_content.append(converted)
-
-        messages = [
-            {"role": "system", "content": self.system},
-            {"role": "user", "content": user_content},
-        ]
-
-        headers = {"Content-Type": "application/json"}
-        if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
-
-        payload = {
-            "model": use_model,
-            "messages": messages,
-            "max_tokens": self.max_tokens,
-        }
-        if response_format:
-            payload["response_format"] = response_format
-
-        response = httpx.post(
-            f"{self.gateway_url}/v1/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-
-    def _convert_block(self, block: dict) -> Optional[dict]:
-        """Convert a content block to OpenAI chat format."""
-        block_type = block.get("type", "text")
-
-        if block_type == "text":
-            return {"type": "text", "text": block["text"]}
-
-        if block_type == "image":
-            if "url" in block:
-                return {"type": "image_url", "image_url": {"url": block["url"]}}
-            if "data" in block:
-                mt = block.get("media_type", "image/png")
-                return {"type": "image_url", "image_url": {"url": f"data:{mt};base64,{block['data']}"}}
-            if "path" in block:
-                path = block["path"]
-                mt = mimetypes.guess_type(path)[0] or "image/png"
-                with open(path, "rb") as f:
-                    data = base64.b64encode(f.read()).decode("utf-8")
-                return {"type": "image_url", "image_url": {"url": f"data:{mt};base64,{data}"}}
-
-        if "text" in block:
-            return {"type": "text", "text": block["text"]}
-        return None
+        """Delegate to the detected provider."""
+        return self._inner._call(content, model=model, response_format=response_format)

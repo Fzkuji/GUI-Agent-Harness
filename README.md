@@ -424,14 +424,15 @@ result = verify(expected="dashboard is visible")
 **For non-OpenClaw use:** Switch to API mode by removing the `summarize` parameter (defaults to full context injection). See [docs/agentic-programming.md](docs/agentic-programming.md) for details.
 
 **Setup for OpenClaw:**
-1. OpenClaw gateway must be running (default: `http://localhost:18789`)
-2. Gateway auth token configured (env `OPENCLAW_GATEWAY_TOKEN` or in `openclaw.json`)
-3. That's it — no Anthropic/OpenAI API keys needed separately
+1. OpenClaw must be running (it sets `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the environment)
+2. `GUIRuntime()` auto-detects the available provider — zero configuration
+3. That's it
 
 **Quick install:**
 ```bash
-pip install -e .          # core
-pip install httpx         # for OpenClaw gateway (included in dependencies)
+pip install -e .                    # core
+pip install -e ".[anthropic]"       # + Claude support (recommended)
+pip install -e ".[openai]"          # + GPT support
 ```
 
 📖 Full documentation: [docs/agentic-programming.md](docs/agentic-programming.md)

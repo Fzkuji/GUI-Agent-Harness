@@ -10,7 +10,6 @@ requires-python = ">=3.10"
 dependencies = [
     "pynput",
     "opencv-python",
-    "httpx",
 ]
 
 [project.optional-dependencies]

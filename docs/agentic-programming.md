@@ -78,20 +78,24 @@ def observe(task, runtime=None):
 
 ## Runtime: GUIRuntime
 
-`GUIRuntime` routes LLM calls through OpenClaw gateway (`/v1/chat/completions`):
+`GUIRuntime` auto-detects the best available LLM provider:
 
 ```python
 from gui_harness.runtime import GUIRuntime
 
-runtime = GUIRuntime(
-    gateway_url="http://localhost:18789",  # OpenClaw gateway
-    model="anthropic/claude-sonnet-4-6",   # any model OpenClaw supports
-)
+runtime = GUIRuntime()  # auto-detect (recommended)
+# or explicitly:
+runtime = GUIRuntime(provider="anthropic", model="claude-sonnet-4-20250514")
+runtime = GUIRuntime(provider="openai", model="gpt-4o")
 ```
 
-- Uses OpenClaw's auth (no separate API keys needed)
-- Supports all models configured in OpenClaw (Claude, GPT, Gemini, etc.)
-- Image content blocks are base64-encoded automatically
+**Auto-detection priority:**
+1. `ANTHROPIC_API_KEY` env var → AnthropicRuntime (Claude, prompt caching)
+2. `OPENAI_API_KEY` env var → OpenAIRuntime (GPT-4o vision)
+3. `claude` CLI in PATH → ClaudeCodeRuntime (no API key, uses subscription)
+
+**OpenClaw users:** OpenClaw manages API keys in its environment. GUIRuntime
+auto-detects them — zero configuration needed. Just make sure OpenClaw is running.
 
 ## Functions
 
