@@ -397,6 +397,45 @@ Every action follows a unified detect-match-execute-save protocol:
 - ✅ No blind clicks after timeout — screenshot + inspect instead
 - ✅ Mandatory timing & token delta reporting after every task
 
+## 🧬 Agentic Programming Layer
+
+GUI Agent Harness includes `gui_harness/` — a programmatic interface powered by [Agentic Programming](https://github.com/Fzkuji/Agentic-Programming).
+
+**Designed for OpenClaw.** The LLM calls route through OpenClaw gateway — no separate API keys needed. OpenClaw agent accumulates session context, so each function only sends its own data.
+
+```python
+from gui_harness import observe, act, verify
+
+# OpenClaw agent calls these functions:
+result = observe(task="find the login button")
+# → screenshot + OCR + detection + LLM analysis
+# → returns {app_name, page_description, target_visible, target_location, ...}
+
+result = act(action="click", target="login button")
+# → finds target coordinates from OCR/detection lists
+# → executes click, checks if screen changed
+
+result = verify(expected="dashboard is visible")
+# → screenshot + OCR + LLM verification
+```
+
+**Context management:** Each `@agentic_function` uses `summarize={"depth": 0, "siblings": 0}` (session mode) — only sends its own content to the LLM. OpenClaw's session handles context accumulation.
+
+**For non-OpenClaw use:** Switch to API mode by removing the `summarize` parameter (defaults to full context injection). See [docs/agentic-programming.md](docs/agentic-programming.md) for details.
+
+**Setup for OpenClaw:**
+1. OpenClaw gateway must be running (default: `http://localhost:18789`)
+2. Gateway auth token configured (env `OPENCLAW_GATEWAY_TOKEN` or in `openclaw.json`)
+3. That's it — no Anthropic/OpenAI API keys needed separately
+
+**Quick install:**
+```bash
+pip install -e .          # core
+pip install httpx         # for OpenClaw gateway (included in dependencies)
+```
+
+📖 Full documentation: [docs/agentic-programming.md](docs/agentic-programming.md)
+
 ## 🗂️ Project Structure
 
 ```

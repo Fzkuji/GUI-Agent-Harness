@@ -5,17 +5,18 @@ build-backend = "setuptools.backends._legacy:_Backend"
 [project]
 name = "gui-agent-harness"
 version = "0.2.0"
-description = "GUI automation powered by Agentic Programming"
+description = "GUI automation powered by Agentic Programming — designed for OpenClaw"
 requires-python = ">=3.10"
 dependencies = [
     "pynput",
     "opencv-python",
+    "httpx",
 ]
 
 [project.optional-dependencies]
+# Only needed if you want to use standalone providers (without OpenClaw)
 anthropic = ["anthropic>=0.30"]
 openai = ["openai>=1.30"]
-all = ["anthropic>=0.30", "openai>=1.30"]
 
 [tool.setuptools.packages.find]
 include = ["gui_harness*", "agentic*"]
