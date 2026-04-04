@@ -1,17 +1,17 @@
 # OSWorld Multi-Apps Domain — GUI Agent Skills Results
 
-> 101 tasks total | Last updated: 2026-04-04 13:45 HKT
+> 101 tasks total | Last updated: 2026-04-04 14:00 HKT
 
 ## Current Status
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 101 |
-| ✅ Verified (official eval) | 29 |
-| ⏳ Pending eval | 33 |
+| ✅ Verified (official eval) | 30 |
+| ⏳ Pending eval | 32 |
 | ❌ Blocked | 21 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **23.443/29 = 80.8%** |
+| **Verified score** | **24.443/30 = 81.5%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -56,7 +56,7 @@
 | 35 | `d1acdb87` | Hong Kong restaurant info | **1.0** | 从Google Maps获取5家HK餐厅的地址/电话/网址，fuzzy match地址+includes电话 |
 | 36 | `deec51c9` | arxiv paper list | **1.0** | arxiv API查Oct 11 cs.CL papers→筛选new foundation LLMs(LEMUR/Mistral 7B/Sheared LLaMA)→openpyxl写xlsx→LO Calc打开验证 |
 | 37 | `8e116af7` | Update bookkeeping from receipts | **1.0** | 5张收据(grocery/CashApp/soup/bike repair/McDonald's)→OCR读取→GUI输入LO Calc→Balance公式 |
-| 38 | `337d318b` | Cross-check invoices | | |
+| 38 | `337d318b` | Cross-check invoices | **1.0** | PDF读取发票+银行对账单→对比金额(Staples $500 vs $540)→桌面右键New Folder→拖拽Invoice #243729到problematic |
 | 39 | `82e3c869` | Sort event photos | | |
 | 40 | `185f29bd` | Excel to PDF form | | |
 | 41 | `869de13e` | Organize desktop files | | |
