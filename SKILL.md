@@ -1,57 +1,58 @@
 ---
 name: gui-agent
-description: "GUI automation via visual detection. Clicking, typing, reading content, navigating menus, filling forms — all through screenshot → detect → act workflow. Supports macOS and Linux."
+description: "GUI automation via Agentic Programming. Give it a task, it handles the rest — screenshot, detect, act, verify, all automatic."
 ---
 
 # GUI Agent
 
-## STEP 0: Activate Platform (MANDATORY FIRST STEP)
+## Usage
 
-Before any GUI operation, run:
+Just describe what you want done:
+
+```python
+from gui_harness import execute_task
+from gui_harness.runtime import GUIRuntime
+
+runtime = GUIRuntime()  # auto-detects OpenClaw
+result = execute_task("Open Firefox and go to google.com", runtime=runtime)
+```
+
+Or from OpenClaw, just call:
 
 ```bash
-python3 {baseDir}/scripts/activate.py
+python3 {baseDir}/gui_harness/main.py "Open Firefox and go to google.com"
 ```
 
-This detects your OS, sets up the correct action commands, and outputs platform context.
-After running, `{baseDir}/actions/_actions.yaml` contains your platform's commands.
+## What It Does
 
-## Workflow
+`execute_task()` runs an autonomous loop:
 
+1. **OBSERVE** — screenshot + OCR + detection → understand current state
+2. **PLAN** — LLM decides the next action based on the task and current state
+3. **ACT** — execute the action (click, type, scroll, etc.)
+4. **VERIFY** — screenshot again → check if action succeeded
+5. **REPEAT** — until task is done or max steps reached
+
+All sub-functions (`observe`, `act`, `verify`, `learn`, `navigate`) are called automatically. You don't need to call them manually.
+
+## For VMs (OSWorld)
+
+```python
+from gui_harness.primitives.vm_adapter import patch_for_vm
+patch_for_vm("http://VM_IP:5000")
+# Then use execute_task() normally — it routes through the VM.
 ```
-OBSERVE → LEARN → ACT → VERIFY → SAVE
+
+## First-Time Setup
+
+```bash
+cd {baseDir}
+pip install -e .
+python3 scripts/activate.py   # detect platform, install dependencies
 ```
-
-1. **OBSERVE** — Take screenshot → run OCR + detector → understand current state
-   → `read {baseDir}/skills/gui-observe/SKILL.md`
-
-2. **LEARN** — First time with an app? Save components to memory
-   → `read {baseDir}/skills/gui-learn/SKILL.md`
-   → `learn_from_screenshot()` auto-outputs app tips if available
-
-3. **ACT** — Pick target → execute using `_actions.yaml` commands → verify
-   → `read {baseDir}/skills/gui-act/SKILL.md`
-   → `read {baseDir}/actions/_actions.yaml` for available commands
-
-4. **VERIFY** — Screenshot again → confirm action succeeded
-
-5. **SAVE** — Record state transitions to memory
-   → `read {baseDir}/skills/gui-memory/SKILL.md` for memory structure
 
 ## Core Rules
 
-- **Coordinates from detection only** — OCR or GPA-GUI-Detector, NEVER from guessing
-- **Look before you act** — every action must be justified by what you observed
-- **image tool = understanding only** — use it to decide WHAT to click, get WHERE from OCR/detector
-
-## Sub-Skills Reference
-
-| Sub-Skill | When to read |
-|-----------|-------------|
-| `skills/gui-observe/SKILL.md` | Before screenshots or detection |
-| `skills/gui-learn/SKILL.md` | Before learning a new app |
-| `skills/gui-act/SKILL.md` | Before any click/type action |
-| `skills/gui-memory/SKILL.md` | For memory structure details |
-| `skills/gui-workflow/SKILL.md` | For multi-step navigation |
-| `skills/gui-setup/SKILL.md` | For first-time machine setup |
-| `skills/gui-report/SKILL.md` | For task performance reporting |
+- **Coordinates from detection only** — OCR or GPA-GUI-Detector, never guessed
+- **Look before you act** — every action justified by what was observed
+- **Verify after every action** — screenshot to confirm it worked

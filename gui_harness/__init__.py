@@ -15,10 +15,11 @@ Core exports:
 
 from gui_harness.runtime import GUIRuntime
 from gui_harness.functions import observe, act, verify, learn, navigate, remember
-from gui_harness.tasks import send_message, read_messages
+from gui_harness.tasks import execute_task, send_message, read_messages
 
 __all__ = [
     "GUIRuntime",
+    "execute_task",
     "observe",
     "act",
     "verify",
