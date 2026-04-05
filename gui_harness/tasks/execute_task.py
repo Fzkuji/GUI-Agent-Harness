@@ -322,10 +322,65 @@ def execute_task(task: str, runtime=None, max_steps: int = 15, app_name: str = "
         })
 
     total_time = round(time.time() - task_start, 2)
-    return {
+
+    result = {
         "task": task,
         "success": completed,
         "steps_taken": len(history),
         "total_time": total_time,
         "history": history,
     }
+
+    # Save workflow record for future replay
+    _save_workflow_record(result, app_name)
+
+    return result
+
+
+# ═══════════════════════════════════════════
+# Workflow recording
+# ═══════════════════════════════════════════
+
+def _save_workflow_record(result: dict, app_name: str):
+    """Save the completed task as a workflow record.
+
+    Records are append-only JSONL files stored per app. Each record
+    captures the full step sequence so that future runs of similar
+    tasks can potentially replay without LLM involvement.
+
+    Storage: gui_harness/memory/apps/<app_name>/workflows.jsonl
+    """
+    import hashlib
+    import json
+    from gui_harness.memory import app_memory
+
+    app_dir = app_memory.get_app_dir(app_name)
+    app_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = app_dir / "workflows.jsonl"
+
+    task_hash = hashlib.sha256(result["task"].encode()).hexdigest()[:12]
+
+    record = {
+        "task_hash": task_hash,
+        "task": result["task"],
+        "success": result["success"],
+        "steps_taken": result["steps_taken"],
+        "total_time": result.get("total_time"),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "steps": [
+            {
+                "step": h["step"],
+                "action": h["action"],
+                "target": h.get("target", ""),
+                "text": h.get("text"),
+                "success": h.get("success", False),
+            }
+            for h in result["history"]
+        ],
+    }
+
+    try:
+        with open(workflow_path, "a") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # Never fail the task for recording issues
