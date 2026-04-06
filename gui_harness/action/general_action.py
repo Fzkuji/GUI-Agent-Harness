@@ -8,25 +8,21 @@ shortcuts, web browsing, etc.
 
 The agent runs in interactive mode with full tool access (Bash, Read,
 Write, etc.) and reports the result when done.
-
-IMPORTANT: general_action uses its own separate runtime instance to
-avoid context pollution with the main loop's runtime (which accumulates
-screenshot history). Each general_action call starts with a fresh process.
 """
 
 from __future__ import annotations
 
 from agentic import agentic_function
 
+_runtime = None
 
-def _create_fresh_runtime():
-    """Create a fresh runtime for general_action.
 
-    Uses a separate instance so that the main loop's accumulated
-    context (screenshots, detection results) doesn't interfere.
-    """
-    from gui_harness.runtime import GUIRuntime
-    return GUIRuntime()
+def _get_runtime():
+    global _runtime
+    if _runtime is None:
+        from gui_harness.runtime import GUIRuntime
+        _runtime = GUIRuntime()
+    return _runtime
 
 
 @agentic_function(summarize={"depth": 0, "siblings": 0})
@@ -53,16 +49,11 @@ def general_action(sub_task: str, runtime=None) -> dict:
     """
     from gui_harness.utils import parse_json
 
-    # Always use a fresh runtime to avoid context pollution
-    rt = _create_fresh_runtime()
+    rt = runtime or _get_runtime()
 
     reply = rt.exec(content=[
         {"type": "text", "text": f"Sub-task: {sub_task}\n\nComplete this and return JSON with success/output/error."},
     ])
-
-    # Clean up the runtime's process after use
-    if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-        rt._inner.reset()
 
     try:
         return parse_json(reply)
