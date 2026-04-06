@@ -65,8 +65,8 @@
 | 44 | `1f18aa87` | Grammar test answers | **1.0** | Phase 0-5框架：general_action读取3个test文件→分析答案→写入Answer.docx。2步完成，72秒 |
 | 45 | `26150609` | Fix Snake game code | **1.0** | general_action读代码→定位bug(food.py __init__坐标未对齐网格)→修复。2步140秒 |
 | 46 | `9219480b` | Fix Tetris game code | **1.0** | general_action读代码→修复tetris.py rotate()边界检查。2步93秒 |
-| 47 | `881deb30` | Faculty job info (web) | | |
-| 48 | `7e287123` | GRF funding info (web) | | |
+| 47 | `881deb30` | ECS pass rate table | **pending** | general_action读9个PDF+写xlsx。5步255秒。待official eval |
+| 48 | `7e287123` | GRF CS pass rate table | **0.167** | general_action提取了全学科总数而非仅CS。只有header行匹配。2步111秒 |
 | 49 | `e2392362` | Academic homepage setup | | |
 | 50 | `5bc63fb9` | JSON→Gemini docx | | |
 | 51 | `26660ad1` | Network sar monitoring | | |
