@@ -64,26 +64,28 @@ def decide_next_action(
 ) -> dict:
     """Look at the current screen and decide what to do next.
 
-    You have two ways to act:
+    You are a GUI agent. Prioritize visual GUI interactions.
 
-    1. GUI actions (we handle precise coordinate locating for you):
+    1. GUI actions (PREFERRED — we handle precise coordinate locating):
       {"action": "click", "target": "description of element to click"}
-      {"action": "double_click", "target": "description of element"}
+      {"action": "double_click", "target": "description of element to open"}
       {"action": "right_click", "target": "description of element"}
       {"action": "drag", "target": "start element", "target_end": "end element"}
 
-    2. Free action (you describe what to do, an agent will execute it freely):
-      {"action": "general", "task": "read the contents of test2.docx and summarize the answers"}
-      {"action": "general", "task": "type 'baaad' after the Grammar test 2: line in the document"}
-      {"action": "general", "task": "save the current file with Ctrl+S"}
-      The agent can use any tools: run commands, read/write files, use keyboard, etc.
+    2. General action (only when task does NOT require GUI interaction):
+      {"action": "general", "task": "description of what to do"}
+      Use this for: reading file contents, editing code, running commands,
+      or any task that is purely text/code-based with no visual UI needed.
 
     3. Done:
       {"action": "done", "reasoning": "task is complete"}
 
-    Tips:
-    - Use "general" for complex operations (reading files, typing, running commands)
-    - Use GUI actions only when you need to click/interact with a specific UI element
+    Decision guide:
+    - Need to interact with a visible UI element? → GUI action
+    - Need to open a file on desktop? → double_click
+    - Need to navigate menus? → click
+    - Need to read/edit file contents without GUI? → general
+    - Need to fix code? → general
     - Be efficient — minimize the number of steps
 
     Return ONLY valid JSON.
@@ -113,20 +115,8 @@ def decide_next_action(
         )
         hints = f"\nKnown transitions from this screen state (hints):\n{hint_lines}"
 
-    # VM context (if running on remote VM)
-    vm_info = ""
-    try:
-        from gui_harness.adapters import vm_adapter
-        if vm_adapter._VM_URL:
-            vm_info = f"""
-Environment: Remote VM at {vm_adapter._VM_URL}
-  Files are on the VM, not local. To access them use:
-  curl -s -X POST {vm_adapter._VM_URL}/execute -H 'Content-Type: application/json' -d '{{"command": "cat /path/to/file", "shell": true}}'"""
-    except Exception:
-        pass
-
     context = f"""Task: {task}
-Step {step}/{max_steps}.{vm_info}{history_summary}{hints}
+Step {step}/{max_steps}.{history_summary}{hints}
 
 Look at the screenshot and decide the next action.
 Return ONLY valid JSON."""
@@ -228,6 +218,54 @@ def _execute_on_vm(code):
 
 
 # ═══════════════════════════════════════════
+# Agent session initialization
+# ═══════════════════════════════════════════
+
+def _init_agent_context(rt, task, app_name):
+    """Send initial context to the agent session.
+
+    This runs once at the start of execute_task to give the agent
+    a complete picture of the environment before any actions.
+    """
+    vm_info = ""
+    try:
+        from gui_harness.adapters import vm_adapter
+        if vm_adapter._VM_URL:
+            vm_info = f"""
+You are operating a remote VM at {vm_adapter._VM_URL}.
+All files and applications are on the VM, not on your local machine.
+To execute commands on the VM:
+  curl -s -X POST {vm_adapter._VM_URL}/execute -H 'Content-Type: application/json' -d '{{"command": "your_command", "shell": true}}'
+To read a file: use the command above with "cat /path/to/file".
+To write a file: use the command above with appropriate shell commands.
+"""
+    except Exception:
+        pass
+
+    init_message = f"""You are a GUI automation agent. Your task: {task}
+
+Application: {app_name}
+{vm_info}
+You have visual perception capabilities:
+- Screenshot analysis (you will see screenshots each step)
+- GPA-GUI-Detector for UI element detection
+- OCR for text recognition
+- Component memory for recognizing previously seen UI elements
+
+You will be asked to decide actions step by step. Prioritize GUI interactions
+(click, double_click, etc.) when the task involves visual UI elements.
+Use general actions only when the task clearly doesn't require GUI interaction
+(e.g., pure code editing, file content analysis).
+
+Reply OK to confirm you understand."""
+
+    try:
+        rt.exec(content=[{"type": "text", "text": init_message}])
+    except Exception:
+        pass  # Best effort — don't fail if init message fails
+
+
+# ═══════════════════════════════════════════
 # Main loop
 # ═══════════════════════════════════════════
 
@@ -249,6 +287,9 @@ def execute_task(task: str, runtime=None, max_steps: int = 30, app_name: str = "
     rt = runtime or _get_runtime()
     history = []
     completed = False
+
+    # Initialize agent session with full context
+    _init_agent_context(rt, task, app_name)
     task_start = time.time()
 
     for step in range(1, max_steps + 1):
