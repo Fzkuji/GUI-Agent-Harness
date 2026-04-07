@@ -1,0 +1,9 @@
+agentic-programming @ file:libs/agentic-programming
+pynput
+opencv-python
+
+[anthropic]
+anthropic>=0.30
+
+[openai]
+openai>=1.30

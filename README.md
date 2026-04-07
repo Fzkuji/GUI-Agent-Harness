@@ -37,13 +37,12 @@
 
 ## 🔥 News
 
-- **[2026-03-30]** 📐 **ImageContext coordinate system** — Replaced dual-space model with `ImageContext` class. `detect_all()` now returns image pixel coords (no conversion). Cropping is scale-independent. `pixel_scale` from `backingScaleFactor` (not `img_size/screen_size`). Fixes component crop bugs on non-fullscreen images. [Tests →](tests/test_image_context.py)
-- **[2026-03-29]** 🎬 **v0.3 — Unified Actions & Cross-Platform GUI** — `gui_action.py` as single entry point for all GUI operations. Platform-specific backends (`mac_local.py`, `http_remote.py`) auto-selected via `--remote`. `activate.py` for platform detection. OSWorld Multi-Apps: **54.3%** (44/81). [Results →](benchmarks/osworld/multi_apps.md)
-- **[2026-03-24]** 🧠 **Smart workflow navigation** — Target state verification with tiered fallback (template match → full detection → LLM). Auto performance tracking via `detect_all`.
-- **[2026-03-23]** 🏆 **OSWorld benchmark (Chrome)** — **one attempt: 93.5%** (43/46), **up to two attempts: 97.8%** (45/46). [Results →](benchmarks/osworld/)
-- **[2026-03-23]** 🔄 **Memory overhaul** — Split storage, automatic component forgetting (15 consecutive misses → removed), state merging by Jaccard similarity.
-- **[2026-03-22]** 🔍 **Unified detection pipeline** — `detect_all()` as single entry point; atomic detect → match → execute → verify loop.
-- **[2026-03-21]** 🌐 **Cross-platform support** — GPA-GUI-Detector runs on any OS screenshot (Linux VMs, remote servers).
+- **[2026-04-07]** 🤖 **Agent-native architecture** — Rebuilt execution core on [Agentic Programming](https://github.com/Fzkuji/Agentic-Programming), unifying GUI perception and free-form agent actions under a single two-step decision loop. Dramatically improves task reliability and eliminates task-specific scripting.
+- **[2026-03-30]** 📐 **ImageContext coordinate system** — Replaced dual-space model with `ImageContext` class; scale-independent cropping, fixes crop bugs on non-fullscreen images.
+- **[2026-03-29]** 🎬 **v0.3 — Unified Actions & Cross-Platform GUI** — `gui_action.py` as single entry point. Platform backends (`mac_local.py`, `http_remote.py`) auto-selected via `--remote`. OSWorld Multi-Apps: **54.3%** (44/81). [Results →](benchmarks/osworld/multi_apps.md)
+- **[2026-03-24]** 🧠 **Smart workflow navigation** — Target state verification with tiered fallback (template match → full detection → LLM).
+- **[2026-03-23]** 🏆 **OSWorld Chrome** — **93.5%** one attempt (43/46), **97.8%** two attempts (45/46). [Results →](benchmarks/osworld/)
+- **[2026-03-23]** 🔄 **Memory overhaul** — Split storage, automatic component forgetting, state merging by Jaccard similarity.
 - **[2026-03-10]** 🚀 **Initial release** — GPA-GUI-Detector + Apple Vision OCR + template matching + per-app visual memory.
 
 ## 📖 Skills Overview

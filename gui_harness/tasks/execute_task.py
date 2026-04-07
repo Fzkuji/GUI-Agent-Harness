@@ -1,44 +1,19 @@
 """
-execute_task — autonomous GUI task execution with visual memory.
+execute_task — the main planning loop.
 
-Design principle:
-  The LLM is the decision maker — it decides WHAT to do freely.
-  We only enforce HOW for things the LLM can't do well (GUI clicking).
+Full workflow per step:
+  Phase 0: Screenshot → LLM sees image → decides action type
+  Phase 1-5: (only if coordinates needed) detect → match → label → locate
+  Execute: call atomic action function
 
-Each step:
-  1. Screenshot → identify current state → get transition hints
-  2. LLM sees screenshot + context → decides what to do next
-  3. If LLM wants a GUI action (click/double_click/right_click/drag):
-     → Our detection pipeline locates the target (Phase 1-5)
-  4. If LLM wants anything else (type, command, shortcut, etc.):
-     → Execute directly, no intervention
-  5. Record state transition for future hints
+Actions are pure execution functions in gui_harness.action.actions.
+Component memory accumulates across steps and tasks.
 """
 
 from __future__ import annotations
 
-import json
-import sys
-import time
-
-from agentic import agentic_function
-
 from gui_harness.utils import parse_json
-from gui_harness.perception import screenshot as _screenshot
-from gui_harness.action import input as _input
-from gui_harness.action.general_action import general_action
-from gui_harness.planning.component_memory import (
-    locate_target,
-    identify_state,
-    record_transition,
-    get_available_transitions,
-)
-
-# GUI actions that need our visual detection pipeline for coordinates
-GUI_ACTIONS = {"click", "double_click", "right_click", "drag"}
-
-# Direct actions that execute immediately without detection
-DIRECT_ACTIONS = {"type", "press", "hotkey", "scroll"}
+from agentic import agentic_function
 
 _runtime = None
 
@@ -51,115 +26,75 @@ def _get_runtime():
     return _runtime
 
 
-# ═══════════════════════════════════════════
-# LLM decision function
-# ═══════════════════════════════════════════
+# Actions that require screen coordinates
+COORDINATE_ACTIONS = {"click", "single_click", "double_click", "right_click", "drag"}
 
-def _build_history_summary(history):
-    """Build a text summary of recent action history."""
-    if not history:
-        return ""
-    lines = []
-    for h in history[-5:]:
-        status = "ok" if h.get("success") else "FAIL"
-        act = h.get("action", "?")
-        detail = h.get("target", h.get("code", ""))
-        if detail:
-            detail = str(detail)[:50]
-        lines.append(f"  {h['step']}. [{status}] {act}: {detail}")
-        if h.get("output"):
-            lines.append(f"     output: {str(h['output'])[:200]}")
-    return f"\nRecent actions:\n" + "\n".join(lines)
+# Actions that don't require coordinates
+NO_COORDINATE_ACTIONS = {"type", "key_press", "shortcut", "paste", "scroll", "done"}
 
+# Action descriptions for the LLM planner
+ACTION_DESCRIPTIONS = """
+Available actions:
 
-@agentic_function(summarize={"depth": 0, "siblings": 0})
-def decide_action_type(
-    task: str,
-    step: int,
-    max_steps: int,
-    history: list,
-    system_context: str = "",
-    runtime=None,
-) -> dict:
-    """Decide whether the next step needs GUI interaction or not.
+  click(x, y)        — Single click at coordinates. Needs coordinates.
+  double_click(x, y)  — Double click. Needs coordinates. Use to open files, enter cell edit mode.
+  right_click(x, y)   — Right click. Needs coordinates.
+  drag(x1, y1, x2, y2) — Drag from one point to another. Needs two sets of coordinates.
+  type(text)          — Type text into currently focused element. NO coordinates needed.
+                        Does NOT click first, does NOT press Enter after.
+  key_press(key)      — Press a key ("return", "escape", "tab", "delete", etc.). NO coordinates needed.
+  shortcut(keys)      — Keyboard shortcut ("ctrl+s", "ctrl+z", etc.). NO coordinates needed.
+  paste(text)         — Paste via clipboard. NO coordinates needed.
+  done                — Task fully completed.
 
-    Based on the task description and action history, choose:
-
-    1. "gui" — you need to see and interact with the screen
-       (click buttons, open files, type in fields, use shortcuts, scroll, etc.)
-       {"type": "gui"}
-
-    2. "general" — you can complete this step without seeing the screen
-       (read/write files, edit code, run commands, process data, etc.)
-       {"type": "general", "task": "description of what to do"}
-
-    3. "done" — the task is fully complete
-       {"type": "done", "reasoning": "why task is complete"}
-
-    Return ONLY valid JSON.
-    """
-    rt = runtime or _get_runtime()
-
-    history_summary = _build_history_summary(history)
-    sys_ctx = f"\n{system_context}" if system_context else ""
-
-    context = f"""Task: {task}
-Step {step}/{max_steps}.{sys_ctx}{history_summary}
-
-Does the next step need GUI interaction (seeing/clicking the screen)?
-Or can it be done without looking at the screen (file operations, commands)?
-Return ONLY valid JSON."""
-
-    reply = rt.exec(content=[{"type": "text", "text": context}])
-
-    try:
-        return parse_json(reply)
-    except Exception:
-        reply_lower = reply.lower()
-        if '"done"' in reply_lower or "task is complete" in reply_lower:
-            return {"type": "done", "reasoning": reply[:200]}
-        return {"type": "gui"}  # Default to GUI if can't parse
+RULES:
+- To input text: click the target first, then type, then key_press "return" if needed.
+- To save: shortcut "ctrl+s".
+- If a previous action failed, try a DIFFERENT approach.
+""".strip()
 
 
 @agentic_function(summarize={"depth": 0, "siblings": 0})
-def plan_gui_action(
-    task: str,
-    img_path: str,
-    step: int,
-    max_steps: int,
-    history: list,
-    runtime=None,
-) -> dict:
-    """Look at the screenshot and decide the specific GUI action.
+def phase0_decide_action(task: str, img_path: str, step: int, max_steps: int,
+                         history: list, runtime=None) -> dict:
+    """Phase 0: LLM sees the screenshot and decides what action to take.
 
-    You can see the current screen. Choose one action:
+    If the action needs coordinates, the coordinates field will be null
+    and the locate workflow will run next.
 
-    Actions that need coordinate locating (we find the target):
-      {"action": "click", "target": "description of element"}
-      {"action": "double_click", "target": "description of element"}
-      {"action": "right_click", "target": "description of element"}
-      {"action": "drag", "target": "start element", "target_end": "end element"}
-
-    Direct actions (keyboard/input):
-      {"action": "type", "text": "text to type"}
-      {"action": "press", "key": "enter"}
-      {"action": "hotkey", "keys": "ctrl+s"}
-      {"action": "scroll", "direction": "down"}
-
-    If you realize the task is done:
-      {"action": "done", "reasoning": "task is complete"}
-
-    Return ONLY valid JSON.
+    Return ONLY JSON:
+    {
+      "action": "click|double_click|right_click|drag|type|key_press|shortcut|paste|done",
+      "target": "description of what to interact with (for coordinate actions)",
+      "text": "text to type (for type/paste)",
+      "key": "key name (for key_press)",
+      "keys": "shortcut keys (for shortcut)",
+      "reasoning": "brief explanation"
+    }
     """
     rt = runtime or _get_runtime()
 
-    history_summary = _build_history_summary(history)
+    history_summary = ""
+    if history:
+        lines = []
+        for h in history[-5:]:
+            status = "✅" if h.get("success") else "❌"
+            desc = h.get("description", h.get("action", ""))
+            lines.append(f"  {h['step']}. {status} {desc}")
+        history_summary = f"\nRecent actions:\n" + "\n".join(lines)
+
+    steps_left = max_steps - step
+    urgency = ""
+    if steps_left <= 3:
+        urgency = f"\n⚠️ Only {steps_left} steps left! Prioritize completing and SAVING now."
 
     context = f"""Task: {task}
-Step {step}/{max_steps}.{history_summary}
 
-Look at the screenshot and decide the GUI action.
-Return ONLY valid JSON."""
+{ACTION_DESCRIPTIONS}
+
+Look at the screenshot and decide: what is the SINGLE next action to take?
+
+Step {step}/{max_steps}.{history_summary}{urgency}"""
 
     reply = rt.exec(content=[
         {"type": "text", "text": context},
@@ -170,293 +105,64 @@ Return ONLY valid JSON."""
         return parse_json(reply)
     except Exception:
         reply_lower = reply.lower()
-        if '"done"' in reply_lower or "task is complete" in reply_lower:
-            return {"action": "done", "reasoning": reply[:200]}
+        if '"done"' in reply_lower or 'task is complete' in reply_lower:
+            return {"action": "done", "reasoning": f"Parsed from text: {reply[:200]}"}
         return {"action": "retry", "reasoning": f"Could not parse: {reply[:200]}"}
 
 
-# ═══════════════════════════════════════════
-# Direct actions (no coordinate detection)
-# ═══════════════════════════════════════════
+def execute_task(task: str, runtime=None, max_steps: int = 20,
+                 app_name: str = None) -> dict:
+    """Execute a GUI task autonomously.
 
-def _execute_direct_action(action, plan):
-    """Execute a direct action that doesn't need coordinate detection."""
-    from gui_harness.action.keyboard import key_press, key_combo, type_text
-
-    if action == "type":
-        text = plan.get("text", "")
-        type_text(text)
-        return {"success": True}
-    elif action == "press":
-        key = plan.get("key", plan.get("target", "return"))
-        key_press(key)
-        return {"success": True}
-    elif action == "hotkey":
-        keys_str = plan.get("keys", plan.get("target", ""))
-        keys = [k.strip() for k in keys_str.split("+")]
-        key_combo(*keys)
-        return {"success": True}
-    elif action == "scroll":
-        direction = plan.get("direction", plan.get("target", "down")).lower()
-        key_press("pageup" if direction == "up" else "pagedown")
-        return {"success": True}
-    else:
-        return {"success": False, "error": f"Unknown direct action: {action}"}
-
-
-# ═══════════════════════════════════════════
-# GUI action execution
-# ═══════════════════════════════════════════
-
-def _execute_gui_action(action, plan, task, img_path, app_name, runtime):
-    """Execute a GUI action that needs our visual detection pipeline."""
-    target = plan.get("target", "")
-
-    if action == "drag":
-        target_end = plan.get("target_end", "")
-        start = locate_target(task=task, target=f"Find START: {target}",
-                              img_path=img_path, app_name=app_name, runtime=runtime)
-        if not start:
-            return {"success": False, "error": f"Start not found: {target}"}
-        end = locate_target(task=task, target=f"Find END: {target_end}",
-                            img_path=img_path, app_name=app_name, runtime=runtime)
-        if not end:
-            return {"success": False, "error": f"End not found: {target_end}"}
-        _input.mouse_drag(start["cx"], start["cy"], end["cx"], end["cy"])
-        return {"success": True}
-    else:
-        location = locate_target(task=task, target=target,
-                                 img_path=img_path, app_name=app_name, runtime=runtime)
-        if not location:
-            return {"success": False, "error": f"Target not found: {target}"}
-        cx, cy = location["cx"], location["cy"]
-        if action == "click":
-            _input.mouse_click(cx, cy)
-        elif action == "double_click":
-            _input.mouse_double_click(cx, cy)
-        elif action == "right_click":
-            _input.mouse_right_click(cx, cy)
-        return {"success": True, "location": location}
-
-
-def _execute_code(code, vm_url=None):
-    """Execute arbitrary code/command. Routes through VM API if patched."""
-    try:
-        if vm_url or _is_vm_mode():
-            return _execute_on_vm(code)
-        else:
-            import subprocess
-            result = subprocess.run(
-                code, shell=True, capture_output=True, text=True, timeout=30
-            )
-            output = result.stdout.strip()
-            if result.returncode != 0 and result.stderr:
-                output += f"\nSTDERR: {result.stderr.strip()}"
-            return {"success": result.returncode == 0, "output": output}
-    except Exception as e:
-        return {"success": False, "output": f"Error: {e}"}
-
-
-def _is_vm_mode():
-    """Check if we're in VM mode (vm_adapter patched the screenshot function)."""
-    return hasattr(_screenshot, 'take') and 'vm_screenshot' in str(_screenshot.take)
-
-
-def _execute_on_vm(code):
-    """Execute code on the VM via HTTP API."""
-    import requests
-    from gui_harness.adapters import vm_adapter
-    if vm_adapter._VM_URL is None:
-        return {"success": False, "output": "VM not configured"}
-    try:
-        r = requests.post(
-            f"{vm_adapter._VM_URL}/execute",
-            json={"command": code, "shell": True},
-            timeout=30,
-        )
-        data = r.json()
-        output = data.get("output", "").strip()
-        if data.get("error"):
-            output += f"\nERROR: {data['error']}"
-        return {
-            "success": data.get("returncode", 1) == 0,
-            "output": output[:500],
-        }
-    except Exception as e:
-        return {"success": False, "output": f"VM exec error: {e}"}
-
-
-# ═══════════════════════════════════════════
-# Agent session initialization
-# ═══════════════════════════════════════════
-
-def _kill_stale_processes():
-    """Kill any lingering claude stream-json processes from previous runs."""
-    import subprocess as _sp
-    try:
-        result = _sp.run(
-            ["pkill", "-f", "claude.*stream-json"],
-            capture_output=True, timeout=5,
-        )
-    except Exception:
-        pass  # Best effort
-    time.sleep(0.5)
-
-
-def _build_system_context(task, app_name):
-    """Build the system context string for the agent session.
-
-    Returns a context string with VM info and capabilities.
-    This is prepended to the first decide_next_action call.
-    """
-    vm_info = ""
-    try:
-        from gui_harness.adapters import vm_adapter
-        if vm_adapter._VM_URL:
-            vm_info = f"""
-Environment: Remote VM at {vm_adapter._VM_URL}
-All files and apps are on the VM, not local.
-VM commands: curl -s -X POST {vm_adapter._VM_URL}/execute -H 'Content-Type: application/json' -d '{{"command": "CMD", "shell": true}}'
-"""
-    except Exception:
-        pass
-
-    return f"""You are a GUI automation agent.
-Application: {app_name}
-{vm_info}"""
-
-
-# ═══════════════════════════════════════════
-# Main loop
-# ═══════════════════════════════════════════
-
-def execute_task(task: str, runtime=None, max_steps: int = 30, app_name: str = "desktop") -> dict:
-    """Execute a GUI task autonomously with experience-augmented decisions.
-
-    The LLM freely decides what to do. GUI click operations go through
-    our visual detection pipeline. Everything else executes directly.
+    Per-step workflow:
+      Phase 0: Screenshot → LLM decides action
+      If needs coordinates:
+        Phase 1: GPA detect components
+        Phase 2: Match against saved memory
+        Phase 3: LLM checks matched components for target
+        Phase 4: Label unknowns until target found
+        Phase 5: Cleanup
+      Execute atomic action
 
     Args:
         task:       Natural language description of what to do.
-        runtime:    GUIRuntime instance (auto-detected if None).
-        max_steps:  Maximum number of actions (default: 30).
-        app_name:   App name for component memory (default: "desktop").
+        runtime:    Optional: GUIRuntime instance.
+        max_steps:  Maximum number of actions (default: 20).
+        app_name:   App name for component memory (auto-detected if None).
 
     Returns:
-        dict: task, success, steps_taken, total_time, history
+        dict: task, success, steps_taken, final_state, history
     """
+    from gui_harness.perception import screenshot as ss
+    from gui_harness.action import actions
+    from gui_harness.action.input import get_frontmost_app
+    from gui_harness.planning.component_memory import locate_target
+
     rt = runtime or _get_runtime()
+    if not app_name:
+        app_name = get_frontmost_app()
 
-    # Reset runtime to ensure clean session for this task
-    if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-        rt._inner.reset()
-
-    try:
-        return _execute_task_loop(task, rt, max_steps, app_name)
-    finally:
-        # Always close runtime when task ends (success or error)
-        if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-            rt._inner.reset()
-
-
-def _execute_task_loop(task, rt, max_steps, app_name):
-    """Internal task loop. Separated so execute_task can wrap with try-finally."""
     history = []
     completed = False
-    system_context = _build_system_context(task, app_name)
-    task_start = time.time()
 
     for step in range(1, max_steps + 1):
-        step_start = time.time()
-        timing = {}
-        current_state = None
+        # ─── Phase 0: Screenshot → LLM decides action ───
+        img_path = ss.take()
 
-        # Step 1: Decide action type (text only, no screenshot)
-        t0 = time.time()
-        try:
-            type_decision = decide_action_type(
-                task=task, step=step, max_steps=max_steps,
-                history=history,
-                system_context=system_context if step == 1 else "",
-                runtime=rt,
-            )
-        except Exception as e:
-            print(f"  [step {step}] decide ERROR: {e.__class__.__name__}, resetting", file=sys.stderr)
-            if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-                rt._inner.reset()
-            type_decision = {"type": "gui"}  # Default to GUI on error
-        timing["decide_type"] = round(time.time() - t0, 2)
+        plan = phase0_decide_action(
+            task=task, img_path=img_path,
+            step=step, max_steps=max_steps,
+            history=history, runtime=rt,
+        )
 
-        action_type = type_decision.get("type", "gui")
+        action = plan.get("action", "done").lower()
 
-        # Handle done
-        if action_type == "done":
-            completed = True
-            history.append({
-                "step": step, "action": "done",
-                "reasoning": type_decision.get("reasoning", ""),
-                "success": True, "timing": timing,
-                "state_before": None, "state_after": None,
-            })
-            print(f"  [step {step}] done", file=sys.stderr)
-            break
-
-        # Handle general (no screenshot needed)
-        if action_type == "general":
-            sub_task = type_decision.get("task", "")
-            print(f"  [step {step}] general: {sub_task[:60]}", file=sys.stderr)
-            t0 = time.time()
-            try:
-                result = general_action(sub_task=sub_task, runtime=rt)
-            except Exception as e:
-                print(f"  [step {step}] general ERROR: {e.__class__.__name__}", file=sys.stderr)
-                if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-                    rt._inner.reset()
-                result = {"success": False, "output": str(e)}
-            timing["execute"] = round(time.time() - t0, 2)
-            timing["step_total"] = round(time.time() - step_start, 2)
-            history.append({
-                "step": step, "action": "general",
-                "target": sub_task[:100],
-                "output": result.get("output", ""),
-                "reasoning": type_decision.get("reasoning", ""),
-                "success": result.get("success", False),
-                "timing": timing,
-                "state_before": None, "state_after": None,
-            })
-            time.sleep(0.5)
-            continue
-
-        # Handle GUI — take screenshot, then plan specific action
-        print(f"  [step {step}] gui → taking screenshot...", file=sys.stderr)
-        t0 = time.time()
-        img_path = _screenshot.take()
-        timing["screenshot"] = round(time.time() - t0, 2)
-        time.sleep(0.3)
-
-        t0 = time.time()
-        try:
-            plan = plan_gui_action(
-                task=task, img_path=img_path, step=step, max_steps=max_steps,
-                history=history, runtime=rt,
-            )
-        except Exception as e:
-            print(f"  [step {step}] plan_gui ERROR: {e.__class__.__name__}, resetting", file=sys.stderr)
-            if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-                rt._inner.reset()
-            plan = {"action": "retry", "reasoning": str(e)}
-        timing["plan_gui"] = round(time.time() - t0, 2)
-
-        action = plan.get("action", "done")
-        print(f"  [step {step}] gui → {action}", file=sys.stderr)
-
-        # Retry
+        # Parse failed → retry
         if action == "retry":
             history.append({
                 "step": step, "action": "retry",
-                "reasoning": plan.get("reasoning", ""),
-                "success": False, "timing": timing,
-                "state_before": current_state, "state_after": current_state,
+                "description": f"retry — {plan.get('reasoning', '')[:60]}",
+                "success": False,
             })
             continue
 
@@ -465,108 +171,145 @@ def _execute_task_loop(task, rt, max_steps, app_name):
             completed = True
             history.append({
                 "step": step, "action": "done",
-                "reasoning": plan.get("reasoning", ""),
-                "success": True, "timing": timing,
-                "state_before": current_state, "state_after": current_state,
+                "description": f"done — {plan.get('reasoning', '')[:60]}",
             })
             break
 
-        # Execute GUI action (screenshot already taken above)
-        t0 = time.time()
-        result = {}
-        try:
-            if action in GUI_ACTIONS:
-                result = _execute_gui_action(
-                    action, plan, task, img_path, app_name, rt)
-            elif action in DIRECT_ACTIONS:
-                result = _execute_direct_action(action, plan)
+        # ─── Actions that DON'T need coordinates ───
+        if action not in COORDINATE_ACTIONS:
+            result = _execute_no_coord_action(actions, action, plan)
+            history.append({
+                "step": step, "action": action,
+                "description": _describe_action(action, plan, result),
+                "success": result.get("success", False),
+            })
+            continue
+
+        # ─── Actions that NEED coordinates: run locate workflow ───
+        target_desc = plan.get("target", task)
+
+        if action == "drag":
+            # Drag needs two positions — locate both
+            # First: locate start position
+            all_comps_1, start_target = locate_target(
+                task=f"Find the START position for drag: {target_desc}",
+                app_name=app_name, img_path=img_path, runtime=rt,
+            )
+            if not start_target:
+                history.append({
+                    "step": step, "action": action,
+                    "description": f"drag — start position not found ❌",
+                    "success": False,
+                })
+                continue
+
+            # Second: locate end position
+            all_comps_2, end_target = locate_target(
+                task=f"Find the END position for drag: {target_desc}",
+                app_name=app_name, img_path=img_path, runtime=rt,
+            )
+            if not end_target:
+                history.append({
+                    "step": step, "action": action,
+                    "description": f"drag — end position not found ❌",
+                    "success": False,
+                })
+                continue
+
+            result = actions.drag(
+                start_target["x"], start_target["y"],
+                end_target["x"], end_target["y"],
+            ) if hasattr(actions, 'drag') else {
+                "action": "drag", "success": False, "error": "drag not implemented"
+            }
+        else:
+            # click / double_click / right_click — locate target
+            all_comps, target = locate_target(
+                task=f"{action}: {target_desc}",
+                app_name=app_name, img_path=img_path, runtime=rt,
+            )
+
+            if not target:
+                history.append({
+                    "step": step, "action": action,
+                    "description": f"{action} — target not found ❌",
+                    "success": False,
+                })
+                continue
+
+            # Execute the coordinate action
+            if action in ("click", "single_click"):
+                result = actions.click(target["x"], target["y"])
+            elif action == "double_click":
+                result = actions.double_click(target["x"], target["y"])
+            elif action == "right_click":
+                result = actions.right_click(target["x"], target["y"])
             else:
-                # Unknown action — treat as general action
-                sub_task = plan.get("task", plan.get("target", plan.get("code", "")))
-                result = general_action(sub_task=sub_task, runtime=rt)
-        except Exception as e:
-            print(f"  [step {step}] Execute ERROR: {e.__class__.__name__}", file=sys.stderr)
-            if hasattr(rt, '_inner') and hasattr(rt._inner, 'reset'):
-                rt._inner.reset()
-            result = {"success": False, "output": str(e)}
-        timing["execute"] = round(time.time() - t0, 2)
+                result = {"action": action, "success": False, "error": f"Unknown: {action}"}
 
-        time.sleep(0.5)
-
-        # Record state transition (only for GUI actions that change state)
-        new_state = current_state
-        if action in GUI_ACTIONS:
-            t0 = time.time()
-            after_img = _screenshot.take("/tmp/gui_agent_after.png")
-            new_state, _ = identify_state(app_name, after_img)
-            timing["state_record"] = round(time.time() - t0, 2)
-
-            if result.get("success") and current_state is not None:
-                record_transition(
-                    app_name=app_name, from_state=current_state,
-                    action=action, action_target=plan.get("target", ""),
-                    to_state=new_state,
-                )
-
-        timing["step_total"] = round(time.time() - step_start, 2)
+        coord_str = ""
+        if action == "drag" and start_target and end_target:
+            coord_str = f" ({start_target['x']},{start_target['y']})→({end_target['x']},{end_target['y']})"
+        elif action != "drag" and target:
+            coord_str = f" ({target['x']},{target['y']})"
 
         history.append({
-            "step": step,
-            "action": action,
-            "target": plan.get("target", ""),
-            "code": plan.get("code", ""),
-            "output": result.get("output", ""),
-            "reasoning": plan.get("reasoning", ""),
+            "step": step, "action": action,
+            "description": f"{action}{coord_str} {plan.get('target', '')[:30]} {'✅' if result.get('success') else '❌'}",
             "success": result.get("success", False),
-            "state_before": current_state,
-            "state_after": new_state,
-            "timing": timing,
         })
 
-    total_time = round(time.time() - task_start, 2)
-    result = {
+        # ─── Emergency save ───
+        if step == max_steps - 1 and not completed:
+            actions.shortcut("ctrl+s")
+            history.append({
+                "step": step, "action": "shortcut",
+                "description": "shortcut(ctrl+s) — emergency auto-save",
+                "success": True,
+            })
+
+    # Final screenshot for status
+    final_img = ss.take("/tmp/gui_agent_final.png")
+
+    return {
         "task": task,
         "success": completed,
         "steps_taken": len(history),
-        "total_time": total_time,
+        "final_state": f"Screenshot saved: {final_img}",
         "history": history,
     }
-    _save_workflow_record(result, app_name)
-    return result
 
 
-# ═══════════════════════════════════════════
-# Workflow recording
-# ═══════════════════════════════════════════
+def _execute_no_coord_action(actions, action: str, plan: dict) -> dict:
+    """Execute an action that doesn't need coordinates."""
+    if action == "type":
+        return actions.type_text(plan.get("text", ""))
+    elif action == "key_press":
+        return actions.key_press(plan.get("key", plan.get("target", "return")))
+    elif action == "shortcut":
+        return actions.shortcut(plan.get("keys", plan.get("target", "")))
+    elif action == "paste":
+        return actions.paste_text(plan.get("text", ""))
+    elif action == "scroll":
+        return actions.scroll(plan.get("direction", "down"))
+    else:
+        return {"action": action, "success": False, "error": f"Unknown: {action}"}
 
-def _save_workflow_record(result: dict, app_name: str):
-    """Save completed task as a workflow record (JSONL, append-only)."""
-    import hashlib
-    from gui_harness.memory import app_memory
 
-    app_dir = app_memory.get_app_dir(app_name)
-    app_dir.mkdir(parents=True, exist_ok=True)
-    workflow_path = app_dir / "workflows.jsonl"
-
-    task_hash = hashlib.sha256(result["task"].encode()).hexdigest()[:12]
-    record = {
-        "task_hash": task_hash,
-        "task": result["task"],
-        "success": result["success"],
-        "steps_taken": result["steps_taken"],
-        "total_time": result.get("total_time"),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "steps": [
-            {
-                "step": h["step"], "action": h["action"],
-                "target": h.get("target", ""), "code": h.get("code", ""),
-                "success": h.get("success", False),
-            }
-            for h in result["history"]
-        ],
-    }
-    try:
-        with open(workflow_path, "a") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+def _describe_action(action: str, plan: dict, result: dict) -> str:
+    """Human-readable description of an executed action."""
+    status = "✅" if result.get("success") else "❌"
+    if action == "type":
+        text = plan.get("text", "")
+        short = text[:30] + "..." if len(text) > 30 else text
+        return f"type(\"{short}\") {status}"
+    elif action == "key_press":
+        return f"key_press({plan.get('key', plan.get('target', ''))}) {status}"
+    elif action == "shortcut":
+        return f"shortcut({plan.get('keys', plan.get('target', ''))}) {status}"
+    elif action == "paste":
+        return f"paste(\"{plan.get('text', '')[:20]}\") {status}"
+    elif action == "scroll":
+        return f"scroll({plan.get('direction', 'down')}) {status}"
+    else:
+        return f"{action} {status}"

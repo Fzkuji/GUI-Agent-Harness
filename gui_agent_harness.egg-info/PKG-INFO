@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: gui-agent-harness
+Version: 0.2.0
+Summary: GUI automation powered by Agentic Programming — designed for OpenClaw
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: agentic-programming @ file:libs/agentic-programming
+Requires-Dist: pynput
+Requires-Dist: opencv-python
+Provides-Extra: anthropic
+Requires-Dist: anthropic>=0.30; extra == "anthropic"
+Provides-Extra: openai
+Requires-Dist: openai>=1.30; extra == "openai"
+Dynamic: license-file

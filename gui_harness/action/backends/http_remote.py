@@ -4,12 +4,14 @@ import requests
 import time
 import os
 
+_NO_PROXY = {"http": None, "https": None}
+
 
 def _exec(remote_url, command, timeout=30):
     """Execute a command on remote VM via HTTP API."""
     for attempt in range(3):
         try:
-            r = requests.post(f"{remote_url}/execute", json={"command": command}, timeout=timeout)
+            r = requests.post(f"{remote_url}/execute", json={"command": command}, timeout=timeout, proxies=_NO_PROXY)
             result = r.json()
             if result.get("error"):
                 print(f"remote error: {result['error'][:200]}")
@@ -66,7 +68,7 @@ def shortcut(keys, remote_url=None):
 def screenshot(path="/tmp/gui_screenshot.png", remote_url=None):
     """Download screenshot from remote VM."""
     try:
-        r = requests.get(f"{remote_url}/screenshot", timeout=10)
+        r = requests.get(f"{remote_url}/screenshot", timeout=10, proxies=_NO_PROXY)
         with open(path, "wb") as f:
             f.write(r.content)
         print(f"screenshot: {path} ({len(r.content)} bytes)")
