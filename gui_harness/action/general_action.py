@@ -26,7 +26,7 @@ def _get_runtime():
 
 
 @agentic_function(summarize={"depth": 0, "siblings": 0})
-def general_action(sub_task: str, runtime=None) -> dict:
+def general_action(sub_task: str, task_context: str = "", runtime=None) -> dict:
     """Execute a sub-task using any available tools.
 
     You are given a specific sub-task to complete. You have full freedom
@@ -54,20 +54,50 @@ def general_action(sub_task: str, runtime=None) -> dict:
     # Add VM context if available
     vm_info = ""
     try:
-        from gui_harness.adapters import vm_adapter
-        if vm_adapter._VM_URL:
+        from gui_harness.action import input as _action_input
+        vm_url = getattr(_action_input, '_vm_url', None)
+        if vm_url:
             vm_info = f"""
-Environment: Remote VM at {vm_adapter._VM_URL}
-Files are on the VM, not local. To read/write files, use:
-  curl -s -X POST {vm_adapter._VM_URL}/execute -H 'Content-Type: application/json' -d '{{"command": "cat /path", "shell": true}}'
-To execute commands on VM:
-  curl -s -X POST {vm_adapter._VM_URL}/execute -H 'Content-Type: application/json' -d '{{"command": "your_command", "shell": true}}'
+IMPORTANT: You are operating on a REMOTE Ubuntu VM, NOT on local macOS.
+All commands and file operations must target the VM at {vm_url}.
+
+To run commands on the VM:
+  curl -s -X POST {vm_url}/execute -H 'Content-Type: application/json' -d '{{"command": "YOUR_COMMAND", "shell": true}}'
+To read files on the VM:
+  curl -s -X POST {vm_url}/execute -H 'Content-Type: application/json' -d '{{"command": "cat /path/to/file", "shell": true}}'
+To write files on the VM:
+  curl -s -X POST {vm_url}/execute -H 'Content-Type: application/json' -d '{{"command": "echo content > /path/to/file", "shell": true}}'
+
+Do NOT use local macOS commands, local file paths, or local applications.
+All paths like /home/user/... are on the VM.
 """
     except Exception:
         pass
 
+    # Build prompt with full context
+    prompt_parts = []
+    if task_context:
+        prompt_parts.append(task_context)
+    prompt_parts.append(f"Sub-task: {sub_task}")
+    if vm_info:
+        prompt_parts.append(vm_info)
+    prompt_parts.append(
+        "IMPORTANT: When extracting or copying data (descriptions, names, numbers, text), "
+        "always read directly from source files. Do NOT generate or paraphrase content from "
+        "your own knowledge — copy verbatim from the actual data.\n\n"
+        "IMPORTANT: When you need data from a website (e.g., IMDB, Wikipedia, etc.), use "
+        "curl with proxy to fetch the actual webpage HTML on the VM and parse it with Python. "
+        "Use: curl -s --proxy http://172.16.82.1:6152 'URL' to fetch pages via the proxy. "
+        "Then parse with python3 and BeautifulSoup. Do NOT rely on your own knowledge to generate website content.\n\n"
+        "CRITICAL: If curl/requests returns empty content, HTTP error, WAF challenge (202), "
+        "or you cannot get real data from the website, you MUST return {\"success\": false, "
+        "\"error\": \"Failed to fetch web data\", \"output\": \"description of what went wrong\"}. "
+        "NEVER fall back to generating data from your own knowledge. If you cannot get real data, FAIL the task."
+    )
+    prompt_parts.append("Complete this and return JSON with success/output/error.")
+
     reply = rt.exec(content=[
-        {"type": "text", "text": f"Sub-task: {sub_task}\n{vm_info}\nComplete this and return JSON with success/output/error."},
+        {"type": "text", "text": "\n".join(prompt_parts)},
     ])
 
     try:

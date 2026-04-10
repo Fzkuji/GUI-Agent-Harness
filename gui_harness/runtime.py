@@ -26,6 +26,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from typing import Optional
@@ -144,15 +145,32 @@ class GUIRuntime(Runtime):
             )
         elif detected_provider == "claude-code":
             from agentic.providers.claude_code import ClaudeCodeRuntime
+            # Main runtime: execution with Bash only (no local Read/Write/Edit)
             self._inner = ClaudeCodeRuntime(
                 model=use_model,
+                tools="Bash",
                 **kwargs,
+            )
+            # Planning runtime: no tools, -p mode (for text-only analysis/decisions)
+            self._planner = _ClaudeCodePlannerRuntime(
+                model=use_model,
+                cli_path=self._inner.cli_path,
             )
         else:
             raise ValueError(f"Unknown provider: {detected_provider}")
 
         super().__init__(model=use_model, max_retries=1)
         self.provider = detected_provider
+
+    def plan(self, content: list[dict], **kwargs) -> str:
+        """Call the planning runtime (no tools, pure text).
+
+        Use this for analysis, decision-making, and any call where
+        the LLM should NOT execute commands.
+        """
+        if hasattr(self, '_planner'):
+            return self._planner._call(content, **kwargs)
+        return self._call(content, **kwargs)
 
     def _call(
         self,
@@ -250,3 +268,122 @@ class _OpenClawRuntime(Runtime):
             return data.get("reply", data.get("message", result.stdout.strip()))
         except json.JSONDecodeError:
             return result.stdout.strip()
+
+
+class _ClaudeCodePlannerRuntime(Runtime):
+    """Claude Code CLI in print mode with no tools — for pure text planning.
+
+    Uses `claude -p --tools ""` for each call (single-shot, no persistent session).
+    Cannot execute any commands, read/write files, or use any tools.
+    Only returns text responses.  Supports images via stream-json input format.
+    """
+
+    def __init__(self, model: str = "opus", cli_path: str = None, timeout: int = 120):
+        super().__init__(model=model)
+        self.cli_path = cli_path or shutil.which("claude")
+        self.timeout = timeout
+
+    def _call(
+        self,
+        content: list[dict],
+        model: str = "default",
+        response_format=None,
+    ) -> str:
+        import subprocess
+
+        use_model = model if model != "default" else self.model
+
+        has_images = any(
+            b.get("type") == "image" and (b.get("path") or b.get("data"))
+            for b in content
+        )
+
+        if has_images:
+            return self._call_with_images(content, use_model, response_format)
+
+        # Text-only: simple path
+        parts = [b["text"] for b in content if b.get("type") == "text"]
+        prompt = "\n".join(parts)
+
+        cmd = [self.cli_path, "-p", "--tools", "", "--model", use_model]
+        result = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=self.timeout)
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Claude Code planner failed (exit {result.returncode}): "
+                f"{result.stderr.strip()[:200]}"
+            )
+        return result.stdout.strip()
+
+    def _call_with_images(self, content: list[dict], model: str, response_format=None) -> str:
+        """Stream-json mode for image support."""
+        import subprocess
+        import base64
+
+        anthropic_content = []
+        for block in content:
+            if block.get("type") == "text":
+                anthropic_content.append({"type": "text", "text": block["text"]})
+            elif block.get("type") == "image":
+                path = block.get("path", "")
+                if path and os.path.isfile(path):
+                    with open(path, "rb") as f:
+                        data = base64.b64encode(f.read()).decode()
+                    ext = os.path.splitext(path)[1].lower()
+                    media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext.lstrip("."), "image/png")
+                    anthropic_content.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": data},
+                    })
+
+        if response_format:
+            anthropic_content.append({
+                "type": "text",
+                "text": f"\n\nRespond with ONLY valid JSON matching: {json.dumps(response_format)}",
+            })
+
+        stream_msg = json.dumps({
+            "type": "user",
+            "message": {"role": "user", "content": anthropic_content},
+        })
+
+        cmd = [
+            self.cli_path, "-p",
+            "--tools", "",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--model", model,
+        ]
+
+        result = subprocess.run(cmd, input=stream_msg, capture_output=True, text=True, timeout=self.timeout)
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Claude Code planner failed (exit {result.returncode}): "
+                f"{result.stderr.strip()[:200]}"
+            )
+
+        # Parse stream-json output
+        for line in result.stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if data.get("type") == "result":
+                    return data.get("result", "")
+                if data.get("type") == "assistant" and "message" in data:
+                    msg = data["message"]
+                    if isinstance(msg, dict) and "content" in msg:
+                        texts = [b["text"] for b in msg["content"] if b.get("type") == "text"]
+                        if texts:
+                            return "\n".join(texts)
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        return result.stdout.strip()
+
+    def reset(self):
+        """No-op — print mode has no persistent session."""
+        pass

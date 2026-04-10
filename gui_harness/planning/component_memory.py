@@ -36,7 +36,7 @@ from gui_harness.memory import app_memory
 # Phase 1: Detection
 # ═══════════════════════════════════════════
 
-def detect_components(img_path: str, conf: float = 0.1) -> dict:
+def detect_components(img_path: str, conf: float = 0.3) -> dict:
     """Run GPA-GUI-Detector + OCR on a screenshot.
 
     Returns a dict with:

@@ -49,7 +49,7 @@ def main():
     print(f"Instruction: {task_config['instruction'][:100]}")
 
     from eval_only import EvalOnlyEnv
-    env = EvalOnlyEnv(vm_ip=args.vm, server_port=VM_PORT)
+    env = EvalOnlyEnv(vm_ip=args.vm, server_port=VM_PORT, task_id=task_config["id"])
     env.load_task(task_config)
     score = float(env.evaluate())
 

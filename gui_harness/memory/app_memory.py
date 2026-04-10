@@ -278,7 +278,12 @@ def forget_stale_components(app_dir, components, meta, states, transitions):
     stale_names = set()
 
     for comp_name, comp_data in list(components.items()):
-        if comp_data.get("consecutive_misses", 0) >= threshold:
+        # Base memory components have a much higher forget threshold
+        if comp_data.get("base_memory"):
+            base_threshold = max(threshold * 10, 150)
+            if comp_data.get("consecutive_misses", 0) >= base_threshold:
+                stale_names.add(comp_name)
+        elif comp_data.get("consecutive_misses", 0) >= threshold:
             stale_names.add(comp_name)
 
     if not stale_names:

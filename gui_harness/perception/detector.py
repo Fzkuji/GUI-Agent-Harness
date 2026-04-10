@@ -476,6 +476,36 @@ def annotate_image(img_path, elements, out_path=None, retina_scale=2):
     return out_path
 
 
+def annotate_numbered(img_path, icons, out_path=None):
+    """Draw numbered bounding boxes on screenshot for batch LLM labeling.
+
+    Each icon gets a colored box and a number label [0], [1], [2], etc.
+    Returns path to annotated image.
+    """
+    import cv2
+
+    img = cv2.imread(img_path)
+    if img is None:
+        return None
+
+    color = (0, 200, 255)  # orange-yellow for visibility
+
+    for i, icon in enumerate(icons):
+        x, y, w, h = icon["x"], icon["y"], icon["w"], icon["h"]
+        cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+        # Number label with background for readability
+        label = f"[{i}]"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        lx, ly = x, max(y - 4, th + 4)
+        cv2.rectangle(img, (lx, ly - th - 4), (lx + tw + 4, ly + 2), (0, 0, 0), -1)
+        cv2.putText(img, label, (lx + 2, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    if out_path is None:
+        out_path = img_path.replace(".png", "_numbered.jpg")
+    cv2.imwrite(out_path, img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return out_path
+
+
 # ═══════════════════════════════════════════
 # Mac-specific full pipeline
 # ═══════════════════════════════════════════
