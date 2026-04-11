@@ -11,7 +11,7 @@
 | ⏳ Pending eval | 28 |
 | ❌ Blocked | 21 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **55.824/68 ≈ 82.1%** |
+| **Verified score** | **56.824/69 ≈ 82.4%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -93,12 +93,12 @@
 | 72 | `f5c13cdd` | Email tuition reminder | **1.0** (Opus) | ✅ general读xlsx被post-check误杀→转GUI操作Thunderbird：点击To字段+输入4个邮箱。7步129秒。 |
 | 73 | `5990457f` | Yann LeCun Google Scholar | **1.0** (Opus) | ⚠️ 官方eval=0.0。Agent流程正确：GUI导航Scholar→搜索→点击profile→滚动→general提取数据写xlsx。12步274秒。失败因evaluator有bug（`current_use_proxy`缺失）用了过时backup数据，实时Scholar数据自然不匹配。 |
 | 74 | `415ef462` | AWS invoice extraction | **1.0** (Opus) | ✅ GUI操作Thunderbird找Bills邮件→general提取PDF附件+更新tally_book.xlsx。8步。之前N/A因eval cache_dir不一致，已修复。 |
-| 75 | `7ff48d5b` | Macau travel info | **0.0** (Opus) | ❌ 需要搜索深圳自助签注机地址，写入docx。数据不匹配 |
+| 75 | `7ff48d5b` | Macau travel info | **0.0** (Opus) | ❌ Agent搜到5个正确地址(5/5匹配gold)，但python-docx写入后被Writer的Ctrl+S覆盖为空。文件保存冲突问题。 |
 | 76 | `9f3bb592` | Remove video subtitles | **1.0** (Opus) | ✅ ffmpeg去除视频字幕。2步。 |
 | 77 | `dd60633f` | Extract Python from colab | **1.0** (Opus) | ✅ 提取Karpathy GPT colab的Python代码和注释。2步。 |
-| 78 | `ce2b64a2` | Identify mountain photos | **0.0** (Opus) | ❌ 查看图片并重命名，但山名识别不正确 |
+| 78 | `ce2b64a2` | Identify mountain photos | **1.0** (Opus) | ✅ 识别3张山照片(Kilimanjaro/Everest/华山)并重命名。7步。 |
 | 79 | `3f05f3b9` | MP3 metadata editing | **1.0** (Opus) | ✅ MP3元数据填充。2步。 |
-| 80 | `e1fc0df3` | Install LanguageTool extension | **N/A** | ❌ Evaluator报错（AssertionError） |
+| 80 | `e1fc0df3` | Install LanguageTool extension | **0.0** (Opus) | ❌ 成功安装LanguageTool.oxt到LibreOffice，但没装OpenJDK(Java依赖)。Evaluator检查两项：oxt ✅ + openjdk ❌。 |
 | 81 | `f8369178` | Install Orchis GNOME theme | | |
 | 82 | `778efd0a` | Extract video audio for slides | | |
 | 83 | `47f7c0ce` | Extract video frame for slide bg | | |

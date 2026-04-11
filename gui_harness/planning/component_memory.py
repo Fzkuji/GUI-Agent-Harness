@@ -528,6 +528,7 @@ def locate_target(
         _timing["phase3_llm"] = round(time.time() - t0, 2)
         print(f"  [locate] Phase 3: found={result.get('found', False)} ({_timing['phase3_llm']}s)", file=sys.stderr)
         if result.get("found"):
+            print(f"  [locate] Phase 3 result: name='{result.get('name', '?')}' at ({result.get('cx', 0)}, {result.get('cy', 0)})", file=sys.stderr)
             return {
                 "cx": result.get("cx", 0),
                 "cy": result.get("cy", 0),
@@ -548,6 +549,8 @@ def locate_target(
     )
     _timing["phase4_label"] = round(time.time() - t0, 2)
     print(f"  [locate] Phase 4: found={'yes' if found else 'no'} ({_timing['phase4_label']}s)", file=sys.stderr)
+    if found:
+        print(f"  [locate] Phase 4 result: name='{found.get('name', '?')}' at ({found.get('cx', 0)}, {found.get('cy', 0)})", file=sys.stderr)
 
     if found:
         found["timing"] = _timing
