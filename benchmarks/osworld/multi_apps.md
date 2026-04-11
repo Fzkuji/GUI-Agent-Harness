@@ -11,7 +11,7 @@
 | ⏳ Pending eval | 28 |
 | ❌ Blocked | 21 |
 | 🔲 Not yet attempted | 18 |
-| **Verified score** | **57.824/70 ≈ 82.6%** |
+| **Verified score** | **62.625/80 ≈ 78.3%** |
 
 > Scores are ONLY from OSWorld official evaluator (`desktop_env/evaluators/`).
 
@@ -99,16 +99,16 @@
 | 78 | `ce2b64a2` | Identify mountain photos | **1.0** (Opus) | ✅ 识别3张山照片(Kilimanjaro/Everest/华山)并重命名。7步。 |
 | 79 | `3f05f3b9` | MP3 metadata editing | **1.0** (Opus) | ✅ MP3元数据填充。2步。 |
 | 80 | `e1fc0df3` | Install LanguageTool extension | **1.0** | 安装LanguageTool.oxt + OpenJDK，15步948秒 |
-| 81 | `f8369178` | Install Orchis GNOME theme | | |
-| 82 | `778efd0a` | Extract video audio for slides | | |
-| 83 | `47f7c0ce` | Extract video frame for slide bg | | |
-| 84 | `c2751594` | Export image from email→wallpaper | | |
-| 85 | `788b3701` | Track GitHub short tale | | |
-| 86 | `48c46dc7` | Setup workspace | | |
-| 87 | `42d25c08` | TXT to EPUB novel | | |
-| 88 | `e8172110` | GIMP pixel art extraction | | |
-| 89 | `42f4d1c7` | VS Code + GIMP scripting | | |
-| 90 | `3c8f201a` | Download + compress image | | |
+| 81 | `f8369178` | Install Orchis GNOME theme | **0.0** | ❌ gnome-look.org下载主题失败，15步280秒 |
+| 82 | `778efd0a` | Extract video audio for slides | **0.996** | ffmpeg提取音频+python-pptx插入slide，14步1144秒 |
+| 83 | `47f7c0ce` | Extract video frame for slide bg | **0.805** | ffmpeg提取帧+python-pptx设背景，3步152秒 |
+| 84 | `c2751594` | Export image from email→wallpaper | **1.0** | 从Thunderbird邮件提取docx中图片设为壁纸，5步294秒 |
+| 85 | `788b3701` | Track GitHub short tale | **1.0** | 对比GitHub和本地文件找缺失章节，2步54秒 |
+| 86 | `48c46dc7` | Setup workspace | **0.0** | ❌ 打开了terminal+Chrome但evaluator未通过，10步281秒 |
+| 87 | `42d25c08` | TXT to EPUB novel | **0.0** | ❌ 转换成功但evaluator未通过，3步132秒 |
+| 88 | `e8172110` | GIMP pixel art extraction | **0.0** | ❌ 提取pixel art但evaluator未通过，7步241秒 |
+| 89 | `42f4d1c7` | VS Code + GIMP scripting | **0.0** | ❌ 安装lisp扩展失败，15步696秒 |
+| 90 | `3c8f201a` | Download + compress image | **1.0** | 下载+压缩图片到600KB以下，15步2067秒 |
 | 91 | `d68204bf` | Divide image into sections | | |
 | 92 | `91190194` | GIMP crop top 20% | | |
 | 93 | `7f35355e` | CSV + find median price | | |
