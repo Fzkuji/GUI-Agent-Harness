@@ -23,7 +23,7 @@ import sys
 import time
 from typing import Optional
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function, build_action_catalog
 
 from gui_harness.utils import parse_json
 from gui_harness.perception import screenshot as _screenshot
@@ -368,38 +368,7 @@ def verify_step(
     feedback: dict,
     runtime=None,
 ) -> dict:
-    """Evaluate whether the previous action achieved its goal.
-
-    You see a screenshot taken AFTER the previous action was executed.
-    Your ONLY job: compare the stated goal with what is now visible.
-
-    Return JSON:
-    {
-      "step_succeeded": true/false,
-      "observation": "brief factual description of current screen state"
-    }
-
-    step_succeeded = Did the action achieve its stated goal?
-      true  — the expected change is visible (e.g., app opened, text appeared,
-              button state changed, file listed in directory)
-      false — no visible change, wrong result, or error message on screen
-
-    IMPORTANT — Command-line ("general") actions:
-      When the previous action was "general" (command-line), it runs in the
-      background and does NOT change the GUI. The screenshot will look the
-      same as before. This is NORMAL — do NOT mark step_succeeded=false
-      just because the screen hasn't changed. Instead:
-      - If Execution=succeeded → trust it, set step_succeeded=true
-      - If Execution=failed or there is an error → set step_succeeded=false
-      - Only set false if you see an actual error message ON SCREEN
-
-    observation = One sentence describing what you see RIGHT NOW.
-      Good: "Terminal shows 'Build complete', file explorer open in background"
-      Bad:  "The task appears to be done" (vague, not factual)
-
-    You do NOT decide whether the overall task is complete.
-    That decision belongs to the planning step, not to you.
-    """
+    """Evaluate whether the previous action achieved its goal."""
     if runtime is None:
         raise ValueError("verify_step() requires a runtime argument")
 
@@ -411,7 +380,28 @@ def verify_step(
     if feedback.get("error"):
         feedback_text += f"\nError: {feedback['error']}"
 
-    context = f"<task>{task}</task>\n\n<previous_step>\n{feedback_text}\n</previous_step>{component_info}"
+    context = (
+        f"<task>{task}</task>\n\n"
+        f"<previous_step>\n{feedback_text}\n</previous_step>"
+        f"{component_info}\n\n"
+        "The screenshot was taken AFTER the previous action ran. Compare "
+        "the step's stated goal with what is now visible and decide "
+        "whether the action achieved it.\n"
+        "- step_succeeded=true when the expected change is visible (app "
+        "opened, text appeared, button state changed, file listed).\n"
+        "- step_succeeded=false when there is no visible change, a wrong "
+        "result, or an error message on screen.\n"
+        '- For a command-line ("general") action: it runs in the '
+        "background and does NOT change the GUI, so the screenshot looks "
+        "unchanged — that is NORMAL. Trust Execution=succeeded "
+        "(step_succeeded=true); set false only on Execution=failed or an "
+        "actual on-screen error.\n"
+        "Do NOT decide whether the overall task is complete — that is "
+        "the planning step's job.\n\n"
+        "Reply with ONLY this JSON object:\n"
+        '{"step_succeeded": true, "observation": "one factual sentence '
+        'describing the current screen"}'
+    )
 
     reply = runtime.exec(content=[
         {"type": "text", "text": context},
@@ -454,36 +444,7 @@ def plan_next_action(
     action_catalog: str,
     runtime=None,
 ) -> dict:
-    """Decide the next action to take toward completing the task.
-
-    Input: a screenshot of the current screen, detected UI components,
-    previous step results, and a list of actions you can perform.
-
-    Return JSON for exactly ONE action from the available list:
-    {
-      "call": "<action_name>",
-      "args": { ... },
-      "goal": "what this action should achieve (one sentence)",
-      "reasoning": "why this is the right next step"
-    }
-
-    The "goal" field is critical — it will be used to verify this action
-    in the next step. Be specific:
-      Good goal: "Type 'Calculator' into the Spotlight search field"
-      Bad goal:  "Continue the task"
-
-    Decision guidelines:
-    - Prefer GUI interaction (click, type, hotkey) over command-line ("general")
-    - If <known_transitions> lists a relevant action, prefer it — it worked before
-    - If the same "general" sub-task already succeeded in a previous step,
-      do NOT repeat it. Move on to the next sub-task or verify the output.
-    - Do NOT generate or paraphrase content from your own knowledge.
-      All data must come from what is visible on screen or from actual files.
-    - Choose "done" ONLY when you have strong evidence the task is fully
-      complete. If a command ran but you haven't verified the output, do NOT
-      choose "done" — choose an action to verify the result first.
-    - If the previous step failed, plan a recovery (retry or alternative approach).
-    """
+    """Decide the next action to take toward completing the task."""
     if runtime is None:
         raise ValueError("plan_next_action() requires a runtime argument")
 
@@ -494,6 +455,31 @@ def plan_next_action(
     if transitions_info:
         parts.append(transitions_info)
     parts.append(f"\n== Available Actions ==\n{action_catalog}")
+    parts.append(
+        "\nPick exactly ONE action from the list above as the next step "
+        "toward the task.\n"
+        "Guidelines:\n"
+        "- Prefer GUI interaction (click, type, hotkey) over command-line "
+        '("general").\n'
+        "- If <known_transitions> lists a relevant action, prefer it — "
+        "it worked before.\n"
+        '- If a "general" sub-task already succeeded in a previous step, '
+        "do not repeat it; move on or verify its output.\n"
+        "- Never generate or paraphrase content from your own knowledge "
+        "— all data must come from the screen or actual files.\n"
+        '- Choose "done" ONLY with strong evidence the task is fully '
+        "complete; if a command ran but its output is unverified, plan a "
+        "verify action instead.\n"
+        "- If the previous step failed, plan a recovery (retry or an "
+        "alternative approach).\n\n"
+        "Reply with ONLY this JSON for one action:\n"
+        '{"call": "<action_name>", "args": { ... }, "goal": "what this '
+        'action should achieve, one specific sentence", "reasoning": '
+        '"why this is the right next step"}\n'
+        "The `goal` is used to verify this action next step — be "
+        "specific (\"Type 'Calculator' into the Spotlight field\", not "
+        '"Continue the task").'
+    )
 
     context = "\n".join(parts)
 
@@ -503,12 +489,29 @@ def plan_next_action(
     ])
 
     try:
-        return parse_json(reply)
+        return _normalize_plan(parse_json(reply))
     except Exception:
         reply_lower = reply.lower()
         if '"done"' in reply_lower or "task is complete" in reply_lower:
             return {"action": "done", "goal": "task complete", "reasoning": reply[:200]}
         return {"action": "general", "sub_task": reply[:200], "goal": reply[:100]}
+
+
+def _normalize_plan(parsed: dict) -> dict:
+    """Accept direct action JSON or an accidental gui_step-shaped wrapper."""
+    if not isinstance(parsed, dict):
+        return {"action": "general", "sub_task": str(parsed)[:200], "goal": str(parsed)[:100]}
+
+    nested = parsed.get("plan")
+    if isinstance(nested, dict):
+        if parsed.get("done") and "call" not in nested and "action" not in nested:
+            return {"call": "done", "goal": "task complete", "reasoning": "planner returned done wrapper"}
+        return nested
+
+    if parsed.get("done") and "call" not in parsed and "action" not in parsed:
+        return {"call": "done", "goal": "task complete", "reasoning": "planner returned done"}
+
+    return parsed
 
 
 # ═══════════════════════════════════════════
@@ -643,7 +646,7 @@ def gui_step(
 
     # ── 3. Plan next action (LLM) ──
     registry = _build_action_registry(allow_general=allow_general)
-    catalog = build_catalog(registry)
+    catalog = build_action_catalog(registry)
 
     verification_summary = ""
     if verification:
@@ -721,27 +724,23 @@ def build_step_feedback(result: dict) -> dict:
 
 @agentic_function(render_range={"depth": 0, "siblings": 0})
 def conclusion(task: str, completed: bool, steps_taken: int, runtime=None) -> dict:
-    """Summarize what was accomplished during the GUI task.
-
-    Look at the current screen and provide a brief summary of:
-    1. What was done
-    2. Whether the task was completed successfully
-    3. Any issues encountered
-
-    Return JSON:
-    {
-      "summary": "brief description of what was accomplished",
-      "success": true/false,
-      "issues": "any problems encountered, or null"
-    }
-    """
+    """Summarize what was accomplished during the GUI task."""
     if runtime is None:
         raise ValueError("conclusion() requires a runtime argument")
 
     img_path = _screenshot.take()
 
     status = "COMPLETED" if completed else f"INCOMPLETE (used all {steps_taken} steps)"
-    context = f"<task>{task}</task>\n\nStatus: {status}\nSteps used: {steps_taken}"
+    context = (
+        f"<task>{task}</task>\n\n"
+        f"Status: {status}\nSteps used: {steps_taken}\n\n"
+        "Look at the current screenshot and briefly summarise what was "
+        "done, whether the task completed successfully, and any issues "
+        "encountered.\n\n"
+        "Reply with ONLY this JSON object:\n"
+        '{"summary": "brief description of what was accomplished", '
+        '"success": true, "issues": "any problems encountered, or null"}'
+    )
 
     reply = runtime.exec(content=[
         {"type": "text", "text": context},

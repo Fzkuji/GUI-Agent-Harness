@@ -21,7 +21,7 @@ from typing import Optional
 
 import cv2
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function
 
 from gui_harness.utils import parse_json
 from gui_harness.perception import screenshot, detector
@@ -275,33 +275,7 @@ def _batch_label(
     offset: int = 0,
     runtime=None,
 ) -> dict:
-    """Label UI components in a numbered screenshot.
-
-    The screenshot has numbered bounding boxes around detected UI elements.
-    For EACH numbered component, provide a descriptive snake_case name that
-    describes what the component IS and DOES (e.g., "search_bar",
-    "close_button", "settings_icon", "file_menu", "bold_toggle").
-
-    Rules:
-    - Use snake_case, max 30 chars
-    - Return "skip" for decorative, blank, or non-interactive elements
-    - Include the component's function in the name (e.g., "save_button" not
-      just "button")
-    - If OCR text is available and descriptive, incorporate it
-
-    Return ONLY a JSON object mapping number to name:
-    {"0": "search_bar", "1": "skip", "2": "close_button", ...}
-
-    Args:
-        app_name: Name of the application being labeled.
-        icons: List of detected UI components with coordinates.
-        annotated_path: Path to the numbered screenshot image.
-        offset: Starting index for numbering.
-        runtime: LLM runtime instance.
-
-    Returns:
-        Dict mapping str(index) to label name.
-    """
+    """Label every UI component in a numbered screenshot."""
     if runtime is None:
         raise ValueError("This function requires a runtime argument")
     rt = runtime
@@ -320,7 +294,18 @@ def _batch_label(
     data = f"""App: {app_name}
 
 Components:
-{chr(10).join(comp_lines)}"""
+{chr(10).join(comp_lines)}
+
+The screenshot has numbered bounding boxes around the detected UI
+elements above. For EACH numbered component, give a descriptive
+snake_case name (max 30 chars) that says what it IS and DOES — e.g.
+"search_bar", "save_button" (not just "button"), "settings_icon",
+"file_menu", "bold_toggle". Incorporate the OCR text when it is
+descriptive. Use "skip" for decorative, blank, or non-interactive
+elements.
+
+Reply with ONLY a JSON object mapping each number to its name:
+{{"0": "search_bar", "1": "skip", "2": "close_button"}}"""
 
     reply = rt.exec(content=[
         {"type": "text", "text": data},

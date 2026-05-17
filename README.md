@@ -50,8 +50,8 @@
 A CLI tool that turns any LLM into a GUI automation agent. You give it a natural-language task, it operates the desktop autonomously — screenshots, clicks, types, verifies, and repeats until the task is done.
 
 ```bash
-gui-agent "Install the Orchis GNOME theme"
-gui-agent --vm http://172.16.82.132:5000 "Open GitHub in Chrome and Python docs"
+gui-agent --work-dir /private/tmp/gui-agent-desktop "Install the Orchis GNOME theme"
+gui-agent --work-dir /private/tmp/gui-agent-vm --vm http://172.16.82.132:5000 "Open GitHub in Chrome and Python docs"
 ```
 
 **Designed as an LLM tool.** The intended workflow is:
@@ -91,9 +91,9 @@ Full results: [benchmarks/osworld/multi_apps.md](benchmarks/osworld/multi_apps.m
 pip install git+https://github.com/Fzkuji/GUI-Agent-Harness.git
 ```
 
-All dependencies are installed automatically, including [OpenProgram](https://github.com/Fzkuji/OpenProgram) (the Agentic Programming runtime), ultralytics (GPA-GUI-Detector), OpenCV, Pillow, etc.
+All dependencies are installed automatically, including a pinned legacy-compatible [OpenProgram](https://github.com/Fzkuji/OpenProgram) commit, ultralytics (GPA-GUI-Detector), OpenCV, Pillow, etc. The package does not track OpenProgram's latest `main` branch during install.
 
-> **Local development**: the upstream PyPI package name is `openprogram`. If you're building against an unreleased branch, install OpenProgram first (`pip install -e /path/to/OpenProgram`) and then `pip install -e . --no-deps` inside this repo to avoid the git-URL fetch.
+> **Local development**: if you want to use an existing old OpenProgram checkout, install it first (`pip install -e /path/to/OpenProgram`) and then run `pip install -e . --no-deps` inside this repo.
 
 For development (editable install):
 
@@ -113,7 +113,7 @@ pip install -e .
 > ~/Documents/Research-Agent-Harness/                     # pip install -e .
 > ```
 >
-> `OpenProgram/openprogram/programs/applications/GUI-Agent-Harness` must be a symlink to this repo's root so OpenProgram skill/application discovery can see `@agentic_function` exports. If folders move, recreate it:
+> Optional: if you want this repo to appear inside OpenProgram's application discovery, create a symlink manually. The CLI and benchmark runner do not require it:
 >
 > ```bash
 > cd "$OPENPROGRAM_DIR/openprogram/programs/applications"
@@ -163,13 +163,13 @@ The system auto-detects the best available provider. You can also force one with
 
 ```bash
 # Local desktop
-gui-agent "Open Firefox and go to google.com"
+gui-agent --work-dir /private/tmp/gui-agent-firefox --app firefox "Open Firefox and go to google.com"
 
 # Remote VM (e.g., OSWorld)
-gui-agent --vm http://VM_IP:5000 "Install the Orchis GNOME theme"
+gui-agent --work-dir /private/tmp/gui-agent-vm --vm http://VM_IP:5000 "Install the Orchis GNOME theme"
 
 # Specify provider and model
-gui-agent --provider claude-code --model opus "Send hello in WeChat"
+gui-agent --work-dir /private/tmp/gui-agent-wechat --provider claude-code --model opus --app wechat "Send hello in WeChat"
 ```
 
 ### Use as LLM skill
@@ -207,17 +207,21 @@ Arguments:
   TASK                  Natural language task description
 
 Options:
+  --work-dir PATH       Required. Runtime working directory for file writes/commands
   --vm URL              Remote VM HTTP API (e.g., http://172.16.82.132:5000)
-  --provider NAME       Force LLM provider: claude-code, openclaw, anthropic, openai
+  --provider NAME       LLM provider: auto, claude-code, openclaw, anthropic, openai
   --model NAME          Override model name (e.g., opus, sonnet, gpt-4o)
   --max-steps N         Max actions before stopping (default: 15)
   --app NAME            App name for component memory (default: desktop)
+  --no-general          Disable command-line fallback; use GUI actions only
 ```
+
+Detailed Chinese usage notes, including local app, VM, OSWorld, and Python-call examples, are in [docs/USAGE_CN.md](docs/USAGE_CN.md).
 
 ## Architecture
 
 ```
-gui-agent "task description"
+gui-agent --work-dir /path/to/work-dir "task description"
     │
     ▼
 gui_agent()                    ← @agentic_function, drives the loop
@@ -279,18 +283,15 @@ memory/
 
 ## Built on OpenProgram
 
-GUI Agent Harness is built on [OpenProgram](https://github.com/Fzkuji/OpenProgram) — the reference implementation of the **Agentic Programming** paradigm, where Python functions with LLM-powered docstrings become autonomous agents. Each function (`verify_step`, `plan_next_action`, `general_action`) is an `@agentic_function` that calls the LLM exactly once and returns structured data.
+GUI Agent Harness is built on [OpenProgram](https://github.com/Fzkuji/OpenProgram) — the reference implementation of the **Agentic Programming** paradigm, where ordinary Python functions call the LLM only when reasoning is needed. Each function (`verify_step`, `plan_next_action`, `general_action`) is an `@agentic_function` that calls the LLM exactly once and returns structured data.
 
 ```python
 from openprogram import agentic_function
 
-@agentic_function(summarize={"siblings": -1})
+@agentic_function(render_range={"depth": 0, "siblings": 0})
 def plan_next_action(task, img_path, ..., runtime=None) -> dict:
-    """Decide the next action to take toward completing the task.
-
-    You are a GUI automation agent. Choose one action to execute next.
-    ...
-    """
+    """Decide the next action to take toward completing the task."""
+    # The per-call instruction + screen data are built into `context`.
     reply = runtime.exec(content=[
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
@@ -298,9 +299,9 @@ def plan_next_action(task, img_path, ..., runtime=None) -> dict:
     return parse_json(reply)
 ```
 
-The docstring IS the prompt. The function signature defines the interface. The framework handles context management, history summarization, and provider abstraction.
+The per-call prompt lives in `runtime.exec(content=...)`; the docstring documents the function (and is rendered into context as description). The function signature defines the interface. The framework handles context management, history summarization, and provider abstraction.
 
-> **Naming**: *Agentic Programming* is the paradigm (the philosophy — decorator + context tree + meta functions). *OpenProgram* is the product (the Python package that ships the runtime). The `@agentic_function` decorator keeps the paradigm name as a visible badge of lineage.
+> **Naming**: *Agentic Programming* is the paradigm — Python controls the flow, the `@agentic_function` decorator records each call as a node in a flat-DAG context, and the LLM only reasons when asked. *OpenProgram* is the product (the Python package that ships the runtime). The `@agentic_function` decorator keeps the paradigm name as a visible badge of lineage.
 
 ## LLM Provider Priority
 
@@ -319,7 +320,7 @@ Override with `--provider` and `--model` flags.
 GUI-Agent-Harness/
 ├── gui_harness/
 │   ├── main.py                # CLI entry point + gui_agent loop
-│   ├── runtime.py             # LLM provider auto-detection
+│   ├── openprogram_compat.py  # OpenProgram boundary — agentic_function + create_runtime
 │   ├── tasks/
 │   │   └── execute_task.py    # 4-phase step: observe → verify → plan → dispatch
 │   ├── action/
@@ -333,9 +334,6 @@ GUI-Agent-Harness/
 │   ├── memory/                # Memory management utilities
 │   └── adapters/
 │       └── vm_adapter.py      # Redirect all I/O to remote VM
-├── libs/
-│   └── agentic-programming/   # OpenProgram runtime, pinned as git submodule
-│                              # (legacy name kept for compat during upstream rename)
 ├── benchmarks/
 │   └── osworld/               # OSWorld benchmark runner + results
 ├── memory/                    # Visual memory storage (per-platform, per-app)

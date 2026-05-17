@@ -31,7 +31,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function
 
 from gui_harness.perception import screenshot, ocr, detector
 from gui_harness.memory import app_memory
@@ -189,6 +189,172 @@ def _update_activity(app_dir: Path, matched_names: set[str]):
 
 
 # ═══════════════════════════════════════════
+# Deterministic OCR Text Matching
+# ═══════════════════════════════════════════
+
+_MATCH_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "at",
+    "bar",
+    "button",
+    "click",
+    "clicking",
+    "corner",
+    "current",
+    "dialog",
+    "icon",
+    "in",
+    "item",
+    "label",
+    "left",
+    "menu",
+    "on",
+    "open",
+    "right",
+    "text",
+    "the",
+    "top",
+}
+
+_CONTROL_ROLE_PHRASES = (
+    "menu entry",
+    "menu item",
+    "menu label",
+    "menu text",
+    "text field",
+    "input field",
+    "text button",
+    "button",
+    "checkbox",
+    "field",
+    "label",
+    "dialog",
+)
+
+_MENU_BAR_WORDS = {
+    "file",
+    "edit",
+    "select",
+    "view",
+    "image",
+    "layer",
+    "colors",
+    "tools",
+    "filters",
+    "windows",
+    "help",
+}
+
+
+def _normalize_match_text(value: str) -> str:
+    """Normalize UI target text for OCR label matching."""
+    value = re.sub(r"\([^)]*\)", " ", value.lower())
+    value = re.sub(r"\bat\s+\d+\s*,\s*\d+\b", " ", value)
+    value = re.sub(r"_+", " ", value)
+    value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
+    words = [word for word in value.split() if word not in _MATCH_STOPWORDS]
+    return " ".join(words)
+
+
+def _normalize_target_text(target: str) -> str:
+    value = re.sub(r"\([^)]*\)", " ", target.lower())
+    for phrase in _CONTROL_ROLE_PHRASES:
+        marker = f" {phrase}"
+        idx = value.find(marker)
+        if idx > 0:
+            value = value[:idx]
+            break
+    return _normalize_match_text(value)
+
+
+def _parse_target_hint_coords(target: str) -> Optional[tuple[int, int]]:
+    match = re.search(r"\((\d+)\s*,\s*(\d+)\)", target)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _split_combined_menu_text(target_norm: str, text: dict, label_norm: str) -> Optional[dict]:
+    words = label_norm.split()
+    if len(target_norm.split()) != 1 or target_norm not in words:
+        return None
+    if int(text.get("cy", 0) or 0) > 130:
+        return None
+    if len(_MENU_BAR_WORDS.intersection(words)) < 2:
+        return None
+
+    x = int(text.get("x", 0) or 0)
+    w = int(text.get("w", 0) or 0)
+    cy = int(text.get("cy", 0) or 0)
+    if w <= 0 or cy <= 0:
+        return None
+
+    start = label_norm.find(target_norm)
+    if start < 0 or not label_norm:
+        return None
+    center_ratio = (start + len(target_norm) / 2) / len(label_norm)
+    cx = int(x + w * center_ratio)
+    return {
+        "found": True,
+        "name": target_norm,
+        "cx": cx,
+        "cy": cy,
+        "reasoning": "split combined OCR menu-bar text deterministically",
+    }
+
+
+def _deterministic_text_match(target: str, texts: list[dict]) -> Optional[dict]:
+    """Return coordinates when the target text/name is already visible."""
+    target_norm = _normalize_target_text(target)
+    if not target_norm:
+        return None
+
+    hint = _parse_target_hint_coords(target)
+    target_word_count = len(target_norm.split())
+    candidates = []
+
+    for text in texts[:80]:
+        label = (text.get("label") or text.get("name") or "").strip()
+        label_norm = _normalize_match_text(label)
+        if len(label_norm.replace(" ", "")) < 2:
+            continue
+
+        cx = int(text.get("cx", 0) or 0)
+        cy = int(text.get("cy", 0) or 0)
+        if cx <= 0 or cy <= 0:
+            continue
+
+        match_rank = 0
+        match_label = label
+        if label_norm != target_norm:
+            split = _split_combined_menu_text(target_norm, text, label_norm)
+            if not split:
+                continue
+            cx = split["cx"]
+            cy = split["cy"]
+            match_label = split["name"]
+            match_rank = 1
+
+        distance = abs(cx - hint[0]) + abs(cy - hint[1]) if hint else 0
+        length_delta = abs(len(label_norm.split()) - target_word_count)
+        candidates.append((match_rank, distance, length_delta, -len(label_norm), match_label, cx, cy))
+
+    if not candidates:
+        return None
+
+    _rank, _distance, _delta, _length, label, cx, cy = sorted(candidates)[0]
+    return {
+        "found": True,
+        "name": label,
+        "cx": cx,
+        "cy": cy,
+        "reasoning": "matched OCR text deterministically",
+    }
+
+
+# ═══════════════════════════════════════════
 # Phase 3: LLM decides from known components
 # ═══════════════════════════════════════════
 
@@ -200,19 +366,7 @@ def find_target_in_known(
     texts: list[dict],
     runtime=None,
 ) -> dict:
-    """Locate the target in the provided lists.
-
-    Inputs:
-    - target: what to find (natural language)
-    - known_components: UI elements with labels and (cx, cy)
-    - texts: OCR text on screen with (cx, cy)
-
-    Return JSON:
-    {
-      "reasoning": "one short sentence — which entry did you pick and why",
-      "name": "..."   // exact label from known_components or OCR text; "" if nothing matches
-    }
-    """
+    """Locate a target element among the known components and OCR text."""
     from gui_harness.utils import parse_json
 
     if runtime is None:
@@ -236,7 +390,14 @@ Known UI components (labeled, with coordinates):
 {comp_lines}
 
 OCR text on screen:
-{text_lines}"""
+{text_lines}
+
+Pick the one entry from the known components or the OCR text that best
+matches the target. Use the exact label as written in the lists above.
+
+Reply with ONLY this JSON object:
+{{"reasoning": "one short sentence — which entry you picked and why",
+  "name": "exact label from the lists, or \\"\\" if nothing matches"}}"""
 
     reply = rt.exec(content=[{"type": "text", "text": context}])
 
@@ -291,22 +452,7 @@ def label_single_component(
     component_bbox: dict,
     runtime=None,
 ) -> dict:
-    """Identify a single UI component from its cropped screenshot.
-
-    You will see a cropped image of one UI component detected on screen.
-
-    Decide:
-    1. What is this component? (button, icon, text field, menu item, etc.)
-    2. Give it a descriptive snake_case label, or "skip" if it's blank/meaningless
-    3. Is this the target we're looking for?
-
-    Return JSON:
-    {
-      "label": "descriptive_name" or "skip",
-      "is_target": true/false,
-      "reasoning": "what this component appears to be"
-    }
-    """
+    """Identify a single UI component from its cropped screenshot."""
     from gui_harness.utils import parse_json
 
     if runtime is None:
@@ -318,11 +464,14 @@ Target element: {target}
 
 This is component #{component_index} at position ({component_bbox['cx']}, {component_bbox['cy']}), size {component_bbox['w']}x{component_bbox['h']}.
 
-What is this UI element? Give it a snake_case name (e.g., "search_bar", "close_button").
-If it's blank, decorative, or meaningless, return "skip" as the label.
-Also determine if this is the target element described above.
+You see a cropped image of this one UI component. Decide what it is and
+give it a descriptive snake_case name (e.g. "search_bar",
+"close_button"); if it is blank, decorative, or meaningless use "skip".
+Also decide whether it is the target element described above.
 
-Return ONLY valid JSON."""
+Reply with ONLY this JSON object:
+{{"label": "descriptive_name or skip", "is_target": true,
+  "reasoning": "what this component appears to be"}}"""
 
     reply = rt.exec(content=[
         {"type": "text", "text": context},
@@ -547,12 +696,44 @@ def locate_target(
     if ocr_snippets:
         print(f"  [locate] OCR[:20] = {' | '.join(ocr_snippets)}", file=sys.stderr)
 
+    # Phase 1.5: OCR labels have coordinates already, so handle obvious text
+    # targets before spending a model call on the same list.
+    t0 = time.time()
+    text_match = _deterministic_text_match(target, texts)
+    _timing["phase1_5_ocr"] = round(time.time() - t0, 2)
+    if text_match:
+        print(
+            f"  [locate] OCR match: name='{text_match.get('name', '?')}' at ({text_match.get('cx', 0)}, {text_match.get('cy', 0)})",
+            file=sys.stderr,
+        )
+        return {
+            "cx": text_match.get("cx", 0),
+            "cy": text_match.get("cy", 0),
+            "name": text_match.get("name", target),
+            "timing": _timing,
+        }
+
     # Phase 2: Memory matching
     t0 = time.time()
     known_components = match_memory_components(app_name, img_path)
     known_names = {c["name"] for c in known_components}
     _timing["phase2_memory"] = round(time.time() - t0, 2)
     print(f"  [locate] Phase 2: {len(known_components)} matched ({_timing['phase2_memory']}s)", file=sys.stderr)
+
+    t0 = time.time()
+    known_match = _deterministic_text_match(target, known_components)
+    _timing["phase2_5_known"] = round(time.time() - t0, 2)
+    if known_match:
+        print(
+            f"  [locate] Known match: name='{known_match.get('name', '?')}' at ({known_match.get('cx', 0)}, {known_match.get('cy', 0)})",
+            file=sys.stderr,
+        )
+        return {
+            "cx": known_match.get("cx", 0),
+            "cy": known_match.get("cy", 0),
+            "name": known_match.get("name", target),
+            "timing": _timing,
+        }
 
     # Also include OCR texts as "known" elements (they have labels + coordinates)
     all_known = list(known_components)
@@ -737,26 +918,7 @@ def select_transition(
     available_transitions: list[dict],
     runtime=None,
 ) -> dict:
-    """Given the task and available transitions from the current state,
-    select the best transition to take.
-
-    You are given:
-    - The task to accomplish
-    - The current state ID
-    - A list of transitions that have been successfully used before
-
-    Each transition has: action, target, expected next state, use_count.
-
-    If one of these transitions is clearly the right next step for the task,
-    select it. If none are relevant, return {"selected": false}.
-
-    Return JSON:
-    {
-      "selected": true/false,
-      "index": <index in the list, 0-based>,
-      "reasoning": "why this transition"
-    }
-    """
+    """Select the best known transition from the current state for the task."""
     from gui_harness.utils import parse_json
 
     if runtime is None:
@@ -771,8 +933,15 @@ def select_transition(
     context = f"""Task: {task}
 Current state: {current_state}
 
-Known transitions from this state:
-{trans_lines}"""
+Known transitions from this state (each: action, target, expected next
+state, use_count):
+{trans_lines}
+
+If one transition is clearly the right next step for the task, select
+it; if none are relevant, return selected=false.
+
+Reply with ONLY this JSON object:
+{{"selected": true, "index": 0, "reasoning": "why this transition"}}"""
 
     reply = rt.exec(content=[{"type": "text", "text": context}])
 

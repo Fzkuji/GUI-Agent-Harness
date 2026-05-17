@@ -8,29 +8,13 @@ from __future__ import annotations
 
 from gui_harness.utils import parse_json
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function
 from gui_harness.perception import screenshot, ocr
 
 
 @agentic_function(render_range={"depth": 0, "siblings": 0})
 def verify(expected: str, runtime=None) -> dict:
-    """Verify whether a previous action produced the expected result.
-
-    You will receive a screenshot and OCR text of the current screen.
-    Determine if the expected outcome is visible.
-
-    Provide specific evidence: quote the exact text or element that
-    confirms or denies the expectation.
-
-    Return JSON:
-    {
-      "expected": "...",
-      "actual": "what you actually see on screen",
-      "verified": true/false,
-      "evidence": "specific text or element that confirms/denies",
-      "screenshot_path": "..."
-    }
-    """
+    """Verify whether the previous action produced the expected result."""
     if runtime is None:
         raise ValueError("verify() requires a runtime argument")
     rt = runtime
@@ -44,7 +28,20 @@ def verify(expected: str, runtime=None) -> dict:
     context = f"""Expected: {expected}
 
 OCR text on screen:
-{ocr_lines or '(none)'}"""
+{ocr_lines or '(none)'}
+
+You are given a screenshot and the OCR text above. Decide whether the
+expected outcome is visible on screen, and quote the exact text or
+element that confirms or denies it as evidence.
+
+Reply with ONLY this JSON object, no other text:
+{{
+  "expected": "...",
+  "actual": "what you actually see on screen",
+  "verified": true,
+  "evidence": "specific text or element that confirms/denies",
+  "screenshot_path": "..."
+}}"""
 
     reply = rt.exec(content=[
         {"type": "text", "text": context},

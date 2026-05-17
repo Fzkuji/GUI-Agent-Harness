@@ -12,53 +12,12 @@ Write, etc.) and reports the result when done.
 
 from __future__ import annotations
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function
 
 
 @agentic_function(render_range={"depth": 0, "siblings": 0})
 def general_action(sub_task: str, task_context: str = "", runtime=None) -> dict:
-    """Execute a sub-task on a remote Ubuntu VM using any available tools.
-
-    You have full freedom to use any tools and methods:
-    - Run shell commands (bash) via the VM's API
-    - Read and write files on the VM
-    - Install packages
-    - Anything else you need
-
-    IMPORTANT constraints:
-    - Environment: REMOTE Ubuntu VM, NOT local macOS. All commands and file
-      operations must target the VM via its API. Do NOT use local macOS
-      commands, local file paths, or local applications.
-    - EXPLORE FIRST: Before creating new files or writing scripts from scratch,
-      list the working directory on the VM (e.g., `ls /home/user/Desktop`,
-      `ls .` via the VM API) to check for existing scripts or templates you
-      can reuse.
-    - When extracting or copying data (descriptions, names, numbers, text),
-      always read directly from source files. Do NOT generate or paraphrase
-      content from your own knowledge — copy verbatim from the actual data.
-    - When you need data from a website (e.g., IMDB, Wikipedia, etc.), use
-      curl with proxy to fetch the actual webpage HTML and parse it with Python.
-      Do NOT rely on your own knowledge to generate website content.
-    - If curl/requests returns empty content, HTTP error, WAF challenge (202),
-      or you cannot get real data, you MUST return success=false.
-      NEVER fall back to generating data from your own knowledge.
-    - PRESERVE FORMAT: When modifying files, apply ONLY the changes the
-      sub-task explicitly requests. Do not resize, crop, reformat, or
-      restructure unless told to — keep original attributes (dimensions,
-      format, structure) intact.
-    - VERIFY OUTPUTS: Before returning success=true, sanity-check the output
-      against the sub-task spec. For images, check dimensions/format/size
-      (e.g., `python3 -c "from PIL import Image; im=Image.open('f.png');
-      print(im.size, im.mode)"` on the VM). Compare against any expected
-      values mentioned in the sub-task.
-
-    Return JSON:
-    {
-      "success": true/false,
-      "output": "what you did and the result",
-      "error": null or "error description"
-    }
-    """
+    """Execute a free-form sub-task on a remote Ubuntu VM using any available tools."""
     from gui_harness.utils import parse_json
 
     if runtime is None:
@@ -81,6 +40,32 @@ Read files:    curl -s -X POST {vm_url}/execute -H 'Content-Type: application/js
 Fetch web via proxy: curl -s --proxy http://172.16.82.1:6152 'URL'""")
     except Exception:
         pass
+
+    data_parts.append(
+        "Use any available tools — shell commands, file I/O, package "
+        "installs, web browsing — to complete the sub-task.\n\n"
+        "Constraints:\n"
+        "- The environment is a REMOTE Ubuntu VM, not local macOS. Every "
+        "command and file operation must target the VM via its API; "
+        "never use local macOS commands, paths, or apps.\n"
+        "- Explore first: before writing new files or scripts, list the "
+        "working directory on the VM to reuse existing scripts/templates.\n"
+        "- When extracting or copying data, read directly from source "
+        "files and copy verbatim — never paraphrase from your own "
+        "knowledge.\n"
+        "- For website data, curl the page (with the proxy) and parse "
+        "the real HTML; do not generate site content from memory. If "
+        "curl returns empty content, an HTTP error, or a WAF challenge "
+        "(202), you MUST return success=false — never fall back to "
+        "invented data.\n"
+        "- Preserve format: apply only the changes the sub-task asks "
+        "for; keep original dimensions, format, and structure intact.\n"
+        "- Verify the output against the sub-task spec before returning "
+        "success=true (e.g. check an image's size/mode/format).\n\n"
+        "Reply with ONLY this JSON object, no other text:\n"
+        '{"success": true, "output": "what you did and the result", '
+        '"error": null}'
+    )
 
     reply = rt.exec(content=[
         {"type": "text", "text": "\n\n".join(data_parts)},
