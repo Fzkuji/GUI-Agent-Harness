@@ -1,21 +1,21 @@
 # OSWorld VLC Domain - GPT-5.5 Run Errors
 
-> 17 tasks | **48.8%** (4.876/10 officially scored so far) | started 2026-05-18
+> 17 tasks | **53.4%** (5.876/11 officially scored so far) | started 2026-05-18
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 17 |
-| Run so far | 11 |
-| Officially scored | 10 |
-| Pass (1.0) | 4 |
+| Run so far | 12 |
+| Officially scored | 11 |
+| Pass (1.0) | 5 |
 | Numeric fail (0.0) | 5 |
 | Partial | 1 |
 | Eval hang / no score | 1 |
 | Eval error / N/A | 0 |
-| Not reached | 6 |
-| Score so far | 48.8% (4.876/10) |
+| Not reached | 5 |
+| Score so far | 53.4% (5.876/11) |
 
 **Test environment:** Ubuntu VM at `172.16.105.130`, 1920x1080, `openai-codex/gpt-5.5` via GUI Agent Harness
 
@@ -47,7 +47,8 @@
 | 9 | 386dbd0e | Change Play/Pause hotkey while reading PDF | 0.0 FAIL | 15 | 280s | Hotkey preference flow did not satisfy `vlcrc` evaluator; repeated verification model errors |
 | 10 | 9195653c | Increase VLC maximum volume above normal | 0.0 FAIL | 15 | 282s | Screenshot read cascade after opening Preferences; `vlcrc` evaluator scored 0.0 |
 | 11 | d06f0d4d | Change volume slider color to black-ish | 0.0 FAIL | 15 | 232s | Runner printed SUCCESS after editing advanced Qt volume color field, but `vlcrc` evaluator scored 0.0 |
-| 12-17 | - | Not reached | - | - | - | Continue from task 12 |
+| 12 | a5bbbcd5 | Enable Minimal Interface in window mode | 1.0 PASS | 11 | 120s | Recovered from early verifier errors; evaluator confirmed minimal-interface setting |
+| 13-17 | - | Not reached | - | - | - | Continue from task 13 |
 
 ## Error Details
 
@@ -64,12 +65,13 @@
 | 9 | Hotkey change did not match evaluator expectation | HuggingFace SSL retries during setup; repeated `verify_step()` model errors on steps 9-13 | `vlcrc` downloaded and checked; score 0.0 | `task_9.log` |
 | 10 | Preference change did not match evaluator expectation | `plan_next_action()` model errors; screenshot read cascade on steps 5-15; conclusion got HTTP 400 invalid image | `vlcrc` downloaded and checked; score 0.0 | `task_10.log` |
 | 11 | Advanced Qt volume color edit did not match evaluator expectation | Runner typed `0;0;0` into the volume slider color field and ended SUCCESS | `vlcrc` downloaded and checked; score 0.0 | `task_11.log` |
+| 12 | Early `verify_step()` model errors | Recovered through Preferences and View > Minimal Interface flow | PASS; `vlcrc` downloaded and checked | `task_12.log` |
 
 ## Error Categories
 
 | Category | Affected tasks | Evidence | Notes |
 |----------|----------------|----------|-------|
-| Opaque model/session failure | 1, 4, 5, 6, 7, 9, 10 | `RuntimeError: Agent session failed` | Not always fatal; tasks 6 and 10 cascaded into unreadable screenshots. |
+| Opaque model/session failure | 1, 4, 5, 6, 7, 9, 10, 12 | `RuntimeError: Agent session failed` | Not always fatal; tasks 6 and 10 cascaded into unreadable screenshots. |
 | Output missing | 3, 8 | Evaluator could not retrieve expected output file | Task 3 missed MP3 export; task 8 missed expected MP4 path. |
 | Partial content mismatch | 5 | Evaluator scored saved snapshot at 0.876 | File placement/name were correct, but image match was imperfect. |
 | Evaluator hang | 6 | Evaluator printed `Got wallpaper successfully` and then stopped producing output for >7 min | Terminated to avoid blocking the continuous run. |
@@ -79,11 +81,11 @@
 | Profile/dropdown interaction failure | 3 | Repeated attempts to click the VLC Convert profile field | Likely needs stronger VLC-specific memory or direct profile-selection strategy. |
 | Preference mismatch | 9, 10, 11 | `vlcrc` evaluator returned score 0.0 after preference edit flows | The visible flow changed something or got stuck, but not the exact expected settings. |
 | HuggingFace asset download instability | 9 | SSL EOF retries during setup | Setup recovered. |
-| Missing proxy config warning | 1-11 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
+| Missing proxy config warning | 1-12 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
 
 ## Handoff Notes
 
-- Continue at VLC task 12 in `runs/vlc_all_20260518_0310`.
+- Continue at VLC task 13 in `runs/vlc_all_20260518_0310`.
 - Treat official evaluator score as benchmark truth. Task 3 conclusion sounded partially successful, but official score is 0.0 because the MP3 file was missing.
 - Task 8 also printed runner SUCCESS, but official score is 0.0 because the expected MP4 file was missing.
 - Task 11 printed runner SUCCESS, but official score is 0.0 because the expected `vlcrc` setting was not present.
