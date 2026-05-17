@@ -1,21 +1,21 @@
 # OSWorld VLC Domain - GPT-5.5 Run Errors
 
-> 17 tasks | **54.2%** (4.876/9 officially scored so far) | started 2026-05-18
+> 17 tasks | **48.8%** (4.876/10 officially scored so far) | started 2026-05-18
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 17 |
-| Run so far | 10 |
-| Officially scored | 9 |
+| Run so far | 11 |
+| Officially scored | 10 |
 | Pass (1.0) | 4 |
-| Numeric fail (0.0) | 4 |
+| Numeric fail (0.0) | 5 |
 | Partial | 1 |
 | Eval hang / no score | 1 |
 | Eval error / N/A | 0 |
-| Not reached | 7 |
-| Score so far | 54.2% (4.876/9) |
+| Not reached | 6 |
+| Score so far | 48.8% (4.876/10) |
 
 **Test environment:** Ubuntu VM at `172.16.105.130`, 1920x1080, `openai-codex/gpt-5.5` via GUI Agent Harness
 
@@ -46,7 +46,8 @@
 | 8 | aa4b5023 | Flip video right-way-up and save output | 0.0 FAIL | 8 | 141s | Runner printed SUCCESS, but evaluator could not find expected `/home/user/1984_Apple_Macintosh_Commercial.mp4` |
 | 9 | 386dbd0e | Change Play/Pause hotkey while reading PDF | 0.0 FAIL | 15 | 280s | Hotkey preference flow did not satisfy `vlcrc` evaluator; repeated verification model errors |
 | 10 | 9195653c | Increase VLC maximum volume above normal | 0.0 FAIL | 15 | 282s | Screenshot read cascade after opening Preferences; `vlcrc` evaluator scored 0.0 |
-| 11-17 | - | Not reached | - | - | - | Continue from task 11 |
+| 11 | d06f0d4d | Change volume slider color to black-ish | 0.0 FAIL | 15 | 232s | Runner printed SUCCESS after editing advanced Qt volume color field, but `vlcrc` evaluator scored 0.0 |
+| 12-17 | - | Not reached | - | - | - | Continue from task 12 |
 
 ## Error Details
 
@@ -62,6 +63,7 @@
 | 8 | Expected output video was missing | Runner used a terminal/ffmpeg route and ended with runner SUCCESS | Missing `/home/user/1984_Apple_Macintosh_Commercial.mp4`; score 0.0 | `task_8.log` |
 | 9 | Hotkey change did not match evaluator expectation | HuggingFace SSL retries during setup; repeated `verify_step()` model errors on steps 9-13 | `vlcrc` downloaded and checked; score 0.0 | `task_9.log` |
 | 10 | Preference change did not match evaluator expectation | `plan_next_action()` model errors; screenshot read cascade on steps 5-15; conclusion got HTTP 400 invalid image | `vlcrc` downloaded and checked; score 0.0 | `task_10.log` |
+| 11 | Advanced Qt volume color edit did not match evaluator expectation | Runner typed `0;0;0` into the volume slider color field and ended SUCCESS | `vlcrc` downloaded and checked; score 0.0 | `task_11.log` |
 
 ## Error Categories
 
@@ -73,17 +75,18 @@
 | Evaluator hang | 6 | Evaluator printed `Got wallpaper successfully` and then stopped producing output for >7 min | Terminated to avoid blocking the continuous run. |
 | Invalid image passed to model | 6, 10 | OpenAI HTTP 400: image data is not a valid image | Appeared during conclusion after screenshot read failures. |
 | Screenshot/read cascade | 6, 10 | `WARNING Image Read Error /tmp/gui_agent_screen.png`; `ValueError: need at least one array to stack` | Repeated after GUI navigation failures. |
-| Runner success but evaluator fail | 8 | Runner prints SUCCESS while official evaluator returns 0.0 | Treat evaluator as source of truth. |
+| Runner success but evaluator fail | 8, 11 | Runner prints SUCCESS while official evaluator returns 0.0 | Treat evaluator as source of truth. |
 | Profile/dropdown interaction failure | 3 | Repeated attempts to click the VLC Convert profile field | Likely needs stronger VLC-specific memory or direct profile-selection strategy. |
-| Preference mismatch | 9, 10 | `vlcrc` evaluator returned score 0.0 after preference edit flows | The visible flow changed something or got stuck, but not the exact expected settings. |
+| Preference mismatch | 9, 10, 11 | `vlcrc` evaluator returned score 0.0 after preference edit flows | The visible flow changed something or got stuck, but not the exact expected settings. |
 | HuggingFace asset download instability | 9 | SSL EOF retries during setup | Setup recovered. |
-| Missing proxy config warning | 1-10 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
+| Missing proxy config warning | 1-11 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
 
 ## Handoff Notes
 
-- Continue at VLC task 11 in `runs/vlc_all_20260518_0310`.
+- Continue at VLC task 12 in `runs/vlc_all_20260518_0310`.
 - Treat official evaluator score as benchmark truth. Task 3 conclusion sounded partially successful, but official score is 0.0 because the MP3 file was missing.
 - Task 8 also printed runner SUCCESS, but official score is 0.0 because the expected MP4 file was missing.
+- Task 11 printed runner SUCCESS, but official score is 0.0 because the expected `vlcrc` setting was not present.
 - Task 5 is not a pass despite correct filename/location because the official score is 0.876.
 - Task 6 has no numeric score because the evaluator hung after retrieving wallpaper; keep it separate from numeric fail until rerun or evaluator diagnosis.
 - VLC task count in official `test_all.json` is 17; the older `benchmarks/osworld/vlc.md` says 15 and should not be used as the task count for this GPT-5.5 run.
