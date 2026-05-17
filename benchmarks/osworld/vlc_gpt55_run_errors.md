@@ -1,21 +1,22 @@
 # OSWorld VLC Domain - GPT-5.5 Run Errors
 
-> 17 tasks | **56.3%** (7.876/14 officially scored so far) | started 2026-05-18
+> 17 tasks | **56.3%** (7.876/14 officially scored) | 2026-05-18
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Total tasks | 17 |
-| Run so far | 16 |
+| Run so far | 17 |
 | Officially scored | 14 |
 | Pass (1.0) | 7 |
 | Numeric fail (0.0) | 6 |
 | Partial | 1 |
 | Eval hang / no score | 1 |
-| Eval error / N/A | 1 |
-| Not reached | 1 |
-| Score so far | 56.3% (7.876/14) |
+| Eval error / N/A | 2 |
+| Not reached | 0 |
+| Official scored pass rate | 56.3% (7.876/14) |
+| Full-domain pass count | 46.3% (7.876/17) |
 
 **Test environment:** Ubuntu VM at `172.16.105.130`, 1920x1080, `openai-codex/gpt-5.5` via GUI Agent Harness
 
@@ -52,7 +53,7 @@
 | 14 | f3977615 | Allow multiple VLC instances | 1.0 PASS | 5 | 72s | Disabled “use only one instance when started from file manager”; evaluator confirmed `vlcrc` |
 | 15 | 215dfd39 | Disable cone icon in splash screen | 0.0 FAIL | 15 | 338s | Searched advanced settings and scrolled Qt options, but did not reach/set the expected splash cone option |
 | 16 | cb130f0d | Automatically adjust video brightness/contrast | N/A EVAL_ERROR | 15 | 389s | Evaluator marked infeasible; runner adjusted image controls but could not be automatically scored |
-| 17 | - | Not reached | - | - | - | Continue from task 17 |
+| 17 | 7882ed6e | Play latest purchased Stranger Things season from Google Play Movies | N/A EVAL_ERROR | 15 | 487s | Evaluator marked infeasible; runner tried VLC network stream and web search flow; many model session errors |
 
 ## Error Details
 
@@ -74,12 +75,13 @@
 | 14 | No blocking error observed | Standard Preferences flow | PASS; `vlcrc` downloaded and checked | `task_14.log` |
 | 15 | Did not find or set the expected splash cone option | Spent steps 10-15 scrolling in advanced Qt settings | `vlcrc` downloaded and checked; score 0.0 | `task_15.log` |
 | 16 | Automatic evaluator marked task infeasible | Multiple model/session errors while adjusting VLC brightness/contrast controls | Score N/A; runner failed | `task_16.log` |
+| 17 | Automatic evaluator marked task infeasible | Repeated `plan_next_action()` / `verify_step()` model errors; attempted network stream and Google search path | Score N/A; runner failed | `task_17.log` |
 
 ## Error Categories
 
 | Category | Affected tasks | Evidence | Notes |
 |----------|----------------|----------|-------|
-| Opaque model/session failure | 1, 4, 5, 6, 7, 9, 10, 12, 13, 16 | `RuntimeError: Agent session failed` | Not always fatal; tasks 6 and 10 cascaded into unreadable screenshots. |
+| Opaque model/session failure | 1, 4, 5, 6, 7, 9, 10, 12, 13, 16, 17 | `RuntimeError: Agent session failed` | Not always fatal; tasks 6 and 10 cascaded into unreadable screenshots. |
 | Output missing | 3, 8 | Evaluator could not retrieve expected output file | Task 3 missed MP3 export; task 8 missed expected MP4 path. |
 | Partial content mismatch | 5 | Evaluator scored saved snapshot at 0.876 | File placement/name were correct, but image match was imperfect. |
 | Evaluator hang | 6 | Evaluator printed `Got wallpaper successfully` and then stopped producing output for >7 min | Terminated to avoid blocking the continuous run. |
@@ -88,16 +90,19 @@
 | Runner success but evaluator fail | 8, 11 | Runner prints SUCCESS while official evaluator returns 0.0 | Treat evaluator as source of truth. |
 | Profile/dropdown interaction failure | 3 | Repeated attempts to click the VLC Convert profile field | Likely needs stronger VLC-specific memory or direct profile-selection strategy. |
 | Preference mismatch | 9, 10, 11, 15 | `vlcrc` evaluator returned score 0.0 after preference edit flows | The visible flow changed something or got stuck, but not the exact expected settings. |
-| Infeasible / unscorable tasks | 16 | Evaluator returns N/A / infeasible | Exclude from official scored pass rate unless manually scored. |
+| Infeasible / unscorable tasks | 16, 17 | Evaluator returns N/A / infeasible | Exclude from official scored pass rate unless manually scored. |
 | HuggingFace asset download instability | 9 | SSL EOF retries during setup | Setup recovered. |
-| Missing proxy config warning | 1-16 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
+| Missing proxy config warning | 1-17 | `evaluation_examples/settings/proxy/dataimpulse.json` not found | Non-blocking for current VLC tasks. |
 
 ## Handoff Notes
 
-- Continue at VLC task 17 in `runs/vlc_all_20260518_0310`.
+- VLC complete: 7 PASS, 6 numeric FAIL, 1 partial score, 1 evaluator hang/no score, and 2 evaluator N/A/infeasible.
+- Official scored pass rate is 7.876/14; full-domain non-pass accounting is 7.876/17.
 - Treat official evaluator score as benchmark truth. Task 3 conclusion sounded partially successful, but official score is 0.0 because the MP3 file was missing.
 - Task 8 also printed runner SUCCESS, but official score is 0.0 because the expected MP4 file was missing.
 - Task 11 printed runner SUCCESS, but official score is 0.0 because the expected `vlcrc` setting was not present.
 - Task 5 is not a pass despite correct filename/location because the official score is 0.876.
 - Task 6 has no numeric score because the evaluator hung after retrieving wallpaper; keep it separate from numeric fail until rerun or evaluator diagnosis.
+- Decide whether task 6 should be rerun or kept as evaluator-hang/no-score in downstream reporting.
+- Decide whether infeasible/unscorable tasks 16-17 should be manually scored, excluded, or counted as non-pass in downstream reporting.
 - VLC task count in official `test_all.json` is 17; the older `benchmarks/osworld/vlc.md` says 15 and should not be used as the task count for this GPT-5.5 run.
