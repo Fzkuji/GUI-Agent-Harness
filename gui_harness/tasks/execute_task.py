@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import sys
 import time
+import traceback
 from typing import Optional
 
 from gui_harness.openprogram_compat import agentic_function, build_action_catalog
@@ -37,6 +39,28 @@ from gui_harness.planning.component_memory import (
     record_transition,
     get_available_transitions,
 )
+
+
+def _artifact_dir() -> str | None:
+    path = os.environ.get("GUI_HARNESS_ARTIFACT_DIR")
+    if path:
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _copy_artifact(src: str | None, name: str) -> str | None:
+    if not src or not os.path.exists(src):
+        return None
+    out_dir = _artifact_dir()
+    if not out_dir:
+        return None
+    dst = os.path.join(out_dir, name)
+    try:
+        import shutil
+        shutil.copy2(src, dst)
+        return dst
+    except Exception:
+        return None
 def build_catalog(available: dict) -> str:
     """Format an action registry into a catalog string for the planner prompt.
 
@@ -140,6 +164,10 @@ def _action_scroll(direction: str) -> dict:
 
 def _action_done(reasoning: str = "") -> dict:
     return {"success": True, "done": True, "reasoning": reasoning}
+
+
+def _action_fail(reasoning: str = "") -> dict:
+    return {"success": True, "done": True, "infeasible": True, "reasoning": reasoning}
 
 
 def _normalize_plan(plan: dict) -> dict:
@@ -260,6 +288,14 @@ def _build_action_registry(allow_general: bool = False):
             },
             "output": {"success": bool},
         },
+        "fail": {
+            "function": _action_fail,
+            "description": "Declare the task infeasible and stop with an explicit FAIL/INFEASIBLE reason",
+            "input": {
+                "reasoning": {"source": "llm", "type": str, "description": "explicit reason containing FAIL/INFEASIBLE and the blocker"},
+            },
+            "output": {"success": bool, "done": bool, "infeasible": bool},
+        },
     }
     if not allow_general:
         registry.pop("general", None)
@@ -336,6 +372,7 @@ def _observe(app_name: str) -> dict:
 
     return {
         "img_path": img_path,
+        "screenshot_artifact": _copy_artifact(img_path, f"observe_{int(time.time() * 1000)}.png"),
         "icons": icons,
         "texts": texts,
         "matched": matched,
@@ -396,11 +433,28 @@ def verify_step(
         "unchanged — that is NORMAL. Trust Execution=succeeded "
         "(step_succeeded=true); set false only on Execution=failed or an "
         "actual on-screen error.\n"
-        "Do NOT decide whether the overall task is complete — that is "
-        "the planning step's job.\n\n"
+        "Also maintain a task-level execution checklist for the planner. "
+        "This is not a final authority, but it should identify what remains "
+        "before the original task can be safely marked done. Do not treat a "
+        "menu opening, dialog preview, transient visual change, or local "
+        "tool response as enough evidence of final completion unless the "
+        "original task goal itself is visibly satisfied in the final app "
+        "state.\n"
+        "Set ready_to_done=true only when the original task appears fully "
+        "satisfied, the app is in a clean final state, and there are no "
+        "specific completion risks left. For visual edit tasks, the evidence "
+        "must be the final visible result in the main workspace, not merely "
+        "that a tool was opened, a preview changed, a checkerboard appeared, "
+        "or a dialog reported success. If the visible result could still be "
+        "a partial/weak edit, set ready_to_done=false and describe the next "
+        "inspection or refinement needed.\n\n"
         "Reply with ONLY this JSON object:\n"
         '{"step_succeeded": true, "observation": "one factual sentence '
-        'describing the current screen"}'
+        'describing the current screen", '
+        '"completion_evidence": "specific visible evidence that the original task is or is not complete", '
+        '"remaining_plan": ["short checklist item still needed before done"], '
+        '"completion_risks": ["specific reason done may be premature"], '
+        '"ready_to_done": false}'
     )
 
     reply = runtime.exec(content=[
@@ -411,11 +465,21 @@ def verify_step(
     try:
         result = parse_json(reply)
         result.pop("task_completed", None)  # verify no longer decides completion
+        result.setdefault("completion_evidence", "")
+        result.setdefault("remaining_plan", [])
+        result.setdefault("completion_risks", [])
+        result.setdefault("ready_to_done", False)
         return result
     except Exception:
         return {
             "step_succeeded": True,
             "observation": reply[:300],
+            "completion_evidence": "",
+            "remaining_plan": [],
+            "completion_risks": ["verify reply could not be parsed; planner should be conservative before done"],
+            "ready_to_done": False,
+            "parse_error": traceback.format_exc(),
+            "raw_reply": reply[:1000],
         }
 
 
@@ -468,11 +532,39 @@ def plan_next_action(
         "do not repeat it; move on or verify its output.\n"
         "- Never generate or paraphrase content from your own knowledge "
         "— all data must come from the screen or actual files.\n"
+        "- Do not save, export, overwrite, or rename files unless the task "
+        "explicitly asks for that file operation or named output path. For "
+        "benchmark/evaluator workflows, a visible completed edit in the app "
+        "can be the correct handoff state; avoid opening save/export dialogs "
+        "just to prove completion.\n"
         '- Choose "done" ONLY with strong evidence the task is fully '
         "complete; if a command ran but its output is unverified, plan a "
         "verify action instead.\n"
+        '- Choose "fail" when the task is genuinely infeasible: the requested '
+        "operation is impossible in the target app, requires unavailable "
+        "plugins/data/hardware, contradicts itself, or the required option "
+        "does not exist. The fail reasoning MUST explicitly include "
+        "FAIL/INFEASIBLE and the concrete blocker. Do not use fail just "
+        "because an attempt failed; recover first when there is a plausible "
+        "path.\n"
+        '- Before choosing "done", the app must be in a clean handoff '
+        "state: no Save, Save As, Export, Open, confirmation, warning, "
+        "or options dialog should be left blocking the main workspace. If "
+        "such a dialog is open, either finish it completely and verify it "
+        "closed, or cancel/close it before marking the task complete.\n"
         "- If the previous step failed, plan a recovery (retry or an "
         "alternative approach).\n\n"
+        "- Treat the verification checklist as the current running plan. "
+        "If it lists remaining_plan or completion_risks, choose the next "
+        "action that resolves the highest-impact item. Do not choose "
+        '"done" while unresolved completion_risks remain unless you can '
+        "explain why they are no longer valid from the current screenshot.\n"
+        "- Keep planning beyond the immediately successful UI operation: "
+        "after opening a dialog, plan to apply it and verify the final main "
+        "workspace; after applying an edit, plan to inspect whether the "
+        "original task goal is visibly satisfied; after creating or changing "
+        "content, plan to check the actual result rather than the fact that "
+        "a tool was used.\n\n"
         "Reply with ONLY this JSON for one action:\n"
         '{"call": "<action_name>", "args": { ... }, "goal": "what this '
         'action should achieve, one specific sentence", "reasoning": '
@@ -591,7 +683,12 @@ def _dispatch(plan: dict, img_path: str, app_name: str, task: str, runtime, allo
                          f"Pick a GUI action: {sorted(registry)}",
             }
     except Exception as e:
-        result = {"success": False, "error": str(e)}
+        result = {
+            "success": False,
+            "error": str(e),
+            "error_type": e.__class__.__name__,
+            "traceback": traceback.format_exc(),
+        }
 
     return result
 
@@ -680,9 +777,15 @@ def gui_step(
     verification_summary = ""
     if verification:
         succeeded = "succeeded" if verification.get("step_succeeded") else "failed"
+        remaining = verification.get("remaining_plan") or []
+        risks = verification.get("completion_risks") or []
         verification_summary = (
             f"Previous step {succeeded}. "
-            f"Observation: {verification.get('observation', '')}"
+            f"Observation: {verification.get('observation', '')}\n"
+            f"Completion evidence: {verification.get('completion_evidence', '')}\n"
+            f"Ready to done: {bool(verification.get('ready_to_done'))}\n"
+            f"Remaining plan: {json.dumps(remaining, ensure_ascii=False)}\n"
+            f"Completion risks: {json.dumps(risks, ensure_ascii=False)}"
         )
 
     plan = plan_next_action(
@@ -699,12 +802,48 @@ def gui_step(
     plan = _normalize_plan(plan)
     action_name = plan.get("call", plan.get("action", "general"))
 
-    # Plan says done?
-    if action_name == "done":
+    # Plan says done or explicitly infeasible?
+    if action_name in {"done", "fail"}:
+        remaining = (verification or {}).get("remaining_plan") or []
+        risks = (verification or {}).get("completion_risks") or []
+        done_allowed = (
+            bool((verification or {}).get("ready_to_done"))
+            and not remaining
+            and not risks
+        )
+        if action_name == "done" and verification and not done_allowed:
+            risks = risks or ["verification did not mark the task ready to done"]
+            plan = {
+                "call": "done",
+                "goal": plan.get("goal", ""),
+                "reasoning": (
+                    "Planner requested done, but verify did not mark the task ready. "
+                    f"Risks: {risks}"
+                ),
+                "blocked_by_completion_verify": True,
+            }
+            return {
+                "done": False,
+                "plan": plan,
+                "exec_result": {
+                    "success": False,
+                    "error": "done blocked by completion verification",
+                    "completion_risks": risks,
+                    "remaining_plan": verification.get("remaining_plan") or [],
+                },
+                "verification": verification,
+                "state": obs["current_state"],
+                "img_path": obs["img_path"],
+                "screenshot_artifact": obs.get("screenshot_artifact"),
+            }
         return {
             "done": True,
             "plan": plan,
+            "infeasible": action_name == "fail",
+            "verification": verification,
             "state": obs["current_state"],
+            "img_path": obs["img_path"],
+            "screenshot_artifact": obs.get("screenshot_artifact"),
         }
 
     # ── 4. Action (pure Python dispatch) ──
@@ -716,6 +855,8 @@ def gui_step(
         "exec_result": exec_result,
         "verification": verification,
         "state": obs["current_state"],
+        "img_path": obs["img_path"],
+        "screenshot_artifact": obs.get("screenshot_artifact"),
     }
 
 
@@ -744,6 +885,9 @@ def build_step_feedback(result: dict) -> dict:
 
     if verification:
         feedback["prev_observation"] = verification.get("observation", "")
+        feedback["remaining_plan"] = verification.get("remaining_plan") or []
+        feedback["completion_risks"] = verification.get("completion_risks") or []
+        feedback["ready_to_done"] = bool(verification.get("ready_to_done"))
 
     return feedback
 
@@ -780,7 +924,13 @@ def conclusion(task: str, completed: bool, steps_taken: int, runtime=None) -> di
     try:
         return parse_json(reply)
     except Exception:
-        return {"summary": reply[:500], "success": completed, "issues": None}
+        return {
+            "summary": reply[:500],
+            "success": completed,
+            "issues": None,
+            "parse_error": traceback.format_exc(),
+            "raw_reply": reply[:1000],
+        }
 
 
 # ═══════════════════════════════════════════

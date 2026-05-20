@@ -364,9 +364,12 @@ def find_target_in_known(
     target: str,
     known_components: list[dict],
     texts: list[dict],
+    img_path: str,
+    img_w: int,
+    img_h: int,
     runtime=None,
 ) -> dict:
-    """Locate a target element among the known components and OCR text."""
+    """Locate a target element from candidates or direct screenshot grounding."""
     from gui_harness.utils import parse_json
 
     if runtime is None:
@@ -392,14 +395,30 @@ Known UI components (labeled, with coordinates):
 OCR text on screen:
 {text_lines}
 
-Pick the one entry from the known components or the OCR text that best
-matches the target. Use the exact label as written in the lists above.
+You may locate the target in either of two ways:
+1. Pick one entry from the known components or OCR text. Use the exact label
+   as written in the lists above.
+2. If the target is visible in the screenshot but is not represented by any
+   listed entry, estimate its click coordinates directly from the screenshot
+   and the coordinate references above.
+
+Choose a listed entry only if it satisfies the full target description. Do not
+choose an entry merely because its label matches one word from the target. For
+visual objects, shapes, image contents, document contents, canvas objects, or
+other things that may not be UI components, direct x/y grounding is allowed.
 
 Reply with ONLY this JSON object:
-{{"reasoning": "one short sentence — which entry you picked and why",
-  "name": "exact label from the lists, or \\"\\" if nothing matches"}}"""
+{{"reasoning": "one short sentence explaining why the target is satisfied",
+  "name": "exact label from the lists if using a listed entry, otherwise \\"\\"",
+  "x": 0,
+  "y": 0,
+  "grounding_type": "listed_entry or direct_pixel",
+  "confidence": 0.0}}"""
 
-    reply = rt.exec(content=[{"type": "text", "text": context}])
+    reply = rt.exec(content=[
+        {"type": "text", "text": context},
+        {"type": "image", "path": img_path},
+    ])
 
     try:
         result = parse_json(reply)
@@ -412,6 +431,7 @@ Reply with ONLY this JSON object:
 
     reasoning = result.get("reasoning", "")
     name = (result.get("name") or "").strip()
+    grounding_type = (result.get("grounding_type") or "").strip()
 
     lookup: dict[str, tuple[int, int]] = {}
     for c in known_components:
@@ -421,22 +441,54 @@ Reply with ONLY this JSON object:
         if label:
             lookup[label] = (t.get("cx", 0), t.get("cy", 0))
 
-    if not name or name not in lookup:
+    if name:
+        if name not in lookup:
+            print(
+                f"  [phase3] name={name!r} not in lists. reasoning: {reasoning[:400]}",
+                file=sys.stderr,
+            )
+            return {"found": False, "reasoning": reasoning}
+
+        cx, cy = lookup[name]
+        if cx <= 0 or cy <= 0:
+            print(
+                f"  [phase3] entry {name!r} has bad coords ({cx},{cy})",
+                file=sys.stderr,
+            )
+            return {"found": False, "reasoning": f"entry {name!r} has bad coords"}
+
+        return {
+            "found": True,
+            "name": name,
+            "cx": cx,
+            "cy": cy,
+            "source": "listed_entry",
+            "grounding_type": grounding_type or "listed_entry",
+            "reasoning": reasoning,
+        }
+
+    try:
+        cx = int(round(float(result.get("x", 0))))
+        cy = int(round(float(result.get("y", 0))))
+    except (TypeError, ValueError):
+        cx = cy = 0
+
+    if cx <= 0 or cy <= 0 or cx > img_w or cy > img_h:
         print(
-            f"  [phase3] name={name!r} not in lists. reasoning: {reasoning[:400]}",
+            f"  [phase3] no listed entry and bad direct coords ({cx},{cy}). reasoning: {reasoning[:400]}",
             file=sys.stderr,
         )
         return {"found": False, "reasoning": reasoning}
 
-    cx, cy = lookup[name]
-    if cx <= 0 or cy <= 0:
-        print(
-            f"  [phase3] entry {name!r} has bad coords ({cx},{cy})",
-            file=sys.stderr,
-        )
-        return {"found": False, "reasoning": f"entry {name!r} has bad coords"}
-
-    return {"found": True, "name": name, "cx": cx, "cy": cy, "reasoning": reasoning}
+    return {
+        "found": True,
+        "name": "direct_pixel",
+        "cx": cx,
+        "cy": cy,
+        "source": "direct_pixel_grounding",
+        "grounding_type": grounding_type or "direct_pixel",
+        "reasoning": reasoning,
+    }
 
 
 # ═══════════════════════════════════════════
@@ -756,6 +808,9 @@ def locate_target(
             target=target,
             known_components=all_known,
             texts=texts,
+            img_path=img_path,
+            img_w=detection["img_w"],
+            img_h=detection["img_h"],
             runtime=runtime,
         )
         _timing["phase3_llm"] = round(time.time() - t0, 2)
@@ -766,6 +821,9 @@ def locate_target(
                 "cx": result.get("cx", 0),
                 "cy": result.get("cy", 0),
                 "name": result.get("name", target),
+                "source": result.get("source", "phase3_llm"),
+                "grounding_type": result.get("grounding_type", ""),
+                "reasoning": result.get("reasoning", ""),
                 "timing": _timing,
             }
 

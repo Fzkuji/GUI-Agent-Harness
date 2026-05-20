@@ -14,11 +14,58 @@ import glob
 import json
 import os
 import sys
+from contextlib import contextmanager
 
 OSWORLD_DIR = os.path.expanduser("~/OSWorld")
 sys.path.insert(0, OSWORLD_DIR)
+os.environ["PROXY_CONFIG_FILE"] = os.path.join(
+    OSWORLD_DIR,
+    "evaluation_examples/settings/proxy/dataimpulse.json",
+)
 
 VM_PORT = 5000
+
+
+@contextmanager
+def pushd(path: str):
+    old = os.getcwd()
+    os.chdir(os.path.expanduser(path))
+    try:
+        yield
+    finally:
+        os.chdir(old)
+
+
+def agent_declared_infeasible(path: str | None) -> tuple[bool, str]:
+    if not path:
+        return False, "no agent result path provided"
+    try:
+        data = json.load(open(path))
+    except Exception as e:
+        return False, f"could not read agent result: {e}"
+
+    if data.get("infeasible_declared") is True:
+        return True, "agent_result.infeasible_declared=true"
+
+    texts = []
+    for key in ("summary", "issues"):
+        value = data.get(key)
+        if value:
+            texts.append(str(value))
+    for item in data.get("history", []):
+        plan = item.get("plan", {}) if isinstance(item, dict) else {}
+        call = plan.get("call", plan.get("action", ""))
+        reasoning = plan.get("reasoning") or plan.get("args", {}).get("reasoning") or ""
+        goal = plan.get("goal", "")
+        if call == "fail":
+            return True, f"history step {item.get('step')} used fail action"
+        texts.extend([str(reasoning), str(goal)])
+
+    joined = "\n".join(texts).lower()
+    markers = ("fail", "infeasible", "unfeasible", "impossible", "not feasible", "cannot be done")
+    if any(marker in joined for marker in markers):
+        return True, "agent text explicitly declared infeasible/fail"
+    return False, "no explicit infeasible/fail declaration found"
 
 
 def get_task_config(task_num: int, domain: str = "multi_apps") -> dict:
@@ -44,6 +91,7 @@ def main():
     parser.add_argument("task_num", type=int, help="Task number (1-indexed)")
     parser.add_argument("--domain", default="multi_apps", help="OSWorld domain")
     parser.add_argument("--vm", default="172.16.82.132", help="VM IP address")
+    parser.add_argument("--agent-result", help="GUI harness agent_result.json for scoring infeasible tasks")
     args = parser.parse_args()
 
     task_config = get_task_config(args.task_num, args.domain)
@@ -53,14 +101,20 @@ def main():
 
     evaluator = task_config.get("evaluator", {})
     if evaluator.get("func") == "infeasible":
-        print("Evaluator: infeasible (task cannot be scored automatically)")
-        score = -1.0
+        declared, reason = agent_declared_infeasible(args.agent_result)
+        print("Evaluator: infeasible-style task")
+        print(f"Agent infeasible declaration: {'yes' if declared else 'no'} ({reason})")
+        score = 1.0 if declared else 0.0
     else:
         from eval_only import EvalOnlyEnv
-        env = EvalOnlyEnv(vm_ip=args.vm, server_port=VM_PORT, task_id=task_config["id"])
         try:
-            env.load_task(task_config)
-            score = float(env.evaluate())
+            with pushd(OSWORLD_DIR):
+                # EvalOnlyEnv uses a relative cache_dir. Construct it after
+                # switching to OSWorld so getters write into the same cache
+                # tree that was created during initialization.
+                env = EvalOnlyEnv(vm_ip=args.vm, server_port=VM_PORT, task_id=task_config["id"])
+                env.load_task(task_config)
+                score = float(env.evaluate())
         except Exception as e:
             print(f"Evaluator error: {e}")
             score = -1.0

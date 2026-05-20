@@ -5,9 +5,16 @@
 START=${1:-1}
 END=${2:-10}
 DOMAIN=${3:-multi_apps}
-VM="172.16.82.132"
-MAX_STEPS=15
+PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
+RUN_CONFIG="${OSWORLD_RUN_CONFIG:-}"
+MAX_STEPS="${MAX_STEPS:-15}"
 LOG_DIR="/tmp/osworld_batch_${DOMAIN}"
+
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/false
+export SSH_ASKPASS=/bin/false
+export SUDO_ASKPASS=/bin/false
+export OSWORLD_BENCHMARK_FIXED=1
 
 mkdir -p "$LOG_DIR"
 
@@ -20,8 +27,11 @@ for i in $(seq $START $END); do
     echo "Starting Task $i at $(date '+%H:%M:%S')"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    python3 benchmarks/osworld/run_osworld_task.py "$i" --domain "$DOMAIN" --vm "$VM" --max-steps "$MAX_STEPS" \
-        > "$LOG_DIR/task${i}.log" 2>&1
+    CMD=("$PYTHON_BIN" benchmarks/osworld/run_osworld_task.py "$i" --domain "$DOMAIN" --max-steps "$MAX_STEPS")
+    if [ -n "$RUN_CONFIG" ]; then
+        CMD+=("--run-config" "$RUN_CONFIG")
+    fi
+    "${CMD[@]}" > "$LOG_DIR/task${i}.log" 2>&1
 
     # Extract score from log
     SCORE=$(grep -o 'Score: [0-9.]*' "$LOG_DIR/task${i}.log" | tail -1 | awk '{print $2}')

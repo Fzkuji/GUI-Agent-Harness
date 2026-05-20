@@ -1,0 +1,24 @@
+{
+  "paths": {
+    "osworld_dir": "~/OSWorld",
+    "osworld_cache_dir": "cache"
+  },
+  "vm": {
+    "vmrun": "/Applications/VMware Fusion.app/Contents/Public/vmrun",
+    "vmx": "~/OSWorld/vmware_vm_data/Ubuntu-arm/Ubuntu.vmx",
+    "snapshot": "init_state",
+    "start_mode": "nogui",
+    "server_port": 5000,
+    "host_proxy_url": "http://172.16.82.1:6152"
+  },
+  "run": {
+    "domain": "gimp",
+    "vm": "172.16.105.130",
+    "max_steps": 30,
+    "provider": "openai-codex",
+    "model": "gpt-5.5",
+    "eval_timeout": 300,
+    "ro_retries": 1,
+    "artifact_root": "runs/gimp_fixed"
+  }
+}

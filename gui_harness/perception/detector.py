@@ -242,6 +242,12 @@ def load_gpa_detector():
 
 def detect_icons(img_path: str, conf: float = 0.1, iou: float = 0.3):
     """Detect UI elements using Salesforce/GPA-GUI-Detector."""
+    import cv2
+
+    img = cv2.imread(img_path)
+    if img is None:
+        raise RuntimeError(f"Screenshot is missing or not a valid image: {img_path}")
+
     model = load_gpa_detector()
     results = model.predict(img_path, conf=conf, iou=iou, verbose=False)
     r = results[0]

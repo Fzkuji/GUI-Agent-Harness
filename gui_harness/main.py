@@ -107,6 +107,7 @@ def gui_agent(
     history = []
     feedback = None
     completed = False
+    infeasible_declared = False
 
     for step_num in range(1, max_steps + 1):
         print(f"  [step {step_num}/{max_steps}] ...", file=sys.stderr)
@@ -145,6 +146,7 @@ def gui_agent(
 
         if result.get("done"):
             completed = True
+            infeasible_declared = bool(result.get("infeasible"))
             break
 
         # Build feedback for next iteration
@@ -178,6 +180,7 @@ def gui_agent(
     final = {
         "task": task,
         "success": summary.get("success", completed),
+        "infeasible_declared": infeasible_declared,
         "summary": summary.get("summary", ""),
         "issues": summary.get("issues"),
         "steps_taken": len(history),
