@@ -908,12 +908,34 @@ def conclusion(task: str, completed: bool, steps_taken: int, runtime=None) -> di
     context = (
         f"<task>{task}</task>\n\n"
         f"Status: {status}\nSteps used: {steps_taken}\n\n"
-        "Look at the current screenshot and briefly summarise what was "
-        "done, whether the task completed successfully, and any issues "
-        "encountered.\n\n"
+        "Your job: write a `summary` that DIRECTLY ANSWERS the user's <task> "
+        "above, using concrete details visible in the current screenshot.\n\n"
+        "Rules for `summary` — MUST follow:\n"
+        "1. Answer the user's actual question first, with SPECIFIC content "
+        "from the screen. Do NOT just say 'I observed the screen' / 'task "
+        "completed as requested' / 'no modifications were made'. Those are "
+        "empty and will be rejected.\n"
+        "2. Examples of the required style:\n"
+        "   - task='what is on the screen' → summary must name the app, "
+        "window title, visible UI elements, text content. e.g. 'Screen "
+        "shows Chrome with Baidu Tieba open; top menu has New chat / "
+        "Functions / Skills tabs; main pane lists 5 threads, the first is "
+        "...'\n"
+        "   - task='open app X' → summary must say 'Opened X; current view "
+        "shows Y (specific elements)'.\n"
+        "   - task='search Y in X' → summary must say 'Searched Y in X; "
+        "found N results; first result is ...'.\n"
+        "3. After answering, you may add 1 short clause about the actions "
+        "taken. But the answer to the user's question comes FIRST and "
+        "dominates the summary.\n"
+        "4. If the task was a pure observation ('look', 'check', 'see'), "
+        "then the summary IS the observation — describe what is on screen "
+        "in concrete detail. Never write 'observed the screen as "
+        "requested' without saying WHAT was observed.\n\n"
         "Reply with ONLY this JSON object:\n"
-        '{"summary": "brief description of what was accomplished", '
-        '"success": true, "issues": "any problems encountered, or null"}'
+        '{"summary": "<concrete answer to the user\'s task, grounded in '
+        'the screenshot>", "success": true, "issues": "any problems '
+        'encountered, or null"}'
     )
 
     reply = runtime.exec(content=[
