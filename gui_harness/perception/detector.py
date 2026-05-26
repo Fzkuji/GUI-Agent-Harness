@@ -385,9 +385,17 @@ def detect_all(img_path: str, conf: float = 0.1, iou: float = 0.3):
     """
     from gui_harness.perception.ocr import detect_text
 
+    try:
+        from openprogram.webui._pause_stop import check_cancelled as _cc
+    except Exception:
+        def _cc() -> None:
+            return None
+
+    _cc()
     # GPA-GUI-Detector: REQUIRED
     icons, img_w, img_h = detect_icons(img_path, conf=conf, iou=iou)
 
+    _cc()
     # OCR: OPTIONAL
     texts = []
     try:
@@ -395,6 +403,7 @@ def detect_all(img_path: str, conf: float = 0.1, iou: float = 0.3):
     except Exception:
         pass
 
+    _cc()
     merged = merge_elements(icons, texts)
 
     return icons, texts, merged, img_w, img_h

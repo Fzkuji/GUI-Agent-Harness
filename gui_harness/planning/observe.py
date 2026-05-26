@@ -12,6 +12,12 @@ from gui_harness.openprogram_compat import agentic_function
 from gui_harness.perception import screenshot, ocr, detector
 from gui_harness.action.input import get_frontmost_app
 
+try:
+    from openprogram.webui._pause_stop import check_cancelled as _check_cancelled
+except Exception:  # standalone gui_harness usage — no webui layer
+    def _check_cancelled() -> None:  # type: ignore[no-redef]
+        return None
+
 
 @agentic_function(render_range={"depth": 0, "siblings": 0})
 def observe(task: str, app_name: str = None, runtime=None) -> dict:
@@ -23,14 +29,20 @@ def observe(task: str, app_name: str = None, runtime=None) -> dict:
     if not app_name:
         app_name = get_frontmost_app()
 
+    _check_cancelled()
     img_path = screenshot.take()
+
+    _check_cancelled()
     ocr_results = ocr.detect_text(img_path)
 
+    _check_cancelled()
     try:
         _, _, merged, _, _ = detector.detect_all(img_path)
         elements = merged
     except Exception:
         elements = ocr_results
+
+    _check_cancelled()
 
     ocr_lines = "\n".join(
         f"  '{el.get('label', '')}' at ({el.get('cx', 0)}, {el.get('cy', 0)})"
