@@ -17,7 +17,7 @@ Usage:
     python3 gui_action.py click 500 300 --remote http://172.16.105.128:5000
     python3 gui_action.py type "hello" --remote http://172.16.105.128:5000
 
-The script auto-detects local platform (macOS/Linux) and routes
+The script auto-detects local platform (macOS/Windows/Linux) and routes
 to the correct backend. For remote targets, it uses the URL protocol
 (http/ssh) to select the backend.
 """
@@ -27,12 +27,17 @@ import os
 import argparse
 
 def get_local_backend():
-    """Select local backend based on current platform."""
+    """Select local backend based on current platform.
+
+    macOS uses a dedicated backend (screencapture / osascript / cliclick).
+    Windows and Linux share the cross-platform ``local`` backend
+    (pynput + Pillow + ctypes/wmctrl).
+    """
     if sys.platform == "darwin":
         from gui_harness.action.backends import mac_local
         return mac_local
-    else:
-        raise NotImplementedError(f"Local backend not implemented for: {sys.platform}")
+    from gui_harness.action.backends import local
+    return local
 
 
 def get_remote_backend(remote_url):
@@ -119,7 +124,9 @@ def main():
             backend.shortcut(action_args[0])
 
     elif args.action == "screenshot":
-        path = action_args[0] if action_args else "/tmp/gui_screenshot.png"
+        import tempfile
+        path = action_args[0] if action_args else os.path.join(
+            tempfile.gettempdir(), "gui_screenshot.png")
         if remote_url:
             backend.screenshot(path, remote_url=remote_url)
         else:

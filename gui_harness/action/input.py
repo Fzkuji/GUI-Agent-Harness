@@ -207,6 +207,10 @@ class LocalTarget(ActionTarget):
             except Exception:
                 subprocess.run(["open", "-a", app_name], capture_output=True, timeout=5)
                 time.sleep(0.5)
+        else:
+            # Windows / Linux — delegate to the cross-platform window module.
+            from gui_harness.action.window import activate_app as _activate
+            _activate(app_name)
 
     def set_clipboard(self, text):
         if self.platform == "darwin":
@@ -526,7 +530,9 @@ def get_frontmost_app(target=None):
             return r.stdout.strip()
         except Exception:
             return "unknown"
-    return "unknown"
+    # Windows / Linux — delegate to the cross-platform window module.
+    from gui_harness.action.window import get_frontmost_app as _front
+    return _front()
 
 def verify_frontmost(expected_app, target=None):
     actual = get_frontmost_app(target)
@@ -568,4 +574,7 @@ if (best) best.join(","); else "";
                 return tuple(int(x) for x in parts)
         except Exception:
             pass
-    return None
+        return None
+    # Windows / Linux — delegate to the cross-platform window module.
+    from gui_harness.action.window import get_window_bounds as _bounds
+    return _bounds(app_name)

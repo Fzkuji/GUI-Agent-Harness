@@ -16,7 +16,7 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/Platform-macOS_%7C_Linux-black?logo=apple" />
+    <img src="https://img.shields.io/badge/Platform-macOS_%7C_Windows_%7C_Linux-black?logo=apple" />
     <img src="https://img.shields.io/badge/Provider-Claude_%7C_OpenClaw_%7C_OpenAI-orange" />
     <img src="https://img.shields.io/badge/Detection-GPA--GUI--Detector-green" />
     <img src="https://img.shields.io/badge/OCR-Apple_Vision_%7C_EasyOCR-blue" />
@@ -102,10 +102,14 @@ pip install openprogram
 openprogram programs install gui
 ```
 
-> **Platform note:** install + registration work on every OS, but the GUI
-> harness's screen-capture / input backends currently target **macOS / Linux**.
-> Running `gui_agent` on Windows isn't supported yet (the function registers,
-> but invoking it will report the unsupported backend).
+> **Platform note:** the **core action layer** — screen capture, mouse/keyboard
+> input, window focus, and clipboard — runs on **macOS, Windows, and Linux**
+> (screenshots via Pillow `ImageGrab`, input via `pynput`, window control via
+> the Win32 API on Windows / `wmctrl`+`xdotool` on Linux). The **advanced visual
+> perception** (Apple Accessibility window introspection and Apple Vision OCR) is
+> macOS-tuned; on Windows/Linux the agent falls back to YOLO UI detection +
+> EasyOCR. HiDPI coordinate scaling is currently calibrated for macOS Retina, so
+> pixel-precise clicks may need tuning on scaled Windows/Linux displays.
 
 <details>
 <summary><b>Manual install / local development</b></summary>
@@ -170,7 +174,12 @@ The system auto-detects the best available provider. You can also force one with
 
 **Linux:**
 - Install EasyOCR for text detection: `pip install easyocr`
-- Or install with: `pip install "gui-agent-harness[ocr] @ git+https://github.com/Fzkuji/GUI-Agent-Harness.git"`
+- Window focus / bounds use `wmctrl` / `xdotool` — install via your package manager.
+
+**Windows:**
+- Install EasyOCR for text detection: `pip install easyocr`
+- Window focus / list / bounds use the built-in Win32 API (no extra install).
+- Visual perception is macOS-tuned; verify clicks on HiDPI-scaled displays.
 
 ### Step 4: Run
 
@@ -357,7 +366,7 @@ GUI-Agent-Harness/
 ## Requirements
 
 - **Python 3.12+**
-- **macOS** (Apple Silicon recommended for Vision OCR) or **Linux**
+- **macOS, Windows, or Linux** for the core action layer (macOS + Apple Silicon recommended for the full Vision-OCR perception stack)
 - At least one LLM provider (Claude Code CLI, OpenClaw, or API key)
 - For VM automation: OSWorld or compatible HTTP API
 

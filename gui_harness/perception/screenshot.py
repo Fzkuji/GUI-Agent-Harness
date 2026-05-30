@@ -11,14 +11,61 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
+import tempfile
 import time
 
 SYSTEM = platform.system()
 
 
-def screenshot(path: str = "/tmp/gui_agent_screen.png") -> str:
-    """Take a full-screen screenshot and return the path."""
-    subprocess.run(["screencapture", "-x", path], capture_output=True, timeout=5)
+def _shot_path(name: str = "gui_agent_screen.png") -> str:
+    """Cross-platform scratch path for a screenshot (platform temp dir)."""
+    return os.path.join(tempfile.gettempdir(), name)
+
+
+def screenshot(path: str | None = None) -> str:
+    """Take a full-screen screenshot and return the path. Cross-platform.
+
+    - macOS: ``screencapture`` (fast, native, captures the main display).
+    - Windows / Linux: Pillow ``ImageGrab`` (Pillow is a declared dep; on
+      Windows it is fully native, on Linux it uses the X11 grabber).
+    - Linux fallback: ``scrot`` / ``gnome-screenshot`` / ImageMagick
+      ``import`` if Pillow's grabber is unavailable (e.g. Wayland).
+
+    Coordinate note: macOS Retina screenshots are 2x logical points; on
+    Windows/Linux the captured image is in physical pixels (== logical
+    unless the desktop is HiDPI-scaled). Callers mapping click coords to
+    screenshot pixels should account for the per-platform scale factor.
+    """
+    path = path or _shot_path()
+    if SYSTEM == "Darwin":
+        subprocess.run(["/usr/sbin/screencapture", "-x", path],
+                       capture_output=True, timeout=5)
+        return path
+
+    # Windows + Linux: Pillow ImageGrab (no extra dependency).
+    try:
+        from PIL import ImageGrab
+        ImageGrab.grab().save(path)
+        if os.path.exists(path):
+            return path
+    except Exception:
+        if SYSTEM != "Linux":
+            raise  # Windows has no further fallback
+
+    # Linux fallback when ImageGrab is unavailable (Wayland / headless X).
+    if SYSTEM == "Linux":
+        for cmd in (["scrot", "-o", path],
+                    ["gnome-screenshot", "-f", path],
+                    ["import", "-window", "root", path]):
+            try:
+                r = subprocess.run(cmd, capture_output=True, timeout=10)
+                if r.returncode == 0 and os.path.exists(path):
+                    return path
+            except FileNotFoundError:
+                continue
+        raise RuntimeError(
+            "No screenshot backend on Linux: install Pillow with X11 support "
+            "or one of scrot / gnome-screenshot / imagemagick (import).")
     return path
 
 
@@ -27,18 +74,32 @@ def capture_window(app_name: str, out_path: str = None):
 
     Returns: (image_path, x, y, w, h) or None on failure.
     """
+    out_path = out_path or _shot_path(
+        f"gui_agent_{app_name.lower().replace(' ', '_')}.png")
+
     if SYSTEM == "Darwin":
-        from gui_harness.perception.detector import get_window_info, take_window_screenshot
+        from gui_harness.perception.detector import (
+            get_window_info, take_window_screenshot)
 
         info = get_window_info(app_name)
         if not info:
             return None
+        take_window_screenshot(info["id"], out_path)
+        return out_path, info["x"], info["y"], info["w"], info["h"]
 
-        path = out_path or f"/tmp/gui_agent_{app_name.lower().replace(' ', '_')}.png"
-        take_window_screenshot(info["id"], path)
-        return path, info["x"], info["y"], info["w"], info["h"]
-    else:
-        raise NotImplementedError(f"{SYSTEM} capture_window not yet implemented")
+    # Windows / Linux: resolve window bounds, grab full screen, crop.
+    from gui_harness.action.window import get_window_bounds
+    bounds = get_window_bounds(app_name)
+    if not bounds:
+        return None
+    x, y, w, h = bounds
+    full = screenshot(_shot_path("_capwin_full.png"))
+    try:
+        from PIL import Image
+        Image.open(full).crop((x, y, x + w, y + h)).save(out_path)
+        return out_path, x, y, w, h
+    except Exception:
+        return None
 
 
 def screenshot_region(out_path, method="auto", x1=None, y1=None, x2=None, y2=None,
@@ -99,7 +160,7 @@ def screenshot_region(out_path, method="auto", x1=None, y1=None, x2=None, y2=Non
         return None
 
     elif method == "crop":
-        full = screenshot("/tmp/_region_full.png")
+        full = screenshot(_shot_path("_region_full.png"))
         from PIL import Image
         img = Image.open(full)
         # Logical → Retina (2x)
@@ -122,7 +183,7 @@ def screenshot_region(out_path, method="auto", x1=None, y1=None, x2=None, y2=Non
 
 def _screenshot_by_anchors(out_path, anchor_start, anchor_end, padding=10):
     """Strategy 1: OCR-based anchor positioning."""
-    full = screenshot("/tmp/_anchor_full.png")
+    full = screenshot(_shot_path("_anchor_full.png"))
     from PIL import Image
     img = Image.open(full)
 
@@ -188,7 +249,7 @@ def _screenshot_by_anchors(out_path, anchor_start, anchor_end, padding=10):
 
 def _screenshot_auto_crop(out_path, content_threshold=245):
     """Strategy 2a: Connected components white/content region detection."""
-    full = screenshot("/tmp/_auto_full.png")
+    full = screenshot(_shot_path("_auto_full.png"))
     from PIL import Image
     import numpy as np
     import cv2
@@ -221,7 +282,7 @@ def _screenshot_auto_crop(out_path, content_threshold=245):
 
 def _screenshot_edge_detect(out_path):
     """Strategy 2b: Edge-based content boundary detection."""
-    full = screenshot("/tmp/_edge_full.png")
+    full = screenshot(_shot_path("_edge_full.png"))
     from PIL import Image
     import numpy as np
     import cv2
