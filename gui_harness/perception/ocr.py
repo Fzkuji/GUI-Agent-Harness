@@ -61,7 +61,15 @@ def _detect_text_easyocr(img_path: str) -> list:
         return []
 
     if _easyocr_reader is None:
-        _easyocr_reader = easyocr.Reader(['en', 'ch_sim'], gpu=True, verbose=False)
+        # Auto-detect GPU: a hardcoded gpu=True crashes / warns on CPU-only
+        # machines (e.g. most Windows boxes without CUDA).
+        gpu = False
+        try:
+            import torch
+            gpu = bool(torch.cuda.is_available())
+        except Exception:
+            gpu = False
+        _easyocr_reader = easyocr.Reader(['en', 'ch_sim'], gpu=gpu, verbose=False)
 
     results = _easyocr_reader.readtext(img_path)
     elements = []

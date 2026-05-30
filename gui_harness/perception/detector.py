@@ -14,7 +14,8 @@ import sys
 import time
 from pathlib import Path
 
-GPA_MODEL = os.path.expanduser("~/GPA-GUI-Detector/model.pt")
+GPA_MODEL = os.environ.get("GPA_MODEL_PATH") or os.path.expanduser(
+    os.path.join("~", "GPA-GUI-Detector", "model.pt"))
 SCREEN_W = 1512   # Default click-space dimensions (Mac logical)
 SCREEN_H = 982    # Default click-space dimensions (Mac logical)
 
@@ -222,6 +223,11 @@ _gpa_model = None
 def load_gpa_detector():
     global _gpa_model
     if _gpa_model is None:
+        if not os.path.exists(GPA_MODEL):
+            raise FileNotFoundError(
+                f"GPA-GUI-Detector model not found at {GPA_MODEL}. Download "
+                f"Salesforce/GPA-GUI-Detector model.pt to that path, or point "
+                f"$GPA_MODEL_PATH at it — UI element detection requires it.")
         from ultralytics import YOLO
         _gpa_model = YOLO(GPA_MODEL)
     return _gpa_model
@@ -262,7 +268,10 @@ def detect_icons(img_path: str, conf: float = 0.1, iou: float = 0.3):
 # ═══════════════════════════════════════════
 
 def detect_ax_dock():
-    """Get Dock items via AX API."""
+    """Get Dock items via AX API (macOS only; returns [] elsewhere)."""
+    import platform as _plat
+    if _plat.system() != "Darwin":
+        return []
     r = subprocess.run(['osascript', '-l', 'JavaScript', '-e', '''
 var se = Application("System Events");
 var list1 = se.processes["Dock"].uiElements[0];
@@ -300,7 +309,10 @@ for (var i = 0; i < items.length; i++) {
 
 
 def detect_ax_menubar():
-    """Get menu bar items via AX API."""
+    """Get menu bar items via AX API (macOS only; returns [] elsewhere)."""
+    import platform as _plat
+    if _plat.system() != "Darwin":
+        return []
     r = subprocess.run(['osascript', '-l', 'JavaScript', '-e', '''
 var se = Application("System Events");
 var front = se.processes.whose({frontmost: true})[0];
