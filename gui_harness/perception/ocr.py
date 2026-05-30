@@ -71,7 +71,20 @@ def _detect_text_easyocr(img_path: str) -> list:
             gpu = False
         _easyocr_reader = easyocr.Reader(['en', 'ch_sim'], gpu=gpu, verbose=False)
 
-    results = _easyocr_reader.readtext(img_path)
+    # ultralytics monkeypatches cv2.imread (for Unicode-path support), and its
+    # patched IMREAD_GRAYSCALE returns (H, W, 1) instead of (H, W). easyocr's
+    # internal grayscale load then crashes in get_image_list ("too many values
+    # to unpack") once YOLO has run in the same process. Hand easyocr a
+    # guaranteed-2D grayscale ndarray so it never takes that broken path.
+    import cv2
+    bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    if bgr is None:
+        print(f"⚠️ EasyOCR: could not read image {img_path}")
+        return []
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    if gray.ndim == 3:  # defensive: collapse any stray channel dim
+        gray = gray[:, :, 0]
+    results = _easyocr_reader.readtext(gray)
     elements = []
     for bbox, text, conf in results:
         x1 = int(min(p[0] for p in bbox))
