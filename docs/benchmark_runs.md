@@ -34,11 +34,20 @@ without committing local datasets, screenshots, JSONL outputs, or work caches.
 ## ScreenSpot v2
 
 - Model: `openai-codex` / `gpt-5.5`
+- Official manifests: desktop, mobile, and web. Standard reporting also splits
+  each manifest by element type: text vs icon/widget.
 - Base run directory: `runs/screenspot_pro/screenspot_v2_full_20260602_1157`
 - Base result: 1272/1272 completed, 1219 correct / 39 wrong / 14 wrong_format
 - Base accuracy: 95.83%
 - Base split accuracy: desktop 313/334 (93.71%), mobile 485/501 (96.81%),
   web 421/437 (96.34%)
+- Base platform/type accuracy:
+  - desktop-icon 130/140 (92.86%)
+  - desktop-text 183/194 (94.33%)
+  - mobile-icon 200/211 (94.79%)
+  - mobile-text 285/290 (98.28%)
+  - web-icon 194/203 (95.57%)
+  - web-text 227/234 (97.01%)
 - Workflow retry directory: `runs/screenspot_pro/screenspot_v2_wf_retry_20260602_1931`
 - Retry completed rows: 13/14, 12 correct / 1 wrong, with
   `screenspot_v2_mobile_0265` left pending and counted as wrong in the final
@@ -47,6 +56,13 @@ without committing local datasets, screenshots, JSONL outputs, or work caches.
 - Final merged accuracy: 96.78%
 - Final split accuracy: desktop 325/334 (97.31%), mobile 485/501 (96.81%),
   web 421/437 (96.34%)
+- Final platform/type accuracy:
+  - desktop-icon 135/140 (96.43%)
+  - desktop-text 190/194 (97.94%)
+  - mobile-icon 200/211 (94.79%)
+  - mobile-text 285/290 (98.28%)
+  - web-icon 194/203 (95.57%)
+  - web-text 227/234 (97.01%)
 - Reporter: `benchmarks/screenspot_pro/report_screenspot_versions.py`
 
 ## Claude ScreenSpot-Pro 78-Sample Comparison

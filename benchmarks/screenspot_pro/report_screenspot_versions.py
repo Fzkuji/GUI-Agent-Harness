@@ -55,6 +55,14 @@ def load_plan(run_dir: Path) -> list[dict[str, Any]]:
     return entries
 
 
+def load_annotation_rows(dataset: str, annotation: str) -> list[dict[str, Any]]:
+    path = REPO_ROOT / "benchmarks/screenspot_pro" / f"data_screenspot_{dataset}" / "annotations" / annotation
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    return data if isinstance(data, list) else []
+
+
 def result_rows(run_dir: Path, dataset: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     shard_dirs = [run_dir / dataset / "shards"]
@@ -157,13 +165,30 @@ def summarize(run_dir: Path) -> dict[str, Any]:
         latest = latest_by_sample(result_rows(run_dir, dataset))
         dataset_stats = empty_stats()
         split_stats: dict[str, dict[str, Any]] = defaultdict(empty_stats)
+        type_stats: dict[str, dict[str, Any]] = defaultdict(empty_stats)
+        split_type_stats: dict[str, dict[str, Any]] = defaultdict(empty_stats)
+        annotation_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
         error_categories: Counter[str] = Counter()
         for entry in plan:
             if entry["dataset"] != dataset:
                 continue
             row = latest.get(entry["sample_id"])
+            cache_key = (entry["dataset"], entry["annotation"])
+            annotation_rows = annotation_cache.setdefault(
+                cache_key,
+                load_annotation_rows(entry["dataset"], entry["annotation"]),
+            )
+            annotation_row = (
+                annotation_rows[entry["index"]]
+                if 0 <= entry["index"] < len(annotation_rows)
+                else {}
+            )
+            ui_type = str(annotation_row.get("ui_type") or annotation_row.get("data_type") or "unknown")
+            ui_type = ui_type.lower()
             add_row(dataset_stats, row)
             add_row(split_stats[entry["split"]], row)
+            add_row(type_stats[ui_type], row)
+            add_row(split_type_stats[f"{entry['split']}-{ui_type}"], row)
             if row and isinstance(row.get("error"), dict):
                 category = row["error"].get("category")
                 if category:
@@ -174,6 +199,8 @@ def summarize(run_dir: Path) -> dict[str, Any]:
             if dataset_stats["completed"]
             else None,
             "splits": dict(sorted(split_stats.items())),
+            "types": dict(sorted(type_stats.items())),
+            "split_types": dict(sorted(split_type_stats.items())),
             "error_categories": dict(error_categories),
         }
     return payload
@@ -199,6 +226,11 @@ def format_report(payload: dict[str, Any], alive: bool | None) -> str:
             )
         if split_parts:
             lines.append("  " + "；".join(split_parts))
+        type_parts = []
+        for key, type_stat in stats.get("split_types", {}).items():
+            type_parts.append(f"{key} {type_stat['completed']}/{type_stat['expected']} {pct(type_stat)}")
+        if type_parts:
+            lines.append("  by type: " + "；".join(type_parts))
         if stats["error_categories"]:
             errors = "，".join(f"{k}={v}" for k, v in sorted(stats["error_categories"].items()))
             lines.append(f"  errors: {errors}")
