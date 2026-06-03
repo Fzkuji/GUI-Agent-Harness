@@ -132,6 +132,17 @@ def download_with_retries(url: str, dest: Path, timeout_s: int, retries: int) ->
     raise RuntimeError(f"download failed after {retries} attempts: {url}") from last_exc
 
 
+def image_file_is_valid(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        return True
+    except Exception:
+        return False
+
+
 def ensure_sample(
     data_dir: Path,
     annotation: str,
@@ -159,7 +170,27 @@ def ensure_sample(
 
     sample = samples[index]
     img_path = img_dir / f"{sample['id']}.png"
+    raw_image_ref = str(sample.get("raw_image_path") or Path(sample.get("img_filename", "")).name)
+    raw_image_ref = raw_image_ref.lstrip("/").replace("..", "")
+    raw_img_path = data_dir / "raw_images" / raw_image_ref
+    raw_img_basename_path = data_dir / "raw_images" / Path(sample.get("img_filename", "")).name
+    local_image_only = bool(sample.get("dataset_version"))
+    if not img_path.exists() and raw_img_path.exists():
+        img_path = raw_img_path
+    elif not img_path.exists() and raw_img_basename_path.exists():
+        img_path = raw_img_basename_path
+    if img_path.exists() and not image_file_is_valid(img_path):
+        print(
+            f"[screenspot] cached image invalid, redownloading: {img_path}",
+            file=sys.stderr,
+            flush=True,
+        )
+        img_path.unlink()
+        if local_image_only:
+            raise RuntimeError(f"invalid local image cache for {sample['id']}: rerun prepare_screenspot_versions.py")
     if not img_path.exists():
+        if local_image_only:
+            raise FileNotFoundError(f"missing local image cache for {sample['id']}: {raw_img_path}")
         download_with_retries(
             hf_url(f"images/{sample['img_filename']}"),
             img_path,
@@ -431,6 +462,7 @@ def should_retry_result(result: dict) -> bool:
         "provider_transport",
         "provider_rate_limit",
         "provider_timeout",
+        "no_verified_target",
     }
 
 
@@ -474,6 +506,15 @@ def run_one(
             location = refined_location
             point = [int(location["cx"]), int(location["cy"])]
         error = None
+        if point is None:
+            error = {
+                "type": "NoVerifiedTarget",
+                "message": "locator returned no verified target point",
+                "traceback": "",
+                "category": "no_verified_target",
+                "retryable": True,
+                "phase": "locate_target",
+            }
     except SampleTimeoutError as exc:
         # The sample watchdog fired — a BaseException that passed cleanly
         # through OpenProgram's retry layers (the whole point of the
@@ -487,7 +528,7 @@ def run_one(
         point = None
         error = build_error_payload(exc)
 
-    img_w, img_h = sample["img_size"]
+    img_w, img_h = sample.get("img_size") or Image.open(img_path).size
     result = {
         "sample_id": sample["id"],
         "annotation": sample.get("application"),
@@ -678,11 +719,29 @@ def main() -> None:
                         runtime = new_runtime()
                         continue
                     break
+                err = result.get("error") or {}
+                abort_on_rate_limit = os.environ.get(
+                    "GUI_HARNESS_SCREENSPOT_ABORT_ON_PROVIDER_RATE_LIMIT"
+                ) == "1"
+                if err.get("category") == "provider_auth" or (
+                    abort_on_rate_limit and err.get("category") == "provider_rate_limit"
+                ):
+                    # Auth is an infrastructure failure, not a sample result.
+                    # When configured, quota/rate-limit exhaustion gets the
+                    # same treatment so partial budget runs do not turn the
+                    # remaining dataset into wrong_format rows.
+                    print(
+                        "[screenspot] FATAL: provider infrastructure failure "
+                        f"({str(err.get('message', ''))[:200]}). Stopping the run; "
+                        "fix credentials and re-run.",
+                        file=sys.stderr, flush=True,
+                    )
+                    abort_run = True
+                    break
                 result["annotation_file"] = annotation
                 results.append(result)
                 f.write(json.dumps(result, ensure_ascii=False) + "\n")
                 f.flush()
-                err = result.get("error") or {}
                 error_suffix = (
                     f" error={err.get('category')} phase={err.get('phase') or 'unknown'}"
                     if err
@@ -694,18 +753,6 @@ def main() -> None:
                     f"elapsed={result['elapsed_s']}s{error_suffix}",
                     file=sys.stderr,
                 )
-                if err.get("category") == "provider_auth":
-                    # Auth is an infrastructure failure, not a strategy result.
-                    # Don't keep burning the whole dataset on a dead credential
-                    # — stop the run with a clear, actionable message.
-                    print(
-                        "[screenspot] FATAL: provider auth failed "
-                        f"({str(err.get('message', ''))[:200]}). Stopping the run; "
-                        "fix credentials and re-run.",
-                        file=sys.stderr, flush=True,
-                    )
-                    abort_run = True
-                    break
             if abort_run:
                 break
 
@@ -730,6 +777,8 @@ def main() -> None:
         "error_events": os.environ.get("GUI_HARNESS_ERROR_EVENTS"),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if abort_run:
+        raise SystemExit(75)
 
 
 if __name__ == "__main__":

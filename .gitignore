@@ -46,6 +46,10 @@ skills/gui-report/scripts/.tracker_state.json
 # Local benchmark datasets, caches, and experiment outputs
 runs/
 benchmarks/screenspot_pro/data/
+benchmarks/screenspot_pro/data_screenspot_v1/
+benchmarks/screenspot_pro/data_screenspot_v2/
+benchmarks/screenspot_pro/data_ui_vision/
+benchmarks/screenspot_pro/data_mmbench_gui_l2/
 benchmarks/screenspot_pro/*.jsonl
 benchmarks/screenspot_pro/*.errors.jsonl
 benchmarks/screenspot_pro/RESULTS.md
