@@ -12,13 +12,13 @@ accumulate_images: false            # 累积模式下，前面轮次的图是否
 
 # ── 迭代轮数与裁剪几何 ────────────────────────────────────
 iterative_rounds: 8                 # 最多迭代多少轮
-iterative_max_side: 2048            # 每轮裁剪图最大边长
-iterative_max_scale: 5              # 每轮裁剪图最大放大倍数
-iterative_min_short_side: 512
-iterative_final_max_side: 4096      # final 定位图（更高清）
-iterative_final_max_scale: 8
+iterative_max_side: 0               # 裁剪图显示最大边长（0=不限，大图不缩、保持原分辨率）
+iterative_max_scale: 5              # 小图最大放大倍数（0=不限）
+iterative_min_short_side: 512       # 小图短边至少放大到这么大（让小目标清晰）
+iterative_final_max_side: 0         # final 定位图最大边长（0=不限）
+iterative_final_max_scale: 8        # final 图最大放大倍数
 iterative_final_min_short_side: 640
-iterative_max_area_pct: 85          # 下一个裁剪框相对当前框的最大面积占比
+iterative_max_area_pct: 0           # 下一框相对当前框的面积上限（0=不限，缩多少由模型自己定）
 iterative_padding_pct: 8            # 裁剪框外扩比例
 iterative_min_width: 240
 iterative_min_height: 80

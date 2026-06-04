@@ -209,13 +209,13 @@ class ScreenSpotLocatorConfig:
     refine_crop_width: int = 360
     refine_crop_height: int = 260
     iterative_rounds: int = 5
-    iterative_max_side: int = 2048
+    iterative_max_side: int = 0          # 0 = no shrink cap (large crops keep full resolution)
     iterative_max_scale: int = 5
     iterative_min_short_side: int = 512
-    iterative_final_max_side: int = 4096
+    iterative_final_max_side: int = 0    # 0 = no shrink cap
     iterative_final_max_scale: int = 8
     iterative_final_min_short_side: int = 640
-    iterative_max_area_pct: int = 85
+    iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
     iterative_min_height: int = 80
@@ -267,13 +267,13 @@ class ScreenSpotLocatorConfig:
             refine_crop_width=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_W", 360),
             refine_crop_height=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_H", 260),
             iterative_rounds=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_ROUNDS", 5),
-            iterative_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE", 2048),
+            iterative_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE", 0, minimum=0),
             iterative_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SCALE", 5),
             iterative_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SHORT_SIDE", 512),
-            iterative_final_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE", 4096),
+            iterative_final_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE", 0, minimum=0),
             iterative_final_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE", 8),
             iterative_final_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE", 640),
-            iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 85),
+            iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 0, minimum=0),
             iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
             iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
             iterative_min_height=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_H", 80),
@@ -827,12 +827,19 @@ def _render_iterative_crop(
     crop = img.crop((x1, y1, x2, y2))
     width = max(1, x2 - x1)
     height = max(1, y2 - y1)
-    scale_cap = min(float(max_scale), float(max_side) / max(width, height))
-    scale = scale_cap
+    # Only ever UP-scale small crops; never shrink a large crop. The crop is
+    # shown at >=1x (original pixels). A large crop stays at full resolution so
+    # no detail is thrown away. min_short_side pulls tiny crops up so small
+    # targets stay legible. max_scale caps the up-scale (0 = unlimited).
+    # max_side caps the longest displayed side (0 = unlimited / no shrink).
+    scale = 1.0
     if min_short_side > 0:
-        short_target_scale = float(min_short_side) / min(width, height)
-        scale = min(scale_cap, max(scale, short_target_scale))
-    scale = max(0.1, scale)
+        scale = max(scale, float(min_short_side) / min(width, height))
+    if max_scale > 0:
+        scale = min(scale, float(max_scale))
+    if max_side > 0:
+        scale = min(scale, float(max_side) / max(width, height))
+    scale = max(1.0, scale)
     display_w = max(1, int(round(width * scale)))
     display_h = max(1, int(round(height * scale)))
     if display_w != width or display_h != height:
@@ -1113,9 +1120,12 @@ def _iterative_next_box(
         return None
     if _box_area(next_box) >= _box_area(current_box):
         return None
-    max_area = _box_area(current_box) * (config.iterative_max_area_pct / 100.0)
-    if _box_area(next_box) > max_area:
-        return None
+    # No upper cap on how much the model may shrink per round: it decides the
+    # zoom amount. (iterative_max_area_pct=0 disables the cap; >0 re-enables it.)
+    if config.iterative_max_area_pct > 0:
+        max_area = _box_area(current_box) * (config.iterative_max_area_pct / 100.0)
+        if _box_area(next_box) > max_area:
+            return None
     return next_box
 
 
