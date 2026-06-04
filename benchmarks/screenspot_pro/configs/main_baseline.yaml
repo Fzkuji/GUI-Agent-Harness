@@ -13,13 +13,18 @@ accumulate_images: false
 
 # ── 迭代轮数与裁剪几何（main 的关键差异在这里）──────────────
 iterative_rounds: 8
-iterative_max_side: 2048            # main 会把大图缩到最长边 2048（现在分支默认 0=不缩）
+# 复刻 main 的缩放：缩大图（max_side=2048）+ 允许缩到 1x 以下（min_scale=0.1）。
+# 几何接近 main（大图缩到 2048、小图放大）；与 main 的逐像素差异仅在 min_short_side
+# 的 re-cap 细节，对结果影响极小。
+iterative_max_side: 2048            # main 把大图缩到最长边 2048
 iterative_max_scale: 5
 iterative_min_short_side: 512
-iterative_final_max_side: 4096      # main final 图缩到 4096（现在分支默认 0=不缩）
+iterative_min_scale: 0.1            # 允许缩小（复刻 main；新策略默认 1.0=不缩）
+iterative_final_max_side: 4096      # main final 图缩到 4096
 iterative_final_max_scale: 8
 iterative_final_min_short_side: 640
-iterative_max_area_pct: 85          # main 有面积否决：下一框 > 当前框 85% 则打回（现在分支默认 0=不限）
+iterative_final_min_scale: 0.1
+iterative_max_area_pct: 85          # main 有面积否决：下一框 > 当前框 85% 则打回
 iterative_padding_pct: 8
 iterative_min_width: 240
 iterative_min_height: 80
