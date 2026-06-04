@@ -238,6 +238,10 @@ class ScreenSpotLocatorConfig:
     iterative_target_pixels: int = 0        # scale_mode=target_pixels: target pixel count for per-round crops (0=off). e.g. 1500000 ~= 1.5MP
     iterative_final_target_pixels: int = 0  # same for the final-click crop (can be larger for precision)
     iterative_prompt_layout: str = "cache"  # "cache"=rules hoisted to a cacheable prefix; "legacy"=rules inline after dynamic fields, byte-matching origin/main
+    reasoning_first: bool = False           # crop-decision JSON: put reasoning+target BEFORE the bbox so the model localizes/justifies in text first, then emits coordinates (only affects cache layout)
+    candidate_limit: int = 60               # max OCR/detector candidates shown per crop-decision prompt
+    candidate_sort: str = "none"            # "none"=detector order; "relevance"=rank by match to target then confidence; "confidence"
+    candidate_dedup_iou: float = 0.0        # >0 drops candidates overlapping a kept one above this IoU (removes OCR-vs-button / near-dup boxes); 0=off
     iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
@@ -312,6 +316,14 @@ class ScreenSpotLocatorConfig:
                 "cache",
                 {"cache", "legacy"},
             ),
+            reasoning_first=_env_bool("GUI_HARNESS_SCREENSPOT_REASONING_FIRST", False),
+            candidate_limit=_env_int("GUI_HARNESS_SCREENSPOT_CANDIDATE_LIMIT", 60),
+            candidate_sort=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_CANDIDATE_SORT",
+                "none",
+                {"none", "relevance", "confidence"},
+            ),
+            candidate_dedup_iou=_env_float("GUI_HARNESS_SCREENSPOT_CANDIDATE_DEDUP_IOU", 0.0),
             iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 0, minimum=0),
             iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
             iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
@@ -443,7 +455,10 @@ def _iterative_zoom_locate(
                 candidates,
                 crop_box,
                 display_scale,
-                limit=60,
+                limit=config.candidate_limit,
+                target=target,
+                sort_mode=config.candidate_sort,
+                dedup_iou=config.candidate_dedup_iou,
             )
             dynamic_head = f"""Task: {task}
 Target: {target}
@@ -478,12 +493,25 @@ coordinates:
             else:
                 # cache layout: fixed rules hoisted to a cacheable prefix block;
                 # dynamic text (with a short JSON reminder at the tail) + image follow.
-                context = (
-                    dynamic_head + "\n\n" + candidates_block + "\n\n"
-                    + "Reply with ONLY JSON:\n"
-                    + '{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], '
-                    + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
-                )
+                if config.reasoning_first:
+                    # Reasoning-first: the model must localize + justify in text
+                    # BEFORE committing coordinates (reasoning/target precede bbox).
+                    tail = (
+                        "Think first, then act. In 'reasoning': state where in the "
+                        "current crop the target is and which region you will keep "
+                        "vs crop away. Then set the bbox to that region.\n"
+                        "Reply with ONLY JSON:\n"
+                        + '{"reasoning": "...", "target_visible_element": "...", '
+                        + '"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], '
+                        + '"confidence": 0.0}'
+                    )
+                else:
+                    tail = (
+                        "Reply with ONLY JSON:\n"
+                        + '{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], '
+                        + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
+                    )
+                context = dynamic_head + "\n\n" + candidates_block + "\n\n" + tail
                 content = [
                     _cacheable_prefix_block(_CROP_DECISION_RULES),
                     *thread_blocks,
@@ -980,20 +1008,49 @@ def _iterative_candidate_lines(
     crop_box: list[int],
     display_scale: float,
     limit: int,
+    target: str = "",
+    sort_mode: str = "none",
+    dedup_iou: float = 0.0,
 ) -> tuple[str, list[dict]]:
+    """Build the candidate evidence block.
+
+    sort_mode  : "none" (detector order, legacy) | "relevance" (rank by match to
+                 target, then confidence) | "confidence". Applied BEFORE the
+                 limit truncation so the most useful candidates survive.
+    dedup_iou  : >0 drops a candidate that overlaps an already-kept one above this
+                 IoU (removes OCR-word-vs-button and near-duplicate boxes). 0=off.
+    Ids (z0, z1, ...) are assigned AFTER sort+dedup so they match the shown order.
+    """
     x1, y1, x2, y2 = crop_box
-    scoped: list[dict] = []
+    pool: list[dict] = []
     for cand in candidates:
         cbox = active._candidate_box(cand)
         ccx = int(cand.get("cx", (cbox[0] + cbox[2]) / 2) or 0)
         ccy = int(cand.get("cy", (cbox[1] + cbox[3]) / 2) or 0)
         if active._iou(cbox, crop_box) <= 0 and not (x1 <= ccx <= x2 and y1 <= ccy <= y2):
             continue
-        item = dict(cand)
-        item["id"] = f"z{len(scoped)}"
-        scoped.append(item)
+        pool.append(dict(cand))
+    # Sort before truncating so the cap keeps the most useful candidates.
+    if sort_mode == "relevance" and target:
+        pool.sort(key=lambda c: (active._candidate_relevance(target, c),
+                                 float(c.get("confidence", 0) or 0)), reverse=True)
+    elif sort_mode == "confidence":
+        pool.sort(key=lambda c: float(c.get("confidence", 0) or 0), reverse=True)
+    # Greedy IoU dedup (keep higher-ranked, drop overlaps).
+    if dedup_iou and dedup_iou > 0:
+        kept: list[dict] = []
+        for cand in pool:
+            cb = active._candidate_box(cand)
+            if any(active._iou(cb, active._candidate_box(k)) >= dedup_iou for k in kept):
+                continue
+            kept.append(cand)
+        pool = kept
+    scoped: list[dict] = []
+    for cand in pool[:limit]:
+        cand["id"] = f"z{len(scoped)}"
+        scoped.append(cand)
     lines = []
-    for cand in scoped[:limit]:
+    for cand in scoped:
         cbox = active._candidate_box(cand)
         ccx = int(cand.get("cx", (cbox[0] + cbox[2]) / 2) or 0)
         ccy = int(cand.get("cy", (cbox[1] + cbox[3]) / 2) or 0)
