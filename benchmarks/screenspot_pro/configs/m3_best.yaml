@@ -1,0 +1,49 @@
+# M3 最优配置(消融得出): 5轮 + 末轮复查 + widen回退(不打转) + final图限3072(修MiniMax HTTP400)：5 轮迭代 + 只在最后一轮复查 + 复查拒绝则从整图重裁。
+# 相对 known_good(8 轮 + 每轮复查)大幅减少调用次数，适合 M3 这种单次慢的模型。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/fast.yaml ...
+
+locator_mode: iterative_zoom
+
+# 上下文 / 缓存
+context_mode: single
+accumulate_images: false
+
+# 迭代轮数（5，比 known_good 的 8 少）
+iterative_rounds: 5
+
+# 缩放（沿用新策略：小图放大、大图不缩）
+iterative_scale_mode: preserve
+iterative_max_side: 3072
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 3072
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# 复查策略（关键优化点）
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: last_only           # 只在最后一轮复查,省调用
+crop_check_reject_mode: widen        # 复查拒绝时退回更宽的框(不从头,避免打转)
+enable_crop_retry: true
+crop_retry_limit: 3
+enable_final_candidate_detect: true
+enable_final_recheck: false          # 复查已由 crop_check 末轮负责，final recheck 关
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+
+# prompt 布局（沿用缓存优化）
+iterative_prompt_layout: cache
+
+runtime_timeout_s: 180
