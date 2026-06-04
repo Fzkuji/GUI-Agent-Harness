@@ -242,6 +242,7 @@ class ScreenSpotLocatorConfig:
     candidate_limit: int = 60               # max OCR/detector candidates shown per crop-decision prompt
     candidate_sort: str = "none"            # "none"=detector order; "relevance"=rank by match to target then confidence; "confidence"
     candidate_dedup_iou: float = 0.0        # >0 drops candidates overlapping a kept one above this IoU (removes OCR-vs-button / near-dup boxes); 0=off
+    coords_crop_local: bool = False         # True=present everything in the displayed-crop pixel frame only (drop "current crop in original coords", the scale factor, and candidate original_center) so the model computes size/position from scratch on the new image; False=legacy (also expose original coords + scale)
     iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
@@ -459,12 +460,24 @@ def _iterative_zoom_locate(
                 target=target,
                 sort_mode=config.candidate_sort,
                 dedup_iou=config.candidate_dedup_iou,
+                crop_local=config.coords_crop_local,
             )
+            if config.coords_crop_local:
+                # Crop-local frame: describe only the displayed image the model
+                # actually sees. No original coords, no scale factor — the model
+                # localizes from scratch on this new image; the code maps back.
+                disp_w = int(round((crop_box[2] - crop_box[0]) * display_scale))
+                disp_h = int(round((crop_box[3] - crop_box[1]) * display_scale))
+                frame_lines = f"Displayed crop size: {disp_w}x{disp_h}"
+            else:
+                frame_lines = (
+                    f"Original screenshot size: {img_w}x{img_h}\n"
+                    f"Current crop in original coordinates: {crop_box}\n"
+                    f"This displayed crop is scaled by {display_scale:.4f} from original pixels."
+                )
             dynamic_head = f"""Task: {task}
 Target: {target}
-Original screenshot size: {img_w}x{img_h}
-Current crop in original coordinates: {crop_box}
-This displayed crop is scaled by {display_scale:.4f} from original pixels.
+{frame_lines}
 Round: {round_idx + 1}/{config.iterative_rounds}
 Attempt: {attempt_idx + 1}/{max_attempts}
 Committed crop stage: {stage_idx + 1}
@@ -1011,6 +1024,7 @@ def _iterative_candidate_lines(
     target: str = "",
     sort_mode: str = "none",
     dedup_iou: float = 0.0,
+    crop_local: bool = False,
 ) -> tuple[str, list[dict]]:
     """Build the candidate evidence block.
 
@@ -1019,6 +1033,9 @@ def _iterative_candidate_lines(
                  limit truncation so the most useful candidates survive.
     dedup_iou  : >0 drops a candidate that overlaps an already-kept one above this
                  IoU (removes OCR-word-vs-button and near-duplicate boxes). 0=off.
+    crop_local : True drops the trailing original_center=(...) field so every
+                 coordinate shown is in the displayed-crop frame only (model
+                 reasons on the new image, no original-coords distraction).
     Ids (z0, z1, ...) are assigned AFTER sort+dedup so they match the shown order.
     """
     x1, y1, x2, y2 = crop_box
@@ -1065,11 +1082,13 @@ def _iterative_candidate_lines(
             int(round((ccy - y1) * display_scale)),
         ]
         label = cand.get("label") or cand.get("name") or "(unlabeled)"
-        lines.append(
+        line = (
             f"{cand['id']}: {label} source={cand.get('source')} type={cand.get('type')} "
-            f"display_bbox={local_box} display_center={local_center} "
-            f"original_center=({ccx},{ccy})"
+            f"display_bbox={local_box} display_center={local_center}"
         )
+        if not crop_local:
+            line += f" original_center=({ccx},{ccy})"
+        lines.append(line)
     return "\n".join(lines), scoped
 
 
@@ -1079,6 +1098,7 @@ def _iterative_candidate_partition_lines(
     proposed_box: list[int],
     display_scale: float,
     limit: int = 80,
+    crop_local: bool = False,
 ) -> tuple[str, str]:
     x1, y1, x2, y2 = current_box
     inside: list[str] = []
@@ -1105,9 +1125,10 @@ def _iterative_candidate_partition_lines(
         label = cand.get("label") or cand.get("name") or "(unlabeled)"
         line = (
             f"{label} source={cand.get('source')} type={cand.get('type')} "
-            f"display_bbox={local_box} display_center={local_center} "
-            f"original_center=({ccx},{ccy})"
+            f"display_bbox={local_box} display_center={local_center}"
         )
+        if not crop_local:
+            line += f" original_center=({ccx},{ccy})"
         if in_proposed:
             inside.append(line)
         else:
@@ -1183,16 +1204,28 @@ def _run_crop_check(
         next_box,
         display_scale,
         limit=60,
+        crop_local=config.coords_crop_local,
     )
 
     guidance_idx = round_idx if stage_idx is None else stage_idx
+    if config.coords_crop_local:
+        disp_w = int(round((crop_box[2] - crop_box[0]) * display_scale))
+        disp_h = int(round((crop_box[3] - crop_box[1]) * display_scale))
+        gate_frame = (
+            f"Displayed crop size: {disp_w}x{disp_h}\n"
+            f"Proposed next crop in displayed-crop coordinates: {display_bbox}"
+        )
+    else:
+        gate_frame = (
+            f"Original screenshot size: {img_w}x{img_h}\n"
+            f"Current crop in original coordinates: {crop_box}\n"
+            f"Current crop display scale: {display_scale:.4f}\n"
+            f"Proposed next crop in displayed-crop coordinates: {display_bbox}\n"
+            f"Proposed next crop in original coordinates: {next_box}"
+        )
     gate_head = f"""Task: {task}
 Target: {target}
-Original screenshot size: {img_w}x{img_h}
-Current crop in original coordinates: {crop_box}
-Current crop display scale: {display_scale:.4f}
-Proposed next crop in displayed-crop coordinates: {display_bbox}
-Proposed next crop in original coordinates: {next_box}
+{gate_frame}
 Round: {round_idx + 1}
 Attempt: {attempt_idx + 1}
 Committed crop stage: {guidance_idx + 1}
@@ -1358,13 +1391,28 @@ def _iterative_zoom_final_click(
         crop_box,
         display_scale,
         limit=config.iterative_final_candidates,
+        target=target,
+        sort_mode=config.candidate_sort,
+        dedup_iou=config.candidate_dedup_iou,
+        crop_local=config.coords_crop_local,
     )
+    if config.coords_crop_local:
+        disp_w = int(round((crop_box[2] - crop_box[0]) * display_scale))
+        disp_h = int(round((crop_box[3] - crop_box[1]) * display_scale))
+        final_frame = (
+            f"Displayed final crop size: {disp_w}x{disp_h}\n"
+            "Return the click x,y in this displayed image's pixel coordinates."
+        )
+    else:
+        final_frame = (
+            f"Original screenshot size: {img_w}x{img_h}\n"
+            f"Final crop in original coordinates: {crop_box}\n"
+            f"This final crop is upscaled by {display_scale:.4f}. Return coordinates in the\n"
+            "DISPLAYED FINAL CROP image coordinate system."
+        )
     final_head = f"""Task: {task}
 Target: {target}
-Original screenshot size: {img_w}x{img_h}
-Final crop in original coordinates: {crop_box}
-This final crop is upscaled by {display_scale:.4f}. Return coordinates in the
-DISPLAYED FINAL CROP image coordinate system.
+{final_frame}
 Final click attempt: {final_attempt_idx}/{final_attempts}
 
 Crop history:
