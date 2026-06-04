@@ -26,246 +26,40 @@ from gui_harness.planning import active_localization as active
 from gui_harness.utils import parse_json
 
 
-def _env_int(name: str, default: int, minimum: int = 1) -> int:
-    try:
-        return max(minimum, int(os.environ.get(name, str(default))))
-    except ValueError:
-        return default
+# ═══════════════════════════════════════════════════════════════════════════
+# Static instruction prefixes (prompt-cache stable prefixes)
+#
+# Each LLM call in this module repeats a large block of fixed rules / policy /
+# JSON-format text that is byte-identical across every call, round, and sample.
+# These blocks are pulled out as module-level constants and sent as the FIRST
+# content block of each request, marked with cache_control, so the provider
+# caches them once and serves later calls from cache_read. The per-call dynamic
+# text (task, crop box, round, history, candidates) follows as a second block,
+# and the image last. Reordering rules-before-dynamic is intentional: the cache
+# prefix must be stable, and general constraints read fine before the task.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ``{"type": "ephemeral"}`` marks an explicit prompt-cache breakpoint. The
+# patched OpenProgram Anthropic provider passes this through and skips its own
+# default last-block breakpoint when a caller marks one (see
+# providers/anthropic/anthropic.py). OpenAI-style providers ignore the marker
+# and cache stable prefixes automatically — either way, putting the fixed text
+# first is what lets the cache hit.
+_CACHE_BREAKPOINT = {"type": "ephemeral"}
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.lower() in {"1", "true", "yes"}
+def _cacheable_prefix_block(text: str) -> dict:
+    """Build a leading text block marked as a prompt-cache breakpoint."""
+    return {"type": "text", "text": text, "cache_control": _CACHE_BREAKPOINT}
 
 
-def _env_choice(name: str, default: str, choices: set[str]) -> str:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    value = raw.lower().strip()
-    return value if value in choices else default
-
-
-def _runtime_exec(runtime, config: "ScreenSpotLocatorConfig", **kwargs):
-    timeout_s = config.runtime_timeout_s
-    if timeout_s > 0:
-        kwargs.setdefault("timeout_s", timeout_s)
-    return runtime.exec(**kwargs)
-
-
-@dataclass(frozen=True)
-class ScreenSpotLocatorConfig:
-    locator_mode: str = "crop_first"
-    region_limit: int = 4
-    active_rounds: int = 2
-    active_top_k: int = 80
-    snap_px: int = 80
-    require_direct_snap: bool = True
-    candidate_first: bool = False
-    active_fallback: bool = True
-    crop_verify_mode: str = "strict"
-    crop_verify_fallback_after: int = 0
-    pre_click_verify_fallback_after: int = 0
-    direct_crop_width: int = 360
-    direct_crop_height: int = 240
-    refine_crop_width: int = 360
-    refine_crop_height: int = 260
-    iterative_rounds: int = 5
-    iterative_max_side: int = 2048
-    iterative_max_scale: int = 5
-    iterative_min_short_side: int = 512
-    iterative_final_max_side: int = 4096
-    iterative_final_max_scale: int = 8
-    iterative_final_min_short_side: int = 640
-    iterative_max_area_pct: int = 85
-    iterative_padding_pct: int = 8
-    iterative_min_width: int = 240
-    iterative_min_height: int = 80
-    iterative_final_candidates: int = 80
-    iterative_detect_final_candidates: bool = True
-    iterative_verify_final: bool = False
-    iterative_review_final: bool = False
-    iterative_fallback_to_crop: bool = False
-    iterative_crop_commit_gate: bool = True
-    iterative_crop_retries: int = 3
-    iterative_staged_crop: bool = True
-    iterative_stage1_min_area_pct: int = 20
-    iterative_stage2_min_area_pct: int = 8
-    runtime_timeout_s: int = 180
-
-    @classmethod
-    def from_env(cls) -> "ScreenSpotLocatorConfig":
-        return cls(
-            locator_mode=_env_choice(
-                "GUI_HARNESS_SCREENSPOT_LOCATOR_MODE",
-                "crop_first",
-                {"crop_first", "iterative_zoom"},
-            ),
-            region_limit=_env_int("GUI_HARNESS_SCREENSPOT_REGION_LIMIT", 4),
-            active_rounds=_env_int("GUI_HARNESS_SCREENSPOT_ACTIVE_ROUNDS", 2),
-            active_top_k=_env_int("GUI_HARNESS_SCREENSPOT_ACTIVE_TOPK", 80),
-            snap_px=_env_int("GUI_HARNESS_SCREENSPOT_SNAP_PX", 80),
-            require_direct_snap=_env_bool("GUI_HARNESS_SCREENSPOT_REQUIRE_DIRECT_SNAP", True),
-            candidate_first=_env_bool("GUI_HARNESS_SCREENSPOT_CANDIDATE_FIRST", False),
-            active_fallback=_env_bool("GUI_HARNESS_SCREENSPOT_ACTIVE_FALLBACK", True),
-            crop_verify_mode=_env_choice(
-                "GUI_HARNESS_SCREENSPOT_CROP_VERIFY_MODE",
-                "strict",
-                {"strict", "soft", "off"},
-            ),
-            crop_verify_fallback_after=_env_int("GUI_HARNESS_SCREENSPOT_CROP_VERIFY_FALLBACK_AFTER", 0, minimum=0),
-            pre_click_verify_fallback_after=_env_int(
-                "GUI_HARNESS_SCREENSPOT_PRE_CLICK_VERIFY_FALLBACK_AFTER",
-                0,
-                minimum=0,
-            ),
-            direct_crop_width=_env_int("GUI_HARNESS_SCREENSPOT_DIRECT_CROP_W", 360),
-            direct_crop_height=_env_int("GUI_HARNESS_SCREENSPOT_DIRECT_CROP_H", 240),
-            refine_crop_width=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_W", 360),
-            refine_crop_height=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_H", 260),
-            iterative_rounds=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_ROUNDS", 5),
-            iterative_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE", 2048),
-            iterative_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SCALE", 5),
-            iterative_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SHORT_SIDE", 512),
-            iterative_final_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE", 4096),
-            iterative_final_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE", 8),
-            iterative_final_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE", 640),
-            iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 85),
-            iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
-            iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
-            iterative_min_height=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_H", 80),
-            iterative_final_candidates=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_CANDIDATES", 80),
-            iterative_detect_final_candidates=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_DETECT_FINAL_CANDIDATES", True),
-            iterative_verify_final=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_VERIFY_FINAL", False),
-            iterative_review_final=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_REVIEW_FINAL", False),
-            iterative_fallback_to_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_FALLBACK_TO_CROP", False),
-            iterative_crop_commit_gate=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_COMMIT_GATE", True),
-            iterative_crop_retries=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_RETRIES", 3, minimum=0),
-            iterative_staged_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGED_CROP", True),
-            iterative_stage1_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE1_MIN_AREA_PCT", 20),
-            iterative_stage2_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE2_MIN_AREA_PCT", 8),
-            runtime_timeout_s=_env_int("GUI_HARNESS_SCREENSPOT_RUNTIME_TIMEOUT_S", 180, minimum=0),
-        )
-
-
-def screenspot_locate(
-    task: str,
-    target: str,
-    img_path: str,
-    img_w: int,
-    img_h: int,
-    candidates: list[dict],
-    runtime,
-    work_dir: Optional[str] = None,
-    config: Optional[ScreenSpotLocatorConfig] = None,
-) -> Optional[dict]:
-    """Locate one ScreenSpot-Pro click target using a fixed benchmark flow."""
-    if runtime is None:
-        return None
-
-    config = config or ScreenSpotLocatorConfig.from_env()
-    out_dir = work_dir or os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR") or tempfile.gettempdir()
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-
-    if config.locator_mode == "iterative_zoom":
-        located = _iterative_zoom_locate(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
-        if located:
-            return located
-        if not config.iterative_fallback_to_crop:
-            return None
-
-    located = _verified_crop_refine(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
-    if located:
-        return located
-
-    if config.candidate_first:
-        located = _candidate_first_select(task, target, img_path, candidates, runtime, out_dir, config)
-        if located:
-            return located
-
-    if not config.active_fallback:
-        return None
-
-    return _active_controller_fallback(
-        task=task,
-        target=target,
-        img_path=img_path,
-        img_w=img_w,
-        img_h=img_h,
-        candidates=candidates,
-        runtime=runtime,
-        out_dir=out_dir,
-        config=config,
-    )
-
-
-def _iterative_zoom_locate(
-    task: str,
-    target: str,
-    img_path: str,
-    img_w: int,
-    img_h: int,
-    runtime,
-    out_dir: str,
-    config: ScreenSpotLocatorConfig,
-    candidates: list[dict],
-) -> Optional[dict]:
-    if runtime is None:
-        return None
-
-    current_box = [0, 0, img_w, img_h]
-    history: list[dict] = []
-    stop_refining = False
-    for round_idx in range(config.iterative_rounds):
-        rejected_attempts: list[dict] = []
-        max_attempts = 1 + (config.iterative_crop_retries if config.iterative_crop_commit_gate else 0)
-        for attempt_idx in range(max_attempts):
-            stage_idx = _iterative_committed_crop_count(history)
-            crop_path, crop_box, display_scale = _render_iterative_crop(
-                img_path,
-                current_box,
-                out_dir,
-                f"iter_round{round_idx + 1}_attempt{attempt_idx + 1}",
-                max_side=config.iterative_max_side,
-                max_scale=config.iterative_max_scale,
-                min_short_side=config.iterative_min_short_side,
-            )
-            candidate_lines, _round_candidates = _iterative_candidate_lines(
-                candidates,
-                crop_box,
-                display_scale,
-                limit=60,
-            )
-            context = f"""Task: {task}
-Target: {target}
-Original screenshot size: {img_w}x{img_h}
-Current crop in original coordinates: {crop_box}
-This displayed crop is scaled by {display_scale:.4f} from original pixels.
-Round: {round_idx + 1}/{config.iterative_rounds}
-Attempt: {attempt_idx + 1}/{max_attempts}
-Committed crop stage: {stage_idx + 1}
-Staged crop guidance:
-{_iterative_stage_guidance(stage_idx, config)}
-
-Previous crop decisions:
-{_format_iterative_history(history)}
-
-Rejected crop attempts from this same current crop:
-{_format_crop_rejections(rejected_attempts)}
-
-Your job in this stage is NOT to click. Choose the next smaller crop that still
+_CROP_DECISION_RULES_INTRO = """Your job in this stage is NOT to click. Choose the next smaller crop that still
 contains the requested clickable target and enough surrounding context to keep
 orientation. The intended behavior is iterative zoom-in: shrink the search
 area substantially each round, then a later stage will click on an upscaled
-final crop.
+final crop."""
 
-Detected OCR/component candidates inside this crop, shown in displayed-crop
-coordinates:
-{candidate_lines or "(none)"}
-
-Rules:
+_CROP_DECISION_RULES_BODY = """Rules:
 - Return bbox coordinates in the DISPLAYED CROP image coordinate system.
 - Use the OCR/component candidate list as explicit grounding evidence. Candidate
   labels, centers, and boxes should guide which window/section/control group to
@@ -314,12 +108,373 @@ Rules:
 - Do not return a final click point in this stage.
 
 Reply with ONLY JSON:
-{{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
-            try:
-                reply = _runtime_exec(runtime, config, content=[
+{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+# Full rules block (intro + body) for the cache-prefix layout. Byte-identical to
+# the legacy inline text; legacy reuses INTRO and BODY separately so the
+# candidate list can sit between them exactly as origin/main did.
+_CROP_DECISION_RULES = _CROP_DECISION_RULES_INTRO + "\n\n" + _CROP_DECISION_RULES_BODY
+
+
+_COMMIT_GATE_RULES_BODY = """Accept the proposed crop only if all of these are true:
+- The requested clickable target is still inside the magenta rectangle.
+- The component/OCR evidence inside the magenta rectangle is consistent with
+  the requested target, or the rectangle is a broad staged region that contains
+  the target's unresolved candidate cluster.
+- The component/OCR evidence outside the rectangle does not include another
+  plausible target candidate that should remain visible at this stage.
+- The crop keeps enough nearby label/icon/window context to identify the same
+  target in the next round.
+- The crop has not discarded another plausible target for the same instruction
+  that is still unresolved.
+- The proposal is not just a visually similar control in a different panel,
+  window, toolbar, or application context.
+- The proposal follows the staged crop guidance for this round; early rounds
+  should select broad screen/window or app-section regions rather than jumping
+  straight to a tiny final control.
+
+Reject when uncertain. A rejected crop will be retried from the current wider
+crop rather than clicked."""
+
+_COMMIT_GATE_JSON = """Reply with ONLY JSON:
+{"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}"""
+
+# Cache-prefix layout uses the full rules block (body + JSON). Byte-identical to
+# the legacy text; legacy keeps the JSON after the proposal-rationale fields,
+# exactly where origin/main put it.
+_COMMIT_GATE_RULES = _COMMIT_GATE_RULES_BODY + "\n\n" + _COMMIT_GATE_JSON
+
+
+_FINAL_CLICK_RULES = """Choose the exact center of the requested clickable target. Use the upscaled
+image for precision. Candidate boxes are hints only: if a candidate covers a
+combined toolbar group, a label next to an icon, or the wrong sub-control,
+return explicit x/y for the true target instead of using candidate_id.
+
+Click policy:
+- Click the actionable control, not just the label, icon category, or visual
+  explanation of the setting.
+- For sliders, click the slider track/thumb/value area associated with the
+  requested setting, not the setting's label/icon above it.
+- For adjacent status counters or toolbar clusters, do not click the center of
+  the whole cluster unless the instruction clearly asks for the whole cluster;
+  choose the specific counter/icon/menu item named by the instruction.
+- For close-file/tab instructions, click the small close affordance on the tab
+  or named file, not the file icon/content or a different window.
+- Do not click passive status text like "On" or "Enabled" for turn on/off
+  tasks. Choose the actual toggle/button/switch.
+- If two controls both seem plausible, prefer the one in the active/current
+  task panel or named application context.
+- If this crop does not contain a trustworthy clickable target, return
+  action="recrop" so the caller can retry from a wider crop. Do not invent a
+  coordinate in an unrelated region.
+
+Reply with ONLY JSON:
+{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
+    try:
+        return max(minimum, float(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.lower() in {"1", "true", "yes"}
+
+
+def _env_choice(name: str, default: str, choices: set[str]) -> str:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.lower().strip()
+    return value if value in choices else default
+
+
+def _runtime_exec(runtime, config: "ScreenSpotLocatorConfig", **kwargs):
+    timeout_s = config.runtime_timeout_s
+    if timeout_s > 0:
+        kwargs.setdefault("timeout_s", timeout_s)
+    return runtime.exec(**kwargs)
+
+
+@dataclass(frozen=True)
+class ScreenSpotLocatorConfig:
+    locator_mode: str = "crop_first"
+    region_limit: int = 4
+    active_rounds: int = 2
+    active_top_k: int = 80
+    snap_px: int = 80
+    require_direct_snap: bool = True
+    candidate_first: bool = False
+    active_fallback: bool = True
+    crop_verify_mode: str = "strict"
+    crop_verify_fallback_after: int = 0
+    pre_click_verify_fallback_after: int = 0
+    direct_crop_width: int = 360
+    direct_crop_height: int = 240
+    refine_crop_width: int = 360
+    refine_crop_height: int = 260
+    iterative_rounds: int = 5
+    iterative_max_side: int = 0          # 0 = no shrink cap (large crops keep full resolution)
+    iterative_max_scale: int = 5
+    iterative_min_short_side: int = 512
+    iterative_min_scale: float = 1.0     # scale floor; 1.0 = never shrink, 0.1 = allow shrink
+    iterative_final_max_side: int = 0    # 0 = no shrink cap
+    iterative_final_max_scale: int = 8
+    iterative_final_min_short_side: int = 640
+    iterative_final_min_scale: float = 1.0
+    iterative_scale_mode: str = "preserve"  # "preserve"=only enlarge small crops; "fill"=blow up to max_side (origin/main)
+    iterative_prompt_layout: str = "cache"  # "cache"=rules hoisted to a cacheable prefix; "legacy"=rules inline after dynamic fields, byte-matching origin/main
+    iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
+    iterative_padding_pct: int = 8
+    iterative_min_width: int = 240
+    iterative_min_height: int = 80
+    iterative_final_candidates: int = 80
+    enable_final_candidate_detect: bool = True
+    enable_final_verify: bool = False
+    enable_final_recheck: bool = False
+    enable_legacy_pipeline: bool = False
+    enable_crop_check: bool = True
+    enable_crop_retry: bool = True
+    crop_retry_limit: int = 3
+    enable_final_recrop: bool = True
+    final_recrop_limit: int = 0
+    enable_staged_crop: bool = True
+    iterative_stage1_min_area_pct: int = 20
+    iterative_stage2_min_area_pct: int = 8
+    context_mode: str = "single"
+    accumulate_images: bool = False
+    runtime_timeout_s: int = 180
+
+    @classmethod
+    def from_env(cls) -> "ScreenSpotLocatorConfig":
+        return cls(
+            locator_mode=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_LOCATOR_MODE",
+                "crop_first",
+                {"crop_first", "iterative_zoom"},
+            ),
+            region_limit=_env_int("GUI_HARNESS_SCREENSPOT_REGION_LIMIT", 4),
+            active_rounds=_env_int("GUI_HARNESS_SCREENSPOT_ACTIVE_ROUNDS", 2),
+            active_top_k=_env_int("GUI_HARNESS_SCREENSPOT_ACTIVE_TOPK", 80),
+            snap_px=_env_int("GUI_HARNESS_SCREENSPOT_SNAP_PX", 80),
+            require_direct_snap=_env_bool("GUI_HARNESS_SCREENSPOT_REQUIRE_DIRECT_SNAP", True),
+            candidate_first=_env_bool("GUI_HARNESS_SCREENSPOT_CANDIDATE_FIRST", False),
+            active_fallback=_env_bool("GUI_HARNESS_SCREENSPOT_ACTIVE_FALLBACK", True),
+            crop_verify_mode=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_CROP_VERIFY_MODE",
+                "strict",
+                {"strict", "soft", "off"},
+            ),
+            crop_verify_fallback_after=_env_int("GUI_HARNESS_SCREENSPOT_CROP_VERIFY_FALLBACK_AFTER", 0, minimum=0),
+            pre_click_verify_fallback_after=_env_int(
+                "GUI_HARNESS_SCREENSPOT_PRE_CLICK_VERIFY_FALLBACK_AFTER",
+                0,
+                minimum=0,
+            ),
+            direct_crop_width=_env_int("GUI_HARNESS_SCREENSPOT_DIRECT_CROP_W", 360),
+            direct_crop_height=_env_int("GUI_HARNESS_SCREENSPOT_DIRECT_CROP_H", 240),
+            refine_crop_width=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_W", 360),
+            refine_crop_height=_env_int("GUI_HARNESS_SCREENSPOT_REFINE_CROP_H", 260),
+            iterative_rounds=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_ROUNDS", 5),
+            iterative_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE", 0, minimum=0),
+            iterative_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SCALE", 5),
+            iterative_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SHORT_SIDE", 512),
+            iterative_min_scale=_env_float("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SCALE", 1.0),
+            iterative_final_max_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE", 0, minimum=0),
+            iterative_final_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE", 8),
+            iterative_final_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE", 640),
+            iterative_final_min_scale=_env_float("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SCALE", 1.0),
+            iterative_scale_mode=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_ITERATIVE_SCALE_MODE",
+                "preserve",
+                {"preserve", "fill"},
+            ),
+            iterative_prompt_layout=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_ITERATIVE_PROMPT_LAYOUT",
+                "cache",
+                {"cache", "legacy"},
+            ),
+            iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 0, minimum=0),
+            iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
+            iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
+            iterative_min_height=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_H", 80),
+            iterative_final_candidates=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_CANDIDATES", 80),
+            enable_final_candidate_detect=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_CANDIDATE_DETECT", True),
+            enable_final_verify=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_VERIFY", False),
+            enable_final_recheck=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_RECHECK", False),
+            enable_legacy_pipeline=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_LEGACY_PIPELINE", False),
+            enable_crop_check=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_CROP_CHECK", True),
+            enable_crop_retry=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_CROP_RETRY", True),
+            crop_retry_limit=_env_int("GUI_HARNESS_SCREENSPOT_CROP_RETRY_LIMIT", 3, minimum=0),
+            enable_final_recrop=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_RECROP", True),
+            final_recrop_limit=_env_int("GUI_HARNESS_SCREENSPOT_FINAL_RECROP_LIMIT", 0, minimum=0),
+            enable_staged_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_STAGED_CROP", True),
+            iterative_stage1_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE1_MIN_AREA_PCT", 20),
+            iterative_stage2_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE2_MIN_AREA_PCT", 8),
+            context_mode=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_CONTEXT_MODE",
+                "single",
+                {"single", "accumulate"},
+            ),
+            accumulate_images=_env_bool("GUI_HARNESS_SCREENSPOT_ACCUMULATE_IMAGES", False),
+            runtime_timeout_s=_env_int("GUI_HARNESS_SCREENSPOT_RUNTIME_TIMEOUT_S", 180, minimum=0),
+        )
+
+
+def screenspot_locate(
+    task: str,
+    target: str,
+    img_path: str,
+    img_w: int,
+    img_h: int,
+    candidates: list[dict],
+    runtime,
+    work_dir: Optional[str] = None,
+    config: Optional[ScreenSpotLocatorConfig] = None,
+) -> Optional[dict]:
+    """Locate one ScreenSpot-Pro click target using a fixed benchmark flow."""
+    if runtime is None:
+        return None
+
+    config = config or ScreenSpotLocatorConfig.from_env()
+    out_dir = work_dir or os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR") or tempfile.gettempdir()
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    if config.locator_mode == "iterative_zoom":
+        located = _iterative_zoom_locate(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
+        if located:
+            return located
+        if not config.enable_legacy_pipeline:
+            return None
+
+    located = _verified_crop_refine(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
+    if located:
+        return located
+
+    if config.candidate_first:
+        located = _candidate_first_select(task, target, img_path, candidates, runtime, out_dir, config)
+        if located:
+            return located
+
+    if not config.active_fallback:
+        return None
+
+    return _active_controller_fallback(
+        task=task,
+        target=target,
+        img_path=img_path,
+        img_w=img_w,
+        img_h=img_h,
+        candidates=candidates,
+        runtime=runtime,
+        out_dir=out_dir,
+        config=config,
+    )
+
+
+def _iterative_zoom_locate(
+    task: str,
+    target: str,
+    img_path: str,
+    img_w: int,
+    img_h: int,
+    runtime,
+    out_dir: str,
+    config: ScreenSpotLocatorConfig,
+    candidates: list[dict],
+) -> Optional[dict]:
+    if runtime is None:
+        return None
+
+    current_box = [0, 0, img_w, img_h]
+    history: list[dict] = []
+    stop_refining = False
+    # Accumulated prior-turn blocks for context_mode == "accumulate". Each
+    # accepted crop turn appends its sent user blocks + the model reply, so the
+    # next round's prompt = rules prefix + thread_blocks + new turn. Stays empty
+    # (and unused) in single mode, keeping that path byte-identical.
+    thread_blocks: list[dict] = []
+    for round_idx in range(config.iterative_rounds):
+        rejected_attempts: list[dict] = []
+        max_attempts = 1 + (config.crop_retry_limit if config.enable_crop_retry else 0)
+        for attempt_idx in range(max_attempts):
+            stage_idx = _iterative_committed_crop_count(history)
+            crop_path, crop_box, display_scale = _render_iterative_crop(
+                img_path,
+                current_box,
+                out_dir,
+                f"iter_round{round_idx + 1}_attempt{attempt_idx + 1}",
+                max_side=config.iterative_max_side,
+                max_scale=config.iterative_max_scale,
+                min_short_side=config.iterative_min_short_side,
+                min_scale=config.iterative_min_scale,
+                scale_mode=config.iterative_scale_mode,
+            )
+            candidate_lines, _round_candidates = _iterative_candidate_lines(
+                candidates,
+                crop_box,
+                display_scale,
+                limit=60,
+            )
+            dynamic_head = f"""Task: {task}
+Target: {target}
+Original screenshot size: {img_w}x{img_h}
+Current crop in original coordinates: {crop_box}
+This displayed crop is scaled by {display_scale:.4f} from original pixels.
+Round: {round_idx + 1}/{config.iterative_rounds}
+Attempt: {attempt_idx + 1}/{max_attempts}
+Committed crop stage: {stage_idx + 1}
+Staged crop guidance:
+{_iterative_stage_guidance(stage_idx, config)}
+
+Previous crop decisions:
+{_format_iterative_history(history)}
+
+Rejected crop attempts from this same current crop:
+{_format_crop_rejections(rejected_attempts)}"""
+            candidates_block = f"""Detected OCR/component candidates inside this crop, shown in displayed-crop
+coordinates:
+{candidate_lines or "(none)"}"""
+            if config.iterative_prompt_layout == "legacy":
+                # Byte-for-byte origin/main: framing prose -> candidates -> Rules
+                # -> JSON, all in one text block, no cache prefix, no accumulation.
+                context = (
+                    dynamic_head + "\n\n" + _CROP_DECISION_RULES_INTRO + "\n\n"
+                    + candidates_block + "\n\n" + _CROP_DECISION_RULES_BODY
+                )
+                content = [
                     {"type": "text", "text": context},
                     {"type": "image", "path": crop_path},
-                ])
+                ]
+            else:
+                # cache layout: fixed rules hoisted to a cacheable prefix block;
+                # dynamic text (with a short JSON reminder at the tail) + image follow.
+                context = (
+                    dynamic_head + "\n\n" + candidates_block + "\n\n"
+                    + "Reply with ONLY JSON:\n"
+                    + '{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], '
+                    + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
+                )
+                content = [
+                    _cacheable_prefix_block(_CROP_DECISION_RULES),
+                    *thread_blocks,
+                    {"type": "text", "text": context},
+                    {"type": "image", "path": crop_path},
+                ]
+            try:
+                reply = _runtime_exec(runtime, config, content=content)
                 parsed = parse_json(reply)
             except Exception as exc:
                 reraise_if_fatal(exc)
@@ -361,7 +516,7 @@ Reply with ONLY JSON:
                     continue
                 break
             if action == "final":
-                if config.iterative_crop_commit_gate and not any(item.get("next_box") for item in history):
+                if config.enable_crop_check and not any(item.get("next_box") for item in history):
                     rejected_attempts.append({
                         "action": action,
                         "bbox": parsed.get("bbox"),
@@ -413,8 +568,8 @@ Reply with ONLY JSON:
                 break
 
             gate = None
-            if config.iterative_crop_commit_gate:
-                gate = _iterative_crop_commit_gate(
+            if config.enable_crop_check:
+                gate = _run_crop_check(
                     task,
                     target,
                     img_w,
@@ -433,12 +588,12 @@ Reply with ONLY JSON:
                     candidates,
                     stage_idx=stage_idx,
                 )
-                entry["commit_gate"] = gate
+                entry["crop_check"] = gate
                 if not gate or gate.get("action") != "accept":
                     rejected_attempts.append({
-                        "action": "gate_reject",
+                        "action": "crop_check_reject",
                         "bbox": parsed.get("bbox"),
-                        "reasoning": (gate or {}).get("reasoning", "commit gate rejected crop"),
+                        "reasoning": (gate or {}).get("reasoning", "crop check rejected crop"),
                     })
                     if attempt_idx + 1 < max_attempts:
                         continue
@@ -451,6 +606,17 @@ Reply with ONLY JSON:
             entry["next_box"] = next_box
             entry["area_fraction"] = round(new_area / old_area, 4) if old_area else 1.0
             history.append(entry)
+            if config.context_mode == "accumulate":
+                # Carry this accepted turn forward so next round's prompt grows a
+                # byte-stable prefix. Only accepted crops join the thread (gate
+                # rejections / recrops stay out, keeping the chain clean).
+                thread_blocks.append({"type": "text", "text": context})
+                if config.accumulate_images:
+                    thread_blocks.append({"type": "image", "path": crop_path})
+                thread_blocks.append({
+                    "type": "text",
+                    "text": f"[assistant round {round_idx + 1} decision]\n{reply}",
+                })
             print(
                 f"  [screenspot_zoom] round {round_idx + 1} attempt {attempt_idx + 1}: "
                 f"{crop_box} -> {next_box} area={entry['area_fraction']}",
@@ -468,6 +634,10 @@ Reply with ONLY JSON:
             break
 
     final_boxes = _iterative_final_box_candidates(current_box, history, img_w, img_h)
+    if not config.enable_final_recrop:
+        final_boxes = final_boxes[:1]
+    elif config.final_recrop_limit > 0:
+        final_boxes = final_boxes[:config.final_recrop_limit]
     for final_attempt_idx, final_box in enumerate(final_boxes):
         located = _iterative_zoom_final_click(
             task,
@@ -497,7 +667,7 @@ def _box_area(box: list[int]) -> int:
 
 
 def _iterative_stage_guidance(round_idx: int, config: ScreenSpotLocatorConfig) -> str:
-    if not config.iterative_staged_crop:
+    if not config.enable_staged_crop:
         return "Use a conservative crop that preserves the requested target and context."
     if round_idx == 0:
         return (
@@ -525,7 +695,7 @@ def _iterative_stage_guidance(round_idx: int, config: ScreenSpotLocatorConfig) -
 
 
 def _stage_min_area_pct(round_idx: int, config: ScreenSpotLocatorConfig) -> int:
-    if not config.iterative_staged_crop:
+    if not config.enable_staged_crop:
         return 0
     if round_idx == 0:
         return max(0, config.iterative_stage1_min_area_pct)
@@ -699,19 +869,55 @@ def _render_iterative_crop(
     max_side: int,
     max_scale: int,
     min_short_side: int = 0,
+    min_scale: float = 1.0,
+    scale_mode: str = "preserve",
 ) -> tuple[str, list[int], float]:
+    """Render a crop at a chosen display scale.
+
+    scale_mode picks the policy:
+      "preserve" (default): start at 1.0 (original resolution); only up-scale a
+        small crop (min_short_side raises it, max_scale caps); large crops keep
+        full resolution unless max_side shrinks them. The "only enlarge small
+        crops, leave big ones alone" policy.
+      "fill": reproduce origin/main — start at scale_cap = min(max_scale,
+        max_side/longest_side), so every sub-max_side crop is blown UP to fill
+        max_side on the long side (or the max_scale cap); large crops shrink to
+        max_side. Use this to match the legacy baseline.
+
+    Knobs:
+      min_short_side : up-scale a small crop until its short side reaches this (0=off).
+      max_scale      : cap on the up-scale factor (0 = unlimited).
+      max_side       : longest displayed side cap (shrinks big crops; 0 = no cap).
+      min_scale      : hard floor on scale (1.0 = never shrink; 0.1 = allow shrink).
+    """
     img = Image.open(img_path).convert("RGB")
     img_w, img_h = img.size
     x1, y1, x2, y2 = active._clamp_box(box, img_w, img_h)
     crop = img.crop((x1, y1, x2, y2))
     width = max(1, x2 - x1)
     height = max(1, y2 - y1)
-    scale_cap = min(float(max_scale), float(max_side) / max(width, height))
-    scale = scale_cap
-    if min_short_side > 0:
-        short_target_scale = float(min_short_side) / min(width, height)
-        scale = min(scale_cap, max(scale, short_target_scale))
-    scale = max(0.1, scale)
+    floor = float(min_scale) if min_scale and min_scale > 0 else 0.1
+    if scale_mode == "fill":
+        # origin/main policy: blow every crop up to fill max_side (long side).
+        cap = float(max_scale) if max_scale > 0 else float("inf")
+        if max_side > 0:
+            cap = min(cap, float(max_side) / max(width, height))
+        scale = cap if cap != float("inf") else 1.0
+        if min_short_side > 0:
+            scale = min(cap, max(scale, float(min_short_side) / min(width, height)))
+        scale = max(floor, scale)
+    else:
+        # "preserve": start at original size; only enlarge small crops.
+        scale = 1.0
+        if min_short_side > 0:
+            target = float(min_short_side) / min(width, height)
+            if target > scale:
+                scale = target
+        if max_scale > 0:
+            scale = min(scale, float(max_scale))
+        if max_side > 0:
+            scale = min(scale, float(max_side) / max(width, height))
+        scale = max(floor, scale)
     display_w = max(1, int(round(width * scale)))
     display_h = max(1, int(round(height * scale)))
     if display_w != width or display_h != height:
@@ -840,7 +1046,7 @@ def _render_crop_commit_overlay(
     return str(out)
 
 
-def _iterative_crop_commit_gate(
+def _run_crop_check(
     task: str,
     target: str,
     img_w: int,
@@ -876,7 +1082,7 @@ def _iterative_crop_commit_gate(
     )
 
     guidance_idx = round_idx if stage_idx is None else stage_idx
-    context = f"""Task: {task}
+    gate_head = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
 Current crop in original coordinates: {crop_box}
@@ -897,46 +1103,37 @@ OCR/component candidates INSIDE the proposed magenta crop:
 
 OCR/component candidates still visible in the current crop but OUTSIDE the
 proposed magenta crop:
-{outside_candidates or "(none)"}
-
-Accept the proposed crop only if all of these are true:
-- The requested clickable target is still inside the magenta rectangle.
-- The component/OCR evidence inside the magenta rectangle is consistent with
-  the requested target, or the rectangle is a broad staged region that contains
-  the target's unresolved candidate cluster.
-- The component/OCR evidence outside the rectangle does not include another
-  plausible target candidate that should remain visible at this stage.
-- The crop keeps enough nearby label/icon/window context to identify the same
-  target in the next round.
-- The crop has not discarded another plausible target for the same instruction
-  that is still unresolved.
-- The proposal is not just a visually similar control in a different panel,
-  window, toolbar, or application context.
-- The proposal follows the staged crop guidance for this round; early rounds
-  should select broad screen/window or app-section regions rather than jumping
-  straight to a tiny final control.
-
-Reject when uncertain. A rejected crop will be retried from the current wider
-crop rather than clicked.
-
-Proposal rationale:
+{outside_candidates or "(none)"}"""
+    rationale = f"""Proposal rationale:
 target_visible_element={proposal.get('target_visible_element', '')}
 reasoning={proposal.get('reasoning', '')}
-confidence={proposal.get('confidence', '')}
-
-Reply with ONLY JSON:
-{{"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}}"""
-    try:
-        parsed = parse_json(_runtime_exec(runtime, config, content=[
+confidence={proposal.get('confidence', '')}"""
+    if config.iterative_prompt_layout == "legacy":
+        # origin/main order: dynamic+framing+candidates -> accept rules ->
+        # rationale -> JSON, one text block, no cache prefix.
+        context = (
+            gate_head + "\n\n" + _COMMIT_GATE_RULES_BODY + "\n\n"
+            + rationale + "\n\n" + _COMMIT_GATE_JSON
+        )
+        gate_content = [
             {"type": "text", "text": context},
             {"type": "image", "path": overlay_path},
-        ]))
+        ]
+    else:
+        context = gate_head + "\n\n" + rationale + "\n\n" + _COMMIT_GATE_JSON
+        gate_content = [
+            _cacheable_prefix_block(_COMMIT_GATE_RULES),
+            {"type": "text", "text": context},
+            {"type": "image", "path": overlay_path},
+        ]
+    try:
+        parsed = parse_json(_runtime_exec(runtime, config, content=gate_content))
     except Exception as exc:
         reraise_if_fatal(exc)
         return {
             "action": "reject",
             "confidence": 0.0,
-            "reasoning": f"commit gate failed: {exc.__class__.__name__}: {exc}",
+            "reasoning": f"crop check failed: {exc.__class__.__name__}: {exc}",
             "overlay_path": overlay_path,
         }
     action = str(parsed.get("action", "")).lower().strip()
@@ -1011,9 +1208,12 @@ def _iterative_next_box(
         return None
     if _box_area(next_box) >= _box_area(current_box):
         return None
-    max_area = _box_area(current_box) * (config.iterative_max_area_pct / 100.0)
-    if _box_area(next_box) > max_area:
-        return None
+    # No upper cap on how much the model may shrink per round: it decides the
+    # zoom amount. (iterative_max_area_pct=0 disables the cap; >0 re-enables it.)
+    if config.iterative_max_area_pct > 0:
+        max_area = _box_area(current_box) * (config.iterative_max_area_pct / 100.0)
+        if _box_area(next_box) > max_area:
+            return None
     return next_box
 
 
@@ -1040,9 +1240,11 @@ def _iterative_zoom_final_click(
         max_side=config.iterative_final_max_side,
         max_scale=config.iterative_final_max_scale,
         min_short_side=config.iterative_final_min_short_side,
+        min_scale=config.iterative_final_min_scale,
+        scale_mode=config.iterative_scale_mode,
     )
     final_candidates = list(candidates)
-    if config.iterative_detect_final_candidates:
+    if config.enable_final_candidate_detect:
         final_candidates.extend(
             active._detect_region_candidates(img_path, {"name": "iter_final", "bbox": crop_box}, out_dir)
         )
@@ -1052,7 +1254,7 @@ def _iterative_zoom_final_click(
         display_scale,
         limit=config.iterative_final_candidates,
     )
-    context = f"""Task: {task}
+    final_head = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
 Final crop in original coordinates: {crop_box}
@@ -1064,38 +1266,29 @@ Crop history:
 {_format_iterative_history(history)}
 
 Detected OCR/component candidates in this final crop:
-{candidate_lines or "(none)"}
-
-Choose the exact center of the requested clickable target. Use the upscaled
-image for precision. Candidate boxes are hints only: if a candidate covers a
-combined toolbar group, a label next to an icon, or the wrong sub-control,
-return explicit x/y for the true target instead of using candidate_id.
-
-Click policy:
-- Click the actionable control, not just the label, icon category, or visual
-  explanation of the setting.
-- For sliders, click the slider track/thumb/value area associated with the
-  requested setting, not the setting's label/icon above it.
-- For adjacent status counters or toolbar clusters, do not click the center of
-  the whole cluster unless the instruction clearly asks for the whole cluster;
-  choose the specific counter/icon/menu item named by the instruction.
-- For close-file/tab instructions, click the small close affordance on the tab
-  or named file, not the file icon/content or a different window.
-- Do not click passive status text like "On" or "Enabled" for turn on/off
-  tasks. Choose the actual toggle/button/switch.
-- If two controls both seem plausible, prefer the one in the active/current
-  task panel or named application context.
-- If this crop does not contain a trustworthy clickable target, return
-  action="recrop" so the caller can retry from a wider crop. Do not invent a
-  coordinate in an unrelated region.
-
-Reply with ONLY JSON:
-{{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
-    try:
-        reply = _runtime_exec(runtime, config, content=[
+{candidate_lines or "(none)"}"""
+    if config.iterative_prompt_layout == "legacy":
+        # origin/main: dynamic+history+candidates -> click-policy rules+JSON,
+        # one text block, no cache prefix.
+        context = final_head + "\n\n" + _FINAL_CLICK_RULES
+        final_content = [
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
-        ])
+        ]
+    else:
+        context = (
+            final_head + "\n\n"
+            + "Reply with ONLY JSON:\n"
+            + '{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, '
+            + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
+        )
+        final_content = [
+            _cacheable_prefix_block(_FINAL_CLICK_RULES),
+            {"type": "text", "text": context},
+            {"type": "image", "path": crop_path},
+        ]
+    try:
+        reply = _runtime_exec(runtime, config, content=final_content)
         parsed = parse_json(reply)
     except Exception as exc:
         reraise_if_fatal(exc)
@@ -1148,7 +1341,7 @@ Reply with ONLY JSON:
         return None
 
     review = None
-    if config.iterative_review_final:
+    if config.enable_final_recheck:
         reviewed = _iterative_zoom_review_click(
             task,
             target,
@@ -1211,7 +1404,7 @@ Reply with ONLY JSON:
             "review": review,
         },
     }
-    if config.iterative_verify_final:
+    if config.enable_final_verify:
         verifier = active.verify_candidate(task, target, img_path, result, runtime, out_dir=out_dir)
         result["pre_click_verifier"] = verifier
     print(

@@ -100,26 +100,14 @@ def build_screen_script(
     provider: str,
     model: str,
 ) -> str:
+    # Locator behaviour is driven entirely by a config file (--config below),
+    # not env vars. The file lists every ScreenSpotLocatorConfig field; edit it
+    # to change the run. No GUI_HARNESS_SCREENSPOT_* exports here.
+    config_file = REPO_ROOT / "benchmarks" / "screenspot_pro" / "configs" / "known_good.yaml"
     lines = [
         "set -u",
         f"cd {shlex.quote(str(REPO_ROOT))}",
         "export PYTHONUNBUFFERED=1",
-        "export GUI_HARNESS_SCREENSPOT_LOCATOR_MODE=iterative_zoom",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_ROUNDS=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_REVIEW_FINAL=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_VERIFY_FINAL=0",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FALLBACK_TO_CROP=0",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_COMMIT_GATE=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_RETRIES=6",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGED_CROP=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE1_MIN_AREA_PCT=20",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE2_MIN_AREA_PCT=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE=2048",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SCALE=5",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SHORT_SIDE=512",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE=4096",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE=640",
         "status=0",
     ]
     for shard in range(shards):
@@ -132,6 +120,7 @@ def build_screen_script(
             f"--work-dir {work_prefix}/\"${{annotation%.json}}\" "
             f"--provider {shlex.quote(provider)} "
             f"--model {shlex.quote(model)} "
+            f"--config {shlex.quote(str(config_file))} "
             f"--runtime-retries {runtime_retries} "
             f"--retry-provider-errors {retry_provider_errors} "
             f"--sample-timeout-s {sample_timeout_s} "

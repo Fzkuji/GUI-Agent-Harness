@@ -1,0 +1,48 @@
+# ScreenSpot-Pro 定位器配置（LlamaFactory 风格：一个文件配置一切）
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/known_good.yaml ...
+# 每个键对应 ScreenSpotLocatorConfig 的一个字段。改这个文件就改了整个 run 的行为。
+# 不用环境变量。
+
+# ── 定位模式 ──────────────────────────────────────────────
+locator_mode: iterative_zoom        # iterative_zoom（裁剪缩放）/ crop_first（旧流程）
+
+# ── 上下文模式（缓存相关）────────────────────────────────
+context_mode: single                # single=每轮独立 / accumulate=累积多轮对话（前缀稳定、缓存命中更多）
+accumulate_images: false            # 累积模式下，前面轮次的图是否也累积（true 命中更高但 token 涨）
+
+# ── 迭代轮数与裁剪几何 ────────────────────────────────────
+iterative_rounds: 8                 # 最多迭代多少轮
+# 缩放策略
+iterative_scale_mode: preserve      # preserve=小图放大/大图不缩（本策略）; fill=放大填满 max_side（复刻 origin）
+iterative_prompt_layout: cache      # cache=规则前置吃缓存（本策略）; legacy=规则内联、复刻 origin prompt
+# 缩放旋钮（4 个一组，逐轮 + final 各一套）
+iterative_max_side: 0               # 显示最长边上限；0=不限（大图不缩、保持原分辨率）
+iterative_max_scale: 5              # 小图最大放大倍数；0=不限
+iterative_min_short_side: 512       # 小图短边放大到这么大（让小目标清晰）；0=不放大
+iterative_min_scale: 1.0           # 缩放下限；1.0=永不缩小，0.1=允许缩大图（消融用）
+iterative_final_max_side: 0         # final 图：同上，0=不缩
+iterative_final_max_scale: 8        # final 图放大倍数更高（定坐标要更清晰）
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0           # 下一框相对当前框的面积上限；0=不限，缩多少由模型自己定
+iterative_padding_pct: 8            # 裁剪框外扩比例
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80      # final 图给模型的候选数上限
+iterative_stage1_min_area_pct: 20   # 阶段1（窗口选择）最小面积下限
+iterative_stage2_min_area_pct: 8    # 阶段2（区域选择）最小面积下限
+
+# ── 步骤开关（每个额外验证步骤都能单独开关，做消融）──────
+enable_staged_crop: true            # 分阶段引导裁剪（先窗口→再区域→再控件组）
+enable_crop_check: true             # 每次裁剪后，额外让模型复查这个裁剪框（commit gate，省钱可关）
+enable_crop_retry: true             # 裁剪选框失败时是否允许重选（与 crop_check 解耦）
+crop_retry_limit: 6                 # 重选最多几次
+enable_final_candidate_detect: true # 最终裁剪图上再跑一次本地检测补充候选
+enable_final_recheck: true          # 定完坐标后，对比更宽的图复查点对不对（review）
+enable_final_verify: false          # 定完坐标后单独验证这个点是不是目标
+enable_final_recrop: true           # 最终图找不到目标时换更大的框重试
+final_recrop_limit: 0               # 换框重试次数上限（0=不限，试完所有候选）
+enable_legacy_pipeline: false       # 迭代失败后是否退回旧 crop_first 流程
+
+# ── 超时 ──────────────────────────────────────────────────
+runtime_timeout_s: 180              # 单次 LLM 调用超时

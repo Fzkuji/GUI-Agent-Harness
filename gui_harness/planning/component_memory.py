@@ -837,8 +837,13 @@ def locate_target(
     img_path: str,
     app_name: str = "desktop",
     runtime=None,
+    config=None,
 ) -> Optional[dict]:
     """Complete Phase 1-5 flow to find a target element on screen.
+
+    ``config`` is an optional ScreenSpotLocatorConfig forwarded to the
+    ScreenSpot locator. When None the locator falls back to from_env(), so
+    existing callers are unaffected.
 
     This is the single entry point called by execute_task when an action
     needs coordinates.
@@ -908,6 +913,7 @@ def locate_target(
             candidates=base_active_candidates,
             runtime=runtime,
             work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
+            config=config,
         )
         if located:
             located["timing"] = _timing

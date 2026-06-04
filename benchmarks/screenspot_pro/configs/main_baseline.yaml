@@ -1,0 +1,49 @@
+# main 分支基线配置 —— 用现在分支的字段名复现 main(a3d0a35)当时跑的设置。
+# main 没有 YAML，靠 start_full_autoretry.py 设环境变量 + dataclass 默认；
+# 这里把那套等价映射成新字段名，用于和现在的实验对照。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/main_baseline.yaml ...
+
+# ── 定位模式 ──────────────────────────────────────────────
+locator_mode: iterative_zoom
+
+# ── 上下文模式 ────────────────────────────────────────────
+# main 没有这两个概念，行为等同于 single（每轮独立、不累积）。
+context_mode: single
+accumulate_images: false
+
+# ── 迭代轮数与裁剪几何（main 的关键差异在这里）──────────────
+iterative_rounds: 8
+# 复刻 origin/main 的缩放：scale_mode=fill 用 origin 的老公式（把每个中小图放大
+# 到长边填满 max_side），逐像素匹配 origin 的裁剪几何。
+iterative_scale_mode: fill          # 关键：fill 才能复刻 origin（preserve 是新策略，不放大中小图）
+iterative_prompt_layout: legacy     # 关键：legacy 复刻 origin 的 prompt（规则内联、JSON 一次、无缓存前缀）
+iterative_max_side: 2048            # main 把大图缩到、中小图放大填满最长边 2048
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 0.1            # origin 的硬下限就是 0.1
+iterative_final_max_side: 4096      # main final 图填满到 4096
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 0.1
+iterative_max_area_pct: 85          # main 有面积否决：下一框 > 当前框 85% 则打回
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# ── 步骤开关（映射 main 的 env / dataclass 默认）────────────
+enable_staged_crop: true            # STAGED_CROP=1
+enable_crop_check: true             # CROP_COMMIT_GATE=1
+enable_crop_retry: true             # main 里 retry 与 gate 绑定，gate 开即 retry 开
+crop_retry_limit: 6                 # CROP_RETRIES=6
+enable_final_candidate_detect: true # main dataclass 默认 True
+enable_final_recheck: true          # REVIEW_FINAL=1
+enable_final_verify: false          # VERIFY_FINAL=0
+enable_final_recrop: true           # main 会试完所有 final 候选框
+final_recrop_limit: 0               # 不限次（试完所有候选）
+enable_legacy_pipeline: false       # FALLBACK_TO_CROP=0
+
+# ── 超时 ──────────────────────────────────────────────────
+runtime_timeout_s: 180

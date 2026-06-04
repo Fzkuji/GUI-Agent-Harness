@@ -23,6 +23,7 @@ import traceback
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -466,6 +467,40 @@ def should_retry_result(result: dict) -> bool:
     }
 
 
+def load_locator_config(config_path: str):
+    """Build a ScreenSpotLocatorConfig from a single YAML/JSON file.
+
+    The file is the whole config (LlamaFactory-style). Every key must be a
+    ScreenSpotLocatorConfig field; keys starting with '_' are treated as
+    comments and ignored. Unknown keys raise, so a typo fails loud instead of
+    silently falling back to a default.
+    """
+    from gui_harness.planning.screenspot_locator import ScreenSpotLocatorConfig
+    import dataclasses
+
+    path = (
+        Path(config_path)
+        if Path(config_path).is_absolute()
+        else (REPO_ROOT / config_path)
+    ).resolve()
+    raw = path.read_text()
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        import yaml
+        file_dict = yaml.safe_load(raw) or {}
+    else:
+        file_dict = json.loads(raw)
+    if not isinstance(file_dict, dict):
+        raise SystemExit(f"--config {path} must contain a YAML/JSON object")
+    file_dict = {k: v for k, v in file_dict.items() if not str(k).startswith("_")}
+    allowed = {f.name for f in dataclasses.fields(ScreenSpotLocatorConfig)}
+    unknown = sorted(set(file_dict) - allowed)
+    if unknown:
+        raise SystemExit(
+            f"--config {path} has unknown keys: {unknown}\nallowed: {sorted(allowed)}"
+        )
+    return ScreenSpotLocatorConfig(**file_dict)
+
+
 def run_one(
     sample: dict,
     img_path: Path,
@@ -475,6 +510,7 @@ def run_one(
     zoom_refine: str,
     zoom_crop_size: int,
     zoom_scale: int,
+    locator_config=None,
 ) -> dict:
     started = time.time()
     instruction = sample["instruction"]
@@ -485,6 +521,7 @@ def run_one(
             img_path=str(img_path),
             app_name=app_name,
             runtime=runtime,
+            config=locator_config,
         )
         point = [int(location["cx"]), int(location["cy"])] if location else None
         refined_location = None
@@ -542,8 +579,61 @@ def run_one(
         "location": location,
         "error": error,
         "elapsed_s": round(time.time() - started, 2),
+        "steps_enabled": _steps_enabled_snapshot(locator_config),
+        "step_trigger_counts": _step_trigger_counts(location),
     }
     return result
+
+
+def _steps_enabled_snapshot(config) -> Optional[dict]:
+    """Record which optional locator steps were enabled for this run, so
+    ablations can be compared from the result file. None when no explicit
+    config was passed (locator fell back to env defaults)."""
+    if config is None:
+        return None
+    return {
+        "context_mode": config.context_mode,
+        "accumulate_images": config.accumulate_images,
+        "enable_crop_check": config.enable_crop_check,
+        "enable_crop_retry": config.enable_crop_retry,
+        "crop_retry_limit": config.crop_retry_limit,
+        "enable_final_recrop": config.enable_final_recrop,
+        "final_recrop_limit": config.final_recrop_limit,
+        "enable_final_recheck": config.enable_final_recheck,
+        "enable_final_verify": config.enable_final_verify,
+        "enable_final_candidate_detect": config.enable_final_candidate_detect,
+        "enable_staged_crop": config.enable_staged_crop,
+        "enable_legacy_pipeline": config.enable_legacy_pipeline,
+        "iterative_rounds": config.iterative_rounds,
+    }
+
+
+def _step_trigger_counts(location) -> Optional[dict]:
+    """Count how many times each per-sample step actually fired, read from the
+    locator's iterative_zoom history. None when no iterative trace is present."""
+    if not isinstance(location, dict):
+        return None
+    zoom = location.get("iterative_zoom")
+    if not isinstance(zoom, dict):
+        zoom = (location.get("base_location") or {}).get("iterative_zoom") if isinstance(location.get("base_location"), dict) else None
+    if not isinstance(zoom, dict):
+        return None
+    hist = zoom.get("history") or []
+    if not isinstance(hist, list):
+        hist = []
+    committed = sum(1 for h in hist if isinstance(h, dict) and h.get("next_box"))
+    check_calls = sum(1 for h in hist if isinstance(h, dict) and h.get("crop_check") is not None)
+    check_rejects = sum(
+        1 for h in hist
+        if isinstance(h, dict) and isinstance(h.get("crop_check"), dict)
+        and h["crop_check"].get("action") != "accept"
+    )
+    return {
+        "crop_decision_calls": len(hist),
+        "committed_crops": committed,
+        "crop_check_calls": check_calls,
+        "crop_check_rejects": check_rejects,
+    }
 
 
 def parse_range(value: str) -> list[int]:
@@ -605,6 +695,17 @@ def main() -> None:
         help="JSONL runtime error event path. Default: <output>.errors.jsonl. Use 'off' to disable.",
     )
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument(
+        "--config",
+        default="",
+        help=(
+            "Path to a JSON (or .yaml/.yml) locator config file listing "
+            "ScreenSpotLocatorConfig fields. Precedence: dataclass default "
+            "< config file < environment variable (a set env var still wins, "
+            "so ad-hoc env overrides keep working). Keys starting with '_' are "
+            "ignored (use for comments)."
+        ),
+    )
     args = parser.parse_args()
 
     # Arm a call-level deadline on EVERY runtime.exec() (OpenProgram reads
@@ -646,6 +747,19 @@ def main() -> None:
         return rt
 
     runtime = new_runtime()
+    # Build the locator config once and pass it explicitly down to run_one /
+    # locate_target, so the enabled steps are recorded per result and can be
+    # overridden from one place. from_env() reads all existing env knobs, so
+    # behaviour is unchanged unless an env/flag is set.
+    from gui_harness.planning.screenspot_locator import ScreenSpotLocatorConfig
+    # Config file is the single source of truth (LlamaFactory-style): pass
+    # --config a.yaml and that file fully defines the locator. No env vars.
+    # Without --config, fall back to dataclass defaults.
+    if args.config:
+        locator_config = load_locator_config(args.config)
+        print(f"  [run] locator config from {args.config}", file=sys.stderr)
+    else:
+        locator_config = ScreenSpotLocatorConfig()
     if args.sample_timeout_s > 0:
         signal.signal(signal.SIGALRM, raise_sample_timeout)
 
@@ -693,6 +807,7 @@ def main() -> None:
                             zoom_refine=args.zoom_refine,
                             zoom_crop_size=args.zoom_crop_size,
                             zoom_scale=args.zoom_scale,
+                            locator_config=locator_config,
                         )
                     finally:
                         if args.sample_timeout_s > 0:
