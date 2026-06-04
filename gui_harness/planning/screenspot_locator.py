@@ -26,6 +26,142 @@ from gui_harness.planning import active_localization as active
 from gui_harness.utils import parse_json
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Static instruction prefixes (prompt-cache stable prefixes)
+#
+# Each LLM call in this module repeats a large block of fixed rules / policy /
+# JSON-format text that is byte-identical across every call, round, and sample.
+# These blocks are pulled out as module-level constants and sent as the FIRST
+# content block of each request, marked with cache_control, so the provider
+# caches them once and serves later calls from cache_read. The per-call dynamic
+# text (task, crop box, round, history, candidates) follows as a second block,
+# and the image last. Reordering rules-before-dynamic is intentional: the cache
+# prefix must be stable, and general constraints read fine before the task.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ``{"type": "ephemeral"}`` marks an explicit prompt-cache breakpoint. The
+# patched OpenProgram Anthropic provider passes this through and skips its own
+# default last-block breakpoint when a caller marks one (see
+# providers/anthropic/anthropic.py). OpenAI-style providers ignore the marker
+# and cache stable prefixes automatically — either way, putting the fixed text
+# first is what lets the cache hit.
+_CACHE_BREAKPOINT = {"type": "ephemeral"}
+
+
+def _cacheable_prefix_block(text: str) -> dict:
+    """Build a leading text block marked as a prompt-cache breakpoint."""
+    return {"type": "text", "text": text, "cache_control": _CACHE_BREAKPOINT}
+
+
+_CROP_DECISION_RULES = """Your job in this stage is NOT to click. Choose the next smaller crop that still
+contains the requested clickable target and enough surrounding context to keep
+orientation. The intended behavior is iterative zoom-in: shrink the search
+area substantially each round, then a later stage will click on an upscaled
+final crop.
+
+Rules:
+- Return bbox coordinates in the DISPLAYED CROP image coordinate system.
+- Use the OCR/component candidate list as explicit grounding evidence. Candidate
+  labels, centers, and boxes should guide which window/section/control group to
+  keep. If a target-related candidate is present, the next crop should include
+  it or include the larger unresolved region containing it.
+- When multiple candidate clusters could satisfy the instruction, crop to a
+  region that preserves the competing clusters until later rounds or the commit
+  gate can disambiguate them.
+- ScreenSpot-Pro labels the clickable UI control, not an abstract concept or a
+  decorative label. Keep the region around the control that would actually be
+  clicked to complete the instruction.
+- If the instruction names an application/window, ignore matching desktop
+  icons, other windows, document content, or web pages outside that app unless
+  the instruction explicitly points there.
+- For modify/change/adjust instructions, prefer the editable control itself
+  (slider track/thumb, text input, dropdown item, checkbox, swatch) over the
+  nearby label or category icon.
+- For turn on/off/open/close instructions, prefer the direct toggle, close X,
+  or command item for the named target. If several plausible controls exist,
+  keep enough surrounding context to compare them instead of cropping to the
+  first large related widget.
+- For toolbar/menu commands with many similar icons, keep the whole local
+  toolbar/menu group until the requested icon or row is unambiguous.
+- If the target names a file, tab, embedded panel, or nested window, preserve
+  enough surrounding controls to decide which layer the instruction refers to.
+- Do not crop to passive status text such as "On", "Enabled", a title-bar
+  status, or a menu label for on/off tasks. The next crop must contain a
+  clickable toggle/button/switch.
+- Maintain target identity across rounds. If an earlier round identified a
+  concrete actionable control, the next crop should stay on that same control,
+  not jump to a different plausible control with a similar label. Only switch
+  targets if the earlier identification is clearly inconsistent with the
+  instruction and screenshot.
+- Prefer one high-recall crop over many tiny guesses. Do not crop so tightly
+  that the target loses its label, icon context, or neighboring disambiguators.
+- This crop is pending until a separate commit gate accepts it. If there is
+  any unresolved ambiguity, return a larger, more conservative crop.
+- Follow the staged crop guidance. The first committed crop must be a real
+  crop from the full image, but it should be a window/region crop, not an
+  immediate final-control crop.
+- If the target is already clear enough and further cropping would risk cutting
+  off context, use action="final".
+- If the target is not visible in this crop, use action="recrop" to back out
+  to a wider crop and try again. Do not give up; ScreenSpot-Pro targets are
+  assumed to exist somewhere in the original screenshot.
+- Do not return a final click point in this stage.
+
+Reply with ONLY JSON:
+{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+
+_COMMIT_GATE_RULES = """Accept the proposed crop only if all of these are true:
+- The requested clickable target is still inside the magenta rectangle.
+- The component/OCR evidence inside the magenta rectangle is consistent with
+  the requested target, or the rectangle is a broad staged region that contains
+  the target's unresolved candidate cluster.
+- The component/OCR evidence outside the rectangle does not include another
+  plausible target candidate that should remain visible at this stage.
+- The crop keeps enough nearby label/icon/window context to identify the same
+  target in the next round.
+- The crop has not discarded another plausible target for the same instruction
+  that is still unresolved.
+- The proposal is not just a visually similar control in a different panel,
+  window, toolbar, or application context.
+- The proposal follows the staged crop guidance for this round; early rounds
+  should select broad screen/window or app-section regions rather than jumping
+  straight to a tiny final control.
+
+Reject when uncertain. A rejected crop will be retried from the current wider
+crop rather than clicked.
+
+Reply with ONLY JSON:
+{"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}"""
+
+
+_FINAL_CLICK_RULES = """Choose the exact center of the requested clickable target. Use the upscaled
+image for precision. Candidate boxes are hints only: if a candidate covers a
+combined toolbar group, a label next to an icon, or the wrong sub-control,
+return explicit x/y for the true target instead of using candidate_id.
+
+Click policy:
+- Click the actionable control, not just the label, icon category, or visual
+  explanation of the setting.
+- For sliders, click the slider track/thumb/value area associated with the
+  requested setting, not the setting's label/icon above it.
+- For adjacent status counters or toolbar clusters, do not click the center of
+  the whole cluster unless the instruction clearly asks for the whole cluster;
+  choose the specific counter/icon/menu item named by the instruction.
+- For close-file/tab instructions, click the small close affordance on the tab
+  or named file, not the file icon/content or a different window.
+- Do not click passive status text like "On" or "Enabled" for turn on/off
+  tasks. Choose the actual toggle/button/switch.
+- If two controls both seem plausible, prefer the one in the active/current
+  task panel or named application context.
+- If this crop does not contain a trustworthy clickable target, return
+  action="recrop" so the caller can retry from a wider crop. Do not invent a
+  coordinate in an unrelated region.
+
+Reply with ONLY JSON:
+{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
     try:
         return max(minimum, int(os.environ.get(name, str(default))))
@@ -84,13 +220,13 @@ class ScreenSpotLocatorConfig:
     iterative_min_width: int = 240
     iterative_min_height: int = 80
     iterative_final_candidates: int = 80
-    iterative_detect_final_candidates: bool = True
-    iterative_verify_final: bool = False
-    iterative_review_final: bool = False
-    iterative_fallback_to_crop: bool = False
-    iterative_crop_commit_gate: bool = True
-    iterative_crop_retries: int = 3
-    iterative_staged_crop: bool = True
+    enable_final_candidate_detect: bool = True
+    enable_final_verify: bool = False
+    enable_final_recheck: bool = False
+    enable_legacy_pipeline: bool = False
+    enable_crop_check: bool = True
+    crop_retry_limit: int = 3
+    enable_staged_crop: bool = True
     iterative_stage1_min_area_pct: int = 20
     iterative_stage2_min_area_pct: int = 8
     runtime_timeout_s: int = 180
@@ -137,13 +273,13 @@ class ScreenSpotLocatorConfig:
             iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
             iterative_min_height=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_H", 80),
             iterative_final_candidates=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_CANDIDATES", 80),
-            iterative_detect_final_candidates=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_DETECT_FINAL_CANDIDATES", True),
-            iterative_verify_final=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_VERIFY_FINAL", False),
-            iterative_review_final=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_REVIEW_FINAL", False),
-            iterative_fallback_to_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_FALLBACK_TO_CROP", False),
-            iterative_crop_commit_gate=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_COMMIT_GATE", True),
-            iterative_crop_retries=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_RETRIES", 3, minimum=0),
-            iterative_staged_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGED_CROP", True),
+            enable_final_candidate_detect=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_CANDIDATE_DETECT", True),
+            enable_final_verify=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_VERIFY", False),
+            enable_final_recheck=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_FINAL_RECHECK", False),
+            enable_legacy_pipeline=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_LEGACY_PIPELINE", False),
+            enable_crop_check=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_CROP_CHECK", True),
+            crop_retry_limit=_env_int("GUI_HARNESS_SCREENSPOT_CROP_RETRY_LIMIT", 3, minimum=0),
+            enable_staged_crop=_env_bool("GUI_HARNESS_SCREENSPOT_ENABLE_STAGED_CROP", True),
             iterative_stage1_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE1_MIN_AREA_PCT", 20),
             iterative_stage2_min_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE2_MIN_AREA_PCT", 8),
             runtime_timeout_s=_env_int("GUI_HARNESS_SCREENSPOT_RUNTIME_TIMEOUT_S", 180, minimum=0),
@@ -173,7 +309,7 @@ def screenspot_locate(
         located = _iterative_zoom_locate(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
         if located:
             return located
-        if not config.iterative_fallback_to_crop:
+        if not config.enable_legacy_pipeline:
             return None
 
     located = _verified_crop_refine(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
@@ -220,7 +356,7 @@ def _iterative_zoom_locate(
     stop_refining = False
     for round_idx in range(config.iterative_rounds):
         rejected_attempts: list[dict] = []
-        max_attempts = 1 + (config.iterative_crop_retries if config.iterative_crop_commit_gate else 0)
+        max_attempts = 1 + (config.crop_retry_limit if config.enable_crop_check else 0)
         for attempt_idx in range(max_attempts):
             stage_idx = _iterative_committed_crop_count(history)
             crop_path, crop_box, display_scale = _render_iterative_crop(
@@ -255,68 +391,12 @@ Previous crop decisions:
 Rejected crop attempts from this same current crop:
 {_format_crop_rejections(rejected_attempts)}
 
-Your job in this stage is NOT to click. Choose the next smaller crop that still
-contains the requested clickable target and enough surrounding context to keep
-orientation. The intended behavior is iterative zoom-in: shrink the search
-area substantially each round, then a later stage will click on an upscaled
-final crop.
-
 Detected OCR/component candidates inside this crop, shown in displayed-crop
 coordinates:
-{candidate_lines or "(none)"}
-
-Rules:
-- Return bbox coordinates in the DISPLAYED CROP image coordinate system.
-- Use the OCR/component candidate list as explicit grounding evidence. Candidate
-  labels, centers, and boxes should guide which window/section/control group to
-  keep. If a target-related candidate is present, the next crop should include
-  it or include the larger unresolved region containing it.
-- When multiple candidate clusters could satisfy the instruction, crop to a
-  region that preserves the competing clusters until later rounds or the commit
-  gate can disambiguate them.
-- ScreenSpot-Pro labels the clickable UI control, not an abstract concept or a
-  decorative label. Keep the region around the control that would actually be
-  clicked to complete the instruction.
-- If the instruction names an application/window, ignore matching desktop
-  icons, other windows, document content, or web pages outside that app unless
-  the instruction explicitly points there.
-- For modify/change/adjust instructions, prefer the editable control itself
-  (slider track/thumb, text input, dropdown item, checkbox, swatch) over the
-  nearby label or category icon.
-- For turn on/off/open/close instructions, prefer the direct toggle, close X,
-  or command item for the named target. If several plausible controls exist,
-  keep enough surrounding context to compare them instead of cropping to the
-  first large related widget.
-- For toolbar/menu commands with many similar icons, keep the whole local
-  toolbar/menu group until the requested icon or row is unambiguous.
-- If the target names a file, tab, embedded panel, or nested window, preserve
-  enough surrounding controls to decide which layer the instruction refers to.
-- Do not crop to passive status text such as "On", "Enabled", a title-bar
-  status, or a menu label for on/off tasks. The next crop must contain a
-  clickable toggle/button/switch.
-- Maintain target identity across rounds. If an earlier round identified a
-  concrete actionable control, the next crop should stay on that same control,
-  not jump to a different plausible control with a similar label. Only switch
-  targets if the earlier identification is clearly inconsistent with the
-  instruction and screenshot.
-- Prefer one high-recall crop over many tiny guesses. Do not crop so tightly
-  that the target loses its label, icon context, or neighboring disambiguators.
-- This crop is pending until a separate commit gate accepts it. If there is
-  any unresolved ambiguity, return a larger, more conservative crop.
-- Follow the staged crop guidance. The first committed crop must be a real
-  crop from the full image, but it should be a window/region crop, not an
-  immediate final-control crop.
-- If the target is already clear enough and further cropping would risk cutting
-  off context, use action="final".
-- If the target is not visible in this crop, use action="recrop" to back out
-  to a wider crop and try again. Do not give up; ScreenSpot-Pro targets are
-  assumed to exist somewhere in the original screenshot.
-- Do not return a final click point in this stage.
-
-Reply with ONLY JSON:
-{{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
+{candidate_lines or "(none)"}"""
             try:
                 reply = _runtime_exec(runtime, config, content=[
+                    _cacheable_prefix_block(_CROP_DECISION_RULES),
                     {"type": "text", "text": context},
                     {"type": "image", "path": crop_path},
                 ])
@@ -361,7 +441,7 @@ Reply with ONLY JSON:
                     continue
                 break
             if action == "final":
-                if config.iterative_crop_commit_gate and not any(item.get("next_box") for item in history):
+                if config.enable_crop_check and not any(item.get("next_box") for item in history):
                     rejected_attempts.append({
                         "action": action,
                         "bbox": parsed.get("bbox"),
@@ -413,8 +493,8 @@ Reply with ONLY JSON:
                 break
 
             gate = None
-            if config.iterative_crop_commit_gate:
-                gate = _iterative_crop_commit_gate(
+            if config.enable_crop_check:
+                gate = _run_crop_check(
                     task,
                     target,
                     img_w,
@@ -497,7 +577,7 @@ def _box_area(box: list[int]) -> int:
 
 
 def _iterative_stage_guidance(round_idx: int, config: ScreenSpotLocatorConfig) -> str:
-    if not config.iterative_staged_crop:
+    if not config.enable_staged_crop:
         return "Use a conservative crop that preserves the requested target and context."
     if round_idx == 0:
         return (
@@ -525,7 +605,7 @@ def _iterative_stage_guidance(round_idx: int, config: ScreenSpotLocatorConfig) -
 
 
 def _stage_min_area_pct(round_idx: int, config: ScreenSpotLocatorConfig) -> int:
-    if not config.iterative_staged_crop:
+    if not config.enable_staged_crop:
         return 0
     if round_idx == 0:
         return max(0, config.iterative_stage1_min_area_pct)
@@ -840,7 +920,7 @@ def _render_crop_commit_overlay(
     return str(out)
 
 
-def _iterative_crop_commit_gate(
+def _run_crop_check(
     task: str,
     target: str,
     img_w: int,
@@ -899,35 +979,13 @@ OCR/component candidates still visible in the current crop but OUTSIDE the
 proposed magenta crop:
 {outside_candidates or "(none)"}
 
-Accept the proposed crop only if all of these are true:
-- The requested clickable target is still inside the magenta rectangle.
-- The component/OCR evidence inside the magenta rectangle is consistent with
-  the requested target, or the rectangle is a broad staged region that contains
-  the target's unresolved candidate cluster.
-- The component/OCR evidence outside the rectangle does not include another
-  plausible target candidate that should remain visible at this stage.
-- The crop keeps enough nearby label/icon/window context to identify the same
-  target in the next round.
-- The crop has not discarded another plausible target for the same instruction
-  that is still unresolved.
-- The proposal is not just a visually similar control in a different panel,
-  window, toolbar, or application context.
-- The proposal follows the staged crop guidance for this round; early rounds
-  should select broad screen/window or app-section regions rather than jumping
-  straight to a tiny final control.
-
-Reject when uncertain. A rejected crop will be retried from the current wider
-crop rather than clicked.
-
 Proposal rationale:
 target_visible_element={proposal.get('target_visible_element', '')}
 reasoning={proposal.get('reasoning', '')}
-confidence={proposal.get('confidence', '')}
-
-Reply with ONLY JSON:
-{{"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}}"""
+confidence={proposal.get('confidence', '')}"""
     try:
         parsed = parse_json(_runtime_exec(runtime, config, content=[
+            _cacheable_prefix_block(_COMMIT_GATE_RULES),
             {"type": "text", "text": context},
             {"type": "image", "path": overlay_path},
         ]))
@@ -1042,7 +1100,7 @@ def _iterative_zoom_final_click(
         min_short_side=config.iterative_final_min_short_side,
     )
     final_candidates = list(candidates)
-    if config.iterative_detect_final_candidates:
+    if config.enable_final_candidate_detect:
         final_candidates.extend(
             active._detect_region_candidates(img_path, {"name": "iter_final", "bbox": crop_box}, out_dir)
         )
@@ -1064,35 +1122,10 @@ Crop history:
 {_format_iterative_history(history)}
 
 Detected OCR/component candidates in this final crop:
-{candidate_lines or "(none)"}
-
-Choose the exact center of the requested clickable target. Use the upscaled
-image for precision. Candidate boxes are hints only: if a candidate covers a
-combined toolbar group, a label next to an icon, or the wrong sub-control,
-return explicit x/y for the true target instead of using candidate_id.
-
-Click policy:
-- Click the actionable control, not just the label, icon category, or visual
-  explanation of the setting.
-- For sliders, click the slider track/thumb/value area associated with the
-  requested setting, not the setting's label/icon above it.
-- For adjacent status counters or toolbar clusters, do not click the center of
-  the whole cluster unless the instruction clearly asks for the whole cluster;
-  choose the specific counter/icon/menu item named by the instruction.
-- For close-file/tab instructions, click the small close affordance on the tab
-  or named file, not the file icon/content or a different window.
-- Do not click passive status text like "On" or "Enabled" for turn on/off
-  tasks. Choose the actual toggle/button/switch.
-- If two controls both seem plausible, prefer the one in the active/current
-  task panel or named application context.
-- If this crop does not contain a trustworthy clickable target, return
-  action="recrop" so the caller can retry from a wider crop. Do not invent a
-  coordinate in an unrelated region.
-
-Reply with ONLY JSON:
-{{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
+{candidate_lines or "(none)"}"""
     try:
         reply = _runtime_exec(runtime, config, content=[
+            _cacheable_prefix_block(_FINAL_CLICK_RULES),
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
         ])
@@ -1148,7 +1181,7 @@ Reply with ONLY JSON:
         return None
 
     review = None
-    if config.iterative_review_final:
+    if config.enable_final_recheck:
         reviewed = _iterative_zoom_review_click(
             task,
             target,
@@ -1211,7 +1244,7 @@ Reply with ONLY JSON:
             "review": review,
         },
     }
-    if config.iterative_verify_final:
+    if config.enable_final_verify:
         verifier = active.verify_candidate(task, target, img_path, result, runtime, out_dir=out_dir)
         result["pre_click_verifier"] = verifier
     print(
