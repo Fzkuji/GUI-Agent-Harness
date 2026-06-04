@@ -1,0 +1,221 @@
+{
+  "run": "claude_opus47_full_screenspot_pro_20260603_1300",
+  "provider": "claude-code",
+  "model": "claude-opus-4",
+  "total": 1581,
+  "valid": 338,
+  "errors": 1243,
+  "correct": 267,
+  "wrong": 71,
+  "by_annotation": {
+    "android_studio": {
+      "correct": 63,
+      "wrong": 17,
+      "total": 80,
+      "accuracy": 78.75
+    },
+    "inventor": {
+      "correct": 53,
+      "wrong": 12,
+      "total": 65,
+      "accuracy": 81.54
+    },
+    "pycharm": {
+      "correct": 1,
+      "wrong": 2,
+      "total": 3,
+      "accuracy": 33.33
+    },
+    "windows_common": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "autocad": {
+      "correct": 24,
+      "wrong": 10,
+      "total": 34,
+      "accuracy": 70.59
+    },
+    "photoshop": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "quartus": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "vivado": {
+      "correct": 2,
+      "wrong": 1,
+      "total": 3,
+      "accuracy": 66.67
+    },
+    "word": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "blender": {
+      "correct": 41,
+      "wrong": 10,
+      "total": 51,
+      "accuracy": 80.39
+    },
+    "vmware": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "davinci": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "illustrator": {
+      "correct": 5,
+      "wrong": 0,
+      "total": 5,
+      "accuracy": 100.0
+    },
+    "matlab": {
+      "correct": 2,
+      "wrong": 1,
+      "total": 3,
+      "accuracy": 66.67
+    },
+    "premiere": {
+      "correct": 2,
+      "wrong": 1,
+      "total": 3,
+      "accuracy": 66.67
+    },
+    "stata": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "vscode": {
+      "correct": 2,
+      "wrong": 1,
+      "total": 3,
+      "accuracy": 66.67
+    },
+    "linux_common": {
+      "correct": 30,
+      "wrong": 10,
+      "total": 40,
+      "accuracy": 75.0
+    },
+    "eviews": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "origin": {
+      "correct": 0,
+      "wrong": 4,
+      "total": 4,
+      "accuracy": 0.0
+    },
+    "unreal_engine": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "solidworks": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "excel": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "powerpoint": {
+      "correct": 3,
+      "wrong": 0,
+      "total": 3,
+      "accuracy": 100.0
+    },
+    "macos_common": {
+      "correct": 5,
+      "wrong": 0,
+      "total": 5,
+      "accuracy": 100.0
+    },
+    "fruitloops": {
+      "correct": 1,
+      "wrong": 2,
+      "total": 3,
+      "accuracy": 33.33
+    }
+  },
+  "by_group": {
+    "Dev": {
+      "correct": 72,
+      "wrong": 20,
+      "total": 92,
+      "accuracy": 78.26
+    },
+    "CAD": {
+      "correct": 82,
+      "wrong": 23,
+      "total": 105,
+      "accuracy": 78.1
+    },
+    "OS": {
+      "correct": 38,
+      "wrong": 10,
+      "total": 48,
+      "accuracy": 79.17
+    },
+    "Creative": {
+      "correct": 58,
+      "wrong": 13,
+      "total": 71,
+      "accuracy": 81.69
+    },
+    "Office": {
+      "correct": 9,
+      "wrong": 0,
+      "total": 9,
+      "accuracy": 100.0
+    },
+    "Scientific": {
+      "correct": 8,
+      "wrong": 5,
+      "total": 13,
+      "accuracy": 61.54
+    }
+  },
+  "by_type": {
+    "icon": {
+      "correct": 79,
+      "wrong": 39,
+      "total": 118,
+      "accuracy": 66.95
+    },
+    "text": {
+      "correct": 188,
+      "wrong": 32,
+      "total": 220,
+      "accuracy": 85.45
+    }
+  },
+  "accuracy": 78.99
+}
