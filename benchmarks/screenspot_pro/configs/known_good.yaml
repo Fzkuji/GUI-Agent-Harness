@@ -12,7 +12,9 @@ accumulate_images: false            # 累积模式下，前面轮次的图是否
 
 # ── 迭代轮数与裁剪几何 ────────────────────────────────────
 iterative_rounds: 8                 # 最多迭代多少轮
-# 缩放策略：小图放大、大图不缩（4 个旋钮一组，逐轮 + final 各一套）
+# 缩放策略
+iterative_scale_mode: preserve      # preserve=小图放大/大图不缩（本策略）; fill=放大填满 max_side（复刻 origin）
+# 缩放旋钮（4 个一组，逐轮 + final 各一套）
 iterative_max_side: 0               # 显示最长边上限；0=不限（大图不缩、保持原分辨率）
 iterative_max_scale: 5              # 小图最大放大倍数；0=不限
 iterative_min_short_side: 512       # 小图短边放大到这么大（让小目标清晰）；0=不放大

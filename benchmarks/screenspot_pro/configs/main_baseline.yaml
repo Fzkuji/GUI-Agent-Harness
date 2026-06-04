@@ -13,14 +13,14 @@ accumulate_images: false
 
 # ── 迭代轮数与裁剪几何（main 的关键差异在这里）──────────────
 iterative_rounds: 8
-# 复刻 main 的缩放：缩大图（max_side=2048）+ 允许缩到 1x 以下（min_scale=0.1）。
-# 几何接近 main（大图缩到 2048、小图放大）；与 main 的逐像素差异仅在 min_short_side
-# 的 re-cap 细节，对结果影响极小。
-iterative_max_side: 2048            # main 把大图缩到最长边 2048
+# 复刻 origin/main 的缩放：scale_mode=fill 用 origin 的老公式（把每个中小图放大
+# 到长边填满 max_side），逐像素匹配 origin 的裁剪几何。
+iterative_scale_mode: fill          # 关键：fill 才能复刻 origin（preserve 是新策略，不放大中小图）
+iterative_max_side: 2048            # main 把大图缩到、中小图放大填满最长边 2048
 iterative_max_scale: 5
 iterative_min_short_side: 512
-iterative_min_scale: 0.1            # 允许缩小（复刻 main；新策略默认 1.0=不缩）
-iterative_final_max_side: 4096      # main final 图缩到 4096
+iterative_min_scale: 0.1            # origin 的硬下限就是 0.1
+iterative_final_max_side: 4096      # main final 图填满到 4096
 iterative_final_max_scale: 8
 iterative_final_min_short_side: 640
 iterative_final_min_scale: 0.1

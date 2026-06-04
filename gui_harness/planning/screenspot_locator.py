@@ -224,6 +224,7 @@ class ScreenSpotLocatorConfig:
     iterative_final_max_scale: int = 8
     iterative_final_min_short_side: int = 640
     iterative_final_min_scale: float = 1.0
+    iterative_scale_mode: str = "preserve"  # "preserve"=only enlarge small crops; "fill"=blow up to max_side (origin/main)
     iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
@@ -284,6 +285,11 @@ class ScreenSpotLocatorConfig:
             iterative_final_max_scale=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE", 8),
             iterative_final_min_short_side=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE", 640),
             iterative_final_min_scale=_env_float("GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SCALE", 1.0),
+            iterative_scale_mode=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_ITERATIVE_SCALE_MODE",
+                "preserve",
+                {"preserve", "fill"},
+            ),
             iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 0, minimum=0),
             iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
             iterative_min_width=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_W", 240),
@@ -398,6 +404,7 @@ def _iterative_zoom_locate(
                 max_scale=config.iterative_max_scale,
                 min_short_side=config.iterative_min_short_side,
                 min_scale=config.iterative_min_scale,
+                scale_mode=config.iterative_scale_mode,
             )
             candidate_lines, _round_candidates = _iterative_candidate_lines(
                 candidates,
@@ -833,21 +840,25 @@ def _render_iterative_crop(
     max_scale: int,
     min_short_side: int = 0,
     min_scale: float = 1.0,
+    scale_mode: str = "preserve",
 ) -> tuple[str, list[int], float]:
     """Render a crop at a chosen display scale.
 
-    Scale knobs (all independent, so ablations can isolate each):
-      min_short_side : up-scale a small crop until its short side reaches this
-                       (0 = off). The "make small crops legible" lever.
-      max_scale      : cap on the up-scale factor (0 = unlimited). Stops a tiny
-                       crop from being blown up into noise.
-      max_side       : cap on the longest displayed side; shrinks a big crop to
-                       fit. 0 = no shrink cap (big crops keep full resolution).
-      min_scale      : hard floor on scale. 1.0 = never shrink (default, the
-                       "only up-scale" policy). 0.1 = allow shrinking big crops
-                       (reproduces the old downscale behaviour for ablation).
-    The order: start at min_scale, raise for min_short_side, cap by max_scale,
-    cap by max_side, then floor back to min_scale.
+    scale_mode picks the policy:
+      "preserve" (default): start at 1.0 (original resolution); only up-scale a
+        small crop (min_short_side raises it, max_scale caps); large crops keep
+        full resolution unless max_side shrinks them. The "only enlarge small
+        crops, leave big ones alone" policy.
+      "fill": reproduce origin/main — start at scale_cap = min(max_scale,
+        max_side/longest_side), so every sub-max_side crop is blown UP to fill
+        max_side on the long side (or the max_scale cap); large crops shrink to
+        max_side. Use this to match the legacy baseline.
+
+    Knobs:
+      min_short_side : up-scale a small crop until its short side reaches this (0=off).
+      max_scale      : cap on the up-scale factor (0 = unlimited).
+      max_side       : longest displayed side cap (shrinks big crops; 0 = no cap).
+      min_scale      : hard floor on scale (1.0 = never shrink; 0.1 = allow shrink).
     """
     img = Image.open(img_path).convert("RGB")
     img_w, img_h = img.size
@@ -856,18 +867,27 @@ def _render_iterative_crop(
     width = max(1, x2 - x1)
     height = max(1, y2 - y1)
     floor = float(min_scale) if min_scale and min_scale > 0 else 0.1
-    scale = 1.0  # baseline: show at original resolution
-    # min_short_side only UP-scales (a crop whose short side is already big
-    # enough is left alone — it must not be dragged down to short_side/min).
-    if min_short_side > 0:
-        target = float(min_short_side) / min(width, height)
-        if target > scale:
-            scale = target
-    if max_scale > 0:
-        scale = min(scale, float(max_scale))
-    if max_side > 0:
-        scale = min(scale, float(max_side) / max(width, height))
-    scale = max(floor, scale)
+    if scale_mode == "fill":
+        # origin/main policy: blow every crop up to fill max_side (long side).
+        cap = float(max_scale) if max_scale > 0 else float("inf")
+        if max_side > 0:
+            cap = min(cap, float(max_side) / max(width, height))
+        scale = cap if cap != float("inf") else 1.0
+        if min_short_side > 0:
+            scale = min(cap, max(scale, float(min_short_side) / min(width, height)))
+        scale = max(floor, scale)
+    else:
+        # "preserve": start at original size; only enlarge small crops.
+        scale = 1.0
+        if min_short_side > 0:
+            target = float(min_short_side) / min(width, height)
+            if target > scale:
+                scale = target
+        if max_scale > 0:
+            scale = min(scale, float(max_scale))
+        if max_side > 0:
+            scale = min(scale, float(max_side) / max(width, height))
+        scale = max(floor, scale)
     display_w = max(1, int(round(width * scale)))
     display_h = max(1, int(round(height * scale)))
     if display_w != width or display_h != height:
@@ -1181,6 +1201,7 @@ def _iterative_zoom_final_click(
         max_scale=config.iterative_final_max_scale,
         min_short_side=config.iterative_final_min_short_side,
         min_scale=config.iterative_final_min_scale,
+        scale_mode=config.iterative_scale_mode,
     )
     final_candidates = list(candidates)
     if config.enable_final_candidate_detect:
