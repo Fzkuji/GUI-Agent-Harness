@@ -16,6 +16,7 @@ iterative_rounds: 8
 # 复刻 origin/main 的缩放：scale_mode=fill 用 origin 的老公式（把每个中小图放大
 # 到长边填满 max_side），逐像素匹配 origin 的裁剪几何。
 iterative_scale_mode: fill          # 关键：fill 才能复刻 origin（preserve 是新策略，不放大中小图）
+iterative_prompt_layout: legacy     # 关键：legacy 复刻 origin 的 prompt（规则内联、JSON 一次、无缓存前缀）
 iterative_max_side: 2048            # main 把大图缩到、中小图放大填满最长边 2048
 iterative_max_scale: 5
 iterative_min_short_side: 512

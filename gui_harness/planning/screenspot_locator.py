@@ -53,13 +53,13 @@ def _cacheable_prefix_block(text: str) -> dict:
     return {"type": "text", "text": text, "cache_control": _CACHE_BREAKPOINT}
 
 
-_CROP_DECISION_RULES = """Your job in this stage is NOT to click. Choose the next smaller crop that still
+_CROP_DECISION_RULES_INTRO = """Your job in this stage is NOT to click. Choose the next smaller crop that still
 contains the requested clickable target and enough surrounding context to keep
 orientation. The intended behavior is iterative zoom-in: shrink the search
 area substantially each round, then a later stage will click on an upscaled
-final crop.
+final crop."""
 
-Rules:
+_CROP_DECISION_RULES_BODY = """Rules:
 - Return bbox coordinates in the DISPLAYED CROP image coordinate system.
 - Use the OCR/component candidate list as explicit grounding evidence. Candidate
   labels, centers, and boxes should guide which window/section/control group to
@@ -110,8 +110,13 @@ Rules:
 Reply with ONLY JSON:
 {"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
 
+# Full rules block (intro + body) for the cache-prefix layout. Byte-identical to
+# the legacy inline text; legacy reuses INTRO and BODY separately so the
+# candidate list can sit between them exactly as origin/main did.
+_CROP_DECISION_RULES = _CROP_DECISION_RULES_INTRO + "\n\n" + _CROP_DECISION_RULES_BODY
 
-_COMMIT_GATE_RULES = """Accept the proposed crop only if all of these are true:
+
+_COMMIT_GATE_RULES_BODY = """Accept the proposed crop only if all of these are true:
 - The requested clickable target is still inside the magenta rectangle.
 - The component/OCR evidence inside the magenta rectangle is consistent with
   the requested target, or the rectangle is a broad staged region that contains
@@ -129,10 +134,15 @@ _COMMIT_GATE_RULES = """Accept the proposed crop only if all of these are true:
   straight to a tiny final control.
 
 Reject when uncertain. A rejected crop will be retried from the current wider
-crop rather than clicked.
+crop rather than clicked."""
 
-Reply with ONLY JSON:
+_COMMIT_GATE_JSON = """Reply with ONLY JSON:
 {"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}"""
+
+# Cache-prefix layout uses the full rules block (body + JSON). Byte-identical to
+# the legacy text; legacy keeps the JSON after the proposal-rationale fields,
+# exactly where origin/main put it.
+_COMMIT_GATE_RULES = _COMMIT_GATE_RULES_BODY + "\n\n" + _COMMIT_GATE_JSON
 
 
 _FINAL_CLICK_RULES = """Choose the exact center of the requested clickable target. Use the upscaled
@@ -225,6 +235,7 @@ class ScreenSpotLocatorConfig:
     iterative_final_min_short_side: int = 640
     iterative_final_min_scale: float = 1.0
     iterative_scale_mode: str = "preserve"  # "preserve"=only enlarge small crops; "fill"=blow up to max_side (origin/main)
+    iterative_prompt_layout: str = "cache"  # "cache"=rules hoisted to a cacheable prefix; "legacy"=rules inline after dynamic fields, byte-matching origin/main
     iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
@@ -289,6 +300,11 @@ class ScreenSpotLocatorConfig:
                 "GUI_HARNESS_SCREENSPOT_ITERATIVE_SCALE_MODE",
                 "preserve",
                 {"preserve", "fill"},
+            ),
+            iterative_prompt_layout=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_ITERATIVE_PROMPT_LAYOUT",
+                "cache",
+                {"cache", "legacy"},
             ),
             iterative_max_area_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_AREA_PCT", 0, minimum=0),
             iterative_padding_pct=_env_int("GUI_HARNESS_SCREENSPOT_ITERATIVE_PADDING_PCT", 8, minimum=0),
@@ -412,7 +428,7 @@ def _iterative_zoom_locate(
                 display_scale,
                 limit=60,
             )
-            context = f"""Task: {task}
+            dynamic_head = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
 Current crop in original coordinates: {crop_box}
@@ -427,24 +443,38 @@ Previous crop decisions:
 {_format_iterative_history(history)}
 
 Rejected crop attempts from this same current crop:
-{_format_crop_rejections(rejected_attempts)}
-
-Detected OCR/component candidates inside this crop, shown in displayed-crop
+{_format_crop_rejections(rejected_attempts)}"""
+            candidates_block = f"""Detected OCR/component candidates inside this crop, shown in displayed-crop
 coordinates:
-{candidate_lines or "(none)"}
-
-Reply with ONLY JSON:
-{{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
-            user_blocks = [
-                {"type": "text", "text": context},
-                {"type": "image", "path": crop_path},
-            ]
-            try:
-                reply = _runtime_exec(runtime, config, content=[
+{candidate_lines or "(none)"}"""
+            if config.iterative_prompt_layout == "legacy":
+                # Byte-for-byte origin/main: framing prose -> candidates -> Rules
+                # -> JSON, all in one text block, no cache prefix, no accumulation.
+                context = (
+                    dynamic_head + "\n\n" + _CROP_DECISION_RULES_INTRO + "\n\n"
+                    + candidates_block + "\n\n" + _CROP_DECISION_RULES_BODY
+                )
+                content = [
+                    {"type": "text", "text": context},
+                    {"type": "image", "path": crop_path},
+                ]
+            else:
+                # cache layout: fixed rules hoisted to a cacheable prefix block;
+                # dynamic text (with a short JSON reminder at the tail) + image follow.
+                context = (
+                    dynamic_head + "\n\n" + candidates_block + "\n\n"
+                    + "Reply with ONLY JSON:\n"
+                    + '{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], '
+                    + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
+                )
+                content = [
                     _cacheable_prefix_block(_CROP_DECISION_RULES),
                     *thread_blocks,
-                    *user_blocks,
-                ])
+                    {"type": "text", "text": context},
+                    {"type": "image", "path": crop_path},
+                ]
+            try:
+                reply = _runtime_exec(runtime, config, content=content)
                 parsed = parse_json(reply)
             except Exception as exc:
                 reraise_if_fatal(exc)
@@ -558,12 +588,12 @@ Reply with ONLY JSON:
                     candidates,
                     stage_idx=stage_idx,
                 )
-                entry["commit_gate"] = gate
+                entry["crop_check"] = gate
                 if not gate or gate.get("action") != "accept":
                     rejected_attempts.append({
-                        "action": "gate_reject",
+                        "action": "crop_check_reject",
                         "bbox": parsed.get("bbox"),
-                        "reasoning": (gate or {}).get("reasoning", "commit gate rejected crop"),
+                        "reasoning": (gate or {}).get("reasoning", "crop check rejected crop"),
                     })
                     if attempt_idx + 1 < max_attempts:
                         continue
@@ -1052,7 +1082,7 @@ def _run_crop_check(
     )
 
     guidance_idx = round_idx if stage_idx is None else stage_idx
-    context = f"""Task: {task}
+    gate_head = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
 Current crop in original coordinates: {crop_box}
@@ -1073,27 +1103,37 @@ OCR/component candidates INSIDE the proposed magenta crop:
 
 OCR/component candidates still visible in the current crop but OUTSIDE the
 proposed magenta crop:
-{outside_candidates or "(none)"}
-
-Proposal rationale:
+{outside_candidates or "(none)"}"""
+    rationale = f"""Proposal rationale:
 target_visible_element={proposal.get('target_visible_element', '')}
 reasoning={proposal.get('reasoning', '')}
-confidence={proposal.get('confidence', '')}
-
-Reply with ONLY JSON:
-{{"action": "accept|reject", "target_inside": true, "context_sufficient": true, "discarded_plausible_targets": false, "confidence": 0.0, "reasoning": "..."}}"""
-    try:
-        parsed = parse_json(_runtime_exec(runtime, config, content=[
+confidence={proposal.get('confidence', '')}"""
+    if config.iterative_prompt_layout == "legacy":
+        # origin/main order: dynamic+framing+candidates -> accept rules ->
+        # rationale -> JSON, one text block, no cache prefix.
+        context = (
+            gate_head + "\n\n" + _COMMIT_GATE_RULES_BODY + "\n\n"
+            + rationale + "\n\n" + _COMMIT_GATE_JSON
+        )
+        gate_content = [
+            {"type": "text", "text": context},
+            {"type": "image", "path": overlay_path},
+        ]
+    else:
+        context = gate_head + "\n\n" + rationale + "\n\n" + _COMMIT_GATE_JSON
+        gate_content = [
             _cacheable_prefix_block(_COMMIT_GATE_RULES),
             {"type": "text", "text": context},
             {"type": "image", "path": overlay_path},
-        ]))
+        ]
+    try:
+        parsed = parse_json(_runtime_exec(runtime, config, content=gate_content))
     except Exception as exc:
         reraise_if_fatal(exc)
         return {
             "action": "reject",
             "confidence": 0.0,
-            "reasoning": f"commit gate failed: {exc.__class__.__name__}: {exc}",
+            "reasoning": f"crop check failed: {exc.__class__.__name__}: {exc}",
             "overlay_path": overlay_path,
         }
     action = str(parsed.get("action", "")).lower().strip()
@@ -1214,7 +1254,7 @@ def _iterative_zoom_final_click(
         display_scale,
         limit=config.iterative_final_candidates,
     )
-    context = f"""Task: {task}
+    final_head = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
 Final crop in original coordinates: {crop_box}
@@ -1226,16 +1266,29 @@ Crop history:
 {_format_iterative_history(history)}
 
 Detected OCR/component candidates in this final crop:
-{candidate_lines or "(none)"}
-
-Reply with ONLY JSON:
-{{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
-    try:
-        reply = _runtime_exec(runtime, config, content=[
+{candidate_lines or "(none)"}"""
+    if config.iterative_prompt_layout == "legacy":
+        # origin/main: dynamic+history+candidates -> click-policy rules+JSON,
+        # one text block, no cache prefix.
+        context = final_head + "\n\n" + _FINAL_CLICK_RULES
+        final_content = [
+            {"type": "text", "text": context},
+            {"type": "image", "path": crop_path},
+        ]
+    else:
+        context = (
+            final_head + "\n\n"
+            + "Reply with ONLY JSON:\n"
+            + '{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, '
+            + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
+        )
+        final_content = [
             _cacheable_prefix_block(_FINAL_CLICK_RULES),
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
-        ])
+        ]
+    try:
+        reply = _runtime_exec(runtime, config, content=final_content)
         parsed = parse_json(reply)
     except Exception as exc:
         reraise_if_fatal(exc)

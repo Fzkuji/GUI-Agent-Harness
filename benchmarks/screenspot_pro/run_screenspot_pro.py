@@ -622,17 +622,17 @@ def _step_trigger_counts(location) -> Optional[dict]:
     if not isinstance(hist, list):
         hist = []
     committed = sum(1 for h in hist if isinstance(h, dict) and h.get("next_box"))
-    gate_calls = sum(1 for h in hist if isinstance(h, dict) and h.get("commit_gate") is not None)
-    gate_rejects = sum(
+    check_calls = sum(1 for h in hist if isinstance(h, dict) and h.get("crop_check") is not None)
+    check_rejects = sum(
         1 for h in hist
-        if isinstance(h, dict) and isinstance(h.get("commit_gate"), dict)
-        and h["commit_gate"].get("action") != "accept"
+        if isinstance(h, dict) and isinstance(h.get("crop_check"), dict)
+        and h["crop_check"].get("action") != "accept"
     )
     return {
         "crop_decision_calls": len(hist),
         "committed_crops": committed,
-        "commit_gate_calls": gate_calls,
-        "commit_gate_rejects": gate_rejects,
+        "crop_check_calls": check_calls,
+        "crop_check_rejects": check_rejects,
     }
 
 

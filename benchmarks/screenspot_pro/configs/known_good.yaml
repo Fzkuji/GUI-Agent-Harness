@@ -14,6 +14,7 @@ accumulate_images: false            # 累积模式下，前面轮次的图是否
 iterative_rounds: 8                 # 最多迭代多少轮
 # 缩放策略
 iterative_scale_mode: preserve      # preserve=小图放大/大图不缩（本策略）; fill=放大填满 max_side（复刻 origin）
+iterative_prompt_layout: cache      # cache=规则前置吃缓存（本策略）; legacy=规则内联、复刻 origin prompt
 # 缩放旋钮（4 个一组，逐轮 + final 各一套）
 iterative_max_side: 0               # 显示最长边上限；0=不限（大图不缩、保持原分辨率）
 iterative_max_scale: 5              # 小图最大放大倍数；0=不限
