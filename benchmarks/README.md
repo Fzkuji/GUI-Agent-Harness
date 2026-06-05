@@ -3,7 +3,7 @@
 | Benchmark | Status | Best Model | Best Acc | Samples |
 |-----------|--------|------------|----------|---------|
 | [ScreenSpot Pro](screenspot_pro/) | ✅ Done | GPT-5.5 | **87.9%** | 1581/1581 |
-| [ScreenSpot v2](screenspot_v2/) | ✅ Done | GPT-5.5 | **95.83%** | 1272/1272 |
+| [ScreenSpot v2](screenspot_v2/) | ✅ Done | GPT-5.5 | **96.78%** | 1272/1272 |
 | [ScreenSpot v1](screenspot_v1/) | ❌ Not run | — | — | 0/~1272 |
 | [MMBench-GUI-L2](mmbench_gui_l2/) | ✅ Done | GPT-5.5 | **91.52%** | 3594/3594 |
 | [OSWorld](osworld/) | Partial | Claude 4.6 | 93.5% (Chrome) | 172+/369 |
