@@ -6,6 +6,7 @@
 | [ScreenSpot v2](screenspot_v2/) | ✅ Done | GPT-5.5 | **96.78%** | 1272/1272 |
 | [ScreenSpot v1](screenspot_v1/) | ❌ Not run | — | — | 0/~1272 |
 | [MMBench-GUI-L2](mmbench_gui_l2/) | ✅ Done | GPT-5.5 | **91.52%** | 3594/3594 |
+| [UI-Vision](ui_vision/) | ✅ Done | GPT-5.5 | **68.64%** | 5479/5479 |
 | [OSWorld](osworld/) | Partial | Claude 4.6 | 93.5% (Chrome) | 172+/369 |
 
 ## Directory Structure
@@ -28,6 +29,9 @@ benchmarks/
   mmbench_gui_l2/
     results/gpt_5_5/
     README.md
+  ui_vision/
+    README.md
+    results → ../screenspot_pro/results/ui_vision_gpt_5_5/
   osworld/
     docs/                # Task documentation
     scripts/             # Python/Shell scripts

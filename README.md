@@ -36,6 +36,7 @@
 
 ## News
 
+- **[2026-06-05]** 🏆 **UI-Vision 68.64%** — GPT-5.5, 5,479 samples across basic/functional/spatial splits. [Results →](benchmarks/ui_vision/)
 - **[2026-06-05]** 🏆 **MMBench-GUI-L2 91.52%** — GPT-5.5, 3,594 samples. [Results →](benchmarks/mmbench_gui_l2/)
 - **[2026-06-05]** 🏆 **ScreenSpot Pro 87.9%** — GPT-5.5, 1,581 samples across 23 apps. [Results →](benchmarks/screenspot_pro/results/gpt_5_5/)
 - **[2026-06-02]** 🏆 **ScreenSpot v2 96.78%** — GPT-5.5, 1,272 samples. [Results →](benchmarks/screenspot_v2/)
@@ -98,6 +99,10 @@ Screenshot + Target description
 | MMBench-GUI-L2 (advanced) | 1,807 | **88.17%** | — | — |
 | ScreenSpot Pro (full) | 1,581 | **87.9%** | — | — |
 | ScreenSpot v2 | 1,272 | **96.78%** | — | — |
+| UI-Vision (full) | 5,479 | **68.64%** | — | — |
+| UI-Vision (basic) | 1,772 | **73.1%** | — | — |
+| UI-Vision (functional) | 1,772 | **67.0%** | — | — |
+| UI-Vision (spatial) | 1,935 | **66.0%** | — | — |
 
 Full per-platform breakdown: [benchmarks/mmbench_gui_l2/](benchmarks/mmbench_gui_l2/) | [benchmarks/screenspot_pro/](benchmarks/screenspot_pro/)
 
@@ -189,6 +194,7 @@ GUI-Agent-Harness/
 │   ├── screenspot_pro/           # ScreenSpot Pro (1,581 samples, 87.9%)
 │   ├── screenspot_v2/            # ScreenSpot v2 (1,272 samples, 95.83%)
 │   ├── mmbench_gui_l2/           # MMBench-GUI-L2 (3,594 samples, 91.52%)
+│   ├── ui_vision/                # UI-Vision (5,479 samples, 68.64%)
 │   └── osworld/                  # OSWorld
 ├── memory/                       # Per-app visual templates
 ├── SKILL.md                      # LLM skill definition
