@@ -1,0 +1,61 @@
+# 消融对照组（OFF）：在 m3_target 基线上，显式关闭三个新优化字段。
+# 与 ablation_on.yaml 仅差 reasoning_first / candidate_sort / candidate_dedup_iou 三项。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/ablation_off.yaml ...
+
+locator_mode: iterative_zoom
+
+# 上下文 / 缓存
+context_mode: single
+accumulate_images: false
+
+# 迭代轮数
+iterative_rounds: 5
+
+# 缩放（target_pixels 自适应）
+iterative_scale_mode: target_pixels
+iterative_max_side: 0
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 0
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# 复查策略
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: last_only
+crop_check_reject_mode: widen
+enable_crop_retry: true
+crop_retry_limit: 3
+enable_final_candidate_detect: true
+enable_final_recheck: false
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+
+# prompt 布局
+iterative_prompt_layout: cache
+
+runtime_timeout_s: 180
+
+# 自适应缩放像素目标
+iterative_target_pixels: 1500000
+iterative_final_target_pixels: 2500000
+
+# === 消融变量（单变量：只开 reasoning_first（先推理后给坐标））===
+# 其余字段与 ablation_off.yaml 完全一致，仅本段不同。
+reasoning_first: true
+candidate_sort: none
+candidate_dedup_iou: 0.0
+candidate_limit: 60
+coords_crop_local: false
