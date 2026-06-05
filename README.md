@@ -49,41 +49,83 @@
 
 ## What is GUI Agent Harness?
 
-A CLI tool that turns any LLM into a GUI automation agent. You give it a natural-language task, it operates the desktop autonomously — screenshots, clicks, types, verifies, and repeats until the task is done.
+A CLI tool that turns any LLM into a GUI automation agent. Give it a natural-language task, it operates the desktop autonomously — screenshots, clicks, types, verifies, and repeats until the task is done.
 
 ```bash
 gui-agent --work-dir /private/tmp/gui-agent-desktop "Install the Orchis GNOME theme"
 gui-agent --work-dir /private/tmp/gui-agent-vm --vm http://172.16.82.132:5000 "Open GitHub in Chrome and Python docs"
 ```
 
-**Designed as an LLM tool.** The intended workflow is:
-1. An LLM (Claude Code, OpenClaw, etc.) receives a GUI task from the user
-2. The LLM's skill/prompt tells it to call `gui-agent` as a CLI tool
-3. `gui-agent` handles all GUI perception and interaction internally
-4. The LLM gets back a result summary
+**Designed as an LLM tool.** The LLM receives a GUI task, calls `gui-agent` as a CLI tool, and gets back a result summary — it never needs to understand GUI automation internals.
 
-The LLM doesn't need to know how GUI automation works — it just calls the tool.
+## Grounding Pipeline: Iterative Zoom
 
-## Key Ideas
+At the core of the harness is a dedicated GUI element grounding pipeline. Given a screenshot and a natural-language description of a target element, it outputs precise click coordinates through progressive refinement.
 
-- **Visual memory** — UI components are detected once, labeled by a VLM, and stored as templates. On subsequent encounters, template matching replaces expensive re-detection (~5x faster, ~60x fewer tokens).
-- **State transitions** — The UI is modeled as a graph of states (sets of visible components). Successful action sequences are recorded as transitions for future replay.
-- **4-phase step loop** — Each step follows: Observe (screenshot + detect) → Verify (check previous action) → Plan (LLM decides next action) → Dispatch (execute). All phases are `@agentic_function` calls with structured feedback between steps.
-- **Provider-agnostic** — Works with Claude Code CLI, OpenClaw, Anthropic API, or OpenAI API. Auto-detects the best available provider.
+```
+Screenshot + Target description
+         │
+         ▼
+  Phase 1: Detection          GPA-GUI-Detector (YOLO) + OCR → all visible UI elements
+         │
+         ▼
+  Phase 2: Candidate Match    Template-match against stored visual memory
+         │
+         ▼
+  Phase 3: LLM Grounding      VLM sees full screen + component list → identifies target region
+         │
+         ▼
+  Phase 4: Iterative Zoom     Crop → upscale → re-ground → verify, repeat up to 8 rounds
+         │
+         ▼
+     Precise (x, y)
+```
+
+**Key design decisions:**
+
+- **Multi-source perception** — YOLO detection + OCR + visual memory templates provide rich spatial context to the VLM, so it reasons over labeled components rather than raw pixels alone.
+- **Progressive refinement** — Instead of one-shot coordinate prediction, the pipeline iteratively crops and zooms into candidate regions. Each round gives the VLM a higher-resolution view of a smaller area.
+- **Verifier gate** — After each zoom level, a separate verification step checks whether the predicted point actually lands on the target. False predictions are rejected before they become wrong clicks.
+- **Cacheable prompt layout** — Fixed rules are hoisted into a cacheable prefix; only the task, component list, and image change per call. This maximizes prompt cache hit rate across the 8-round pipeline.
+- **Configurable scale strategy** — `preserve` mode keeps large images at native resolution (no information loss from downscaling small targets); `fill` mode matches legacy behavior for controlled comparisons.
+
+### Benchmark Results
+
+| Benchmark | Samples | Accuracy | Paper Best | Delta |
+|-----------|---------|----------|------------|-------|
+| MMBench-GUI-L2 (full) | 3,594 | **91.52%** | 74.25% (UI-TARS-72B-DPO) | **+17.3** |
+| MMBench-GUI-L2 (basic) | 1,787 | **94.89%** | — | — |
+| MMBench-GUI-L2 (advanced) | 1,807 | **88.17%** | — | — |
+| ScreenSpot Pro (full) | 1,581 | **87.9%** | — | — |
+| ScreenSpot v2 | 1,272 | **95.83%** | — | — |
+
+Full per-platform breakdown: [benchmarks/mmbench_gui_l2/](benchmarks/mmbench_gui_l2/) | [benchmarks/screenspot_pro/](benchmarks/screenspot_pro/)
+
+## Agent Loop: Observe → Verify → Plan → Dispatch
+
+For full task automation (beyond grounding), the harness runs a 4-phase loop:
+
+- **Observe** (Python) — Screenshot + YOLO detection + OCR + template match. Identifies visible UI state.
+- **Verify** (LLM) — Checks whether the previous action succeeded. Doesn't decide task completion.
+- **Plan** (LLM) — Sees the screenshot, detected components, and verification result. Chooses one action.
+- **Dispatch** (Python) — Executes the action. For clicks, delegates to the iterative zoom grounding pipeline above.
+
+All phases are `@agentic_function` calls with structured feedback between steps.
+
+## Visual Memory
+
+UI components are detected once, labeled by a VLM, and stored as templates. On subsequent encounters, template matching replaces expensive re-detection (~5x faster, ~60x fewer tokens). States are modeled as sets of visible components, matched by Jaccard similarity. Components track consecutive misses and auto-forget after 15 consecutive failures.
 
 ## OSWorld Results
 
-**Multi-Apps domain: 79.8% (72.6/91 evaluated tasks)**
+**Multi-Apps: 79.8% (72.6/91) | Chrome: 93.5% (43/46)**
 
-| Metric | Value |
-|--------|-------|
-| Total tasks | 101 |
-| Evaluated | 91 |
-| Blocked (no credentials) | 10 |
-| Passed (score = 1.0) | 63 |
-| Partial (0 < score < 1.0) | 11 |
+| Domain | Tasks | Passed | Accuracy |
+|--------|-------|--------|----------|
+| Chrome | 46 | 43 | 93.5% |
+| Multi-Apps | 91 | 63 | 79.8% |
 
-Full results: [benchmarks/osworld/multi_apps.md](benchmarks/osworld/multi_apps.md)
+[Full OSWorld results →](benchmarks/osworld/)
 
 ## Quick Start
 
