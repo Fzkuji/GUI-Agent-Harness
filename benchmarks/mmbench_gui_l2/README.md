@@ -15,6 +15,14 @@ Multi-platform GUI element grounding benchmark covering 6 platforms (Android/iOS
 |-------|----------|---------|-------|-----|----------|--------|
 | **GPT-5.5** | 3594/3594 | 3271 | 303 | 20 | **91.52%** | ✅ Done |
 
+## By Difficulty
+
+| Level | Samples | Correct | Accuracy |
+|-------|---------|---------|----------|
+| Basic | 1787 | 1691 | **94.89%** |
+| Advanced | 1807 | 1580 | **88.17%** |
+| **Total** | **3594** | **3271** | **91.52%** |
+
 ## By Platform
 
 | Platform | Samples | Correct | Accuracy |
