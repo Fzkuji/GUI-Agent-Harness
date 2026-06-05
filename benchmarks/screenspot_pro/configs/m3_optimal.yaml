@@ -1,0 +1,62 @@
+# M3 现有证据下的最优解 = m3_best 省调用骨架 + candidate_sort=relevance。
+#
+# 来历：m3_best（5轮 + 只末轮复查 + widen回退 + final图限3072修MiniMax HTTP400，
+# 相对 known_good 8轮+每轮复查大幅省调用，适合 M3 单次慢）本身漏了消融里唯一
+# 确认稳定正收益的开关 candidate_sort=relevance（M3 +5/20、GPT +3/20，无副作用）。
+# 本配置在 m3_best 骨架上补上该项，是当前不依赖参数扫描即可确定的最优组合。
+#
+# 与 m3_best.yaml 的唯一差异：candidate_sort none→relevance（+ 显式写出 candidate_limit）。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/m3_optimal.yaml ...
+
+locator_mode: iterative_zoom
+
+# 上下文 / 缓存（累积已验证负向，保持 single）
+context_mode: single
+accumulate_images: false
+
+# 迭代轮数（5，比 known_good 的 8 少，省调用）
+iterative_rounds: 5
+
+# 缩放（preserve：小图放大、大图不缩；限 3072 修 MiniMax HTTP400）
+iterative_scale_mode: preserve
+iterative_max_side: 3072
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 3072
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# 复查策略（省调用：只末轮复查 + widen 回退不打转）
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: last_only
+crop_check_reject_mode: widen
+enable_crop_retry: true
+crop_retry_limit: 3
+enable_final_candidate_detect: true
+enable_final_recheck: false
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+
+# prompt 布局（缓存优化）
+iterative_prompt_layout: cache
+
+# === 候选列表优化（消融唯一稳定正收益项）===
+candidate_sort: relevance            # detector 候选按与目标相关性排序再截断/编号
+candidate_limit: 60                  # 排序后给模型的候选数上限
+candidate_dedup_iou: 0.0             # 不去重（消融无稳定增益）
+reasoning_first: false               # 消融无稳定增益
+coords_crop_local: false             # 消融无稳定增益
+
+runtime_timeout_s: 180

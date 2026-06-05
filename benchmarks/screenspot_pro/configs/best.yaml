@@ -1,0 +1,65 @@
+# best.yaml — 基于已知全部实验证据的当前最优解（精度优先）。
+#
+# 设计原则：把所有"确认有正收益"的开关打开，把所有"确认有害/无稳定收益"的关掉，
+# 骨架取精度优先（不为省调用牺牲精度）。每个关键字段的取值理由直接写在行尾。
+#
+# 证据来源：20 样本单变量消融（GPT-5.5 + M3）、累积消融、全量 1581（legacy_baseline）。
+# 与 quality_8round 的开关组合相同（后者已是最优开关集），本文件额外把每项的证据
+# 理由固化进注释，作为"最优解"的权威记录。
+#
+# 关键判断：消融里 on（全开 reason+sort+dedup+coords）反而 < 只开 sort
+#   （GPT on=+1 < sort=+3；M3 on=+4 < sort=+5），因为 reason/dedup/coords 各自都带
+#   掉点，叠加后掉点累积抵消救回。且 coords 救回的样本在 M3 上是 sort 的子集（冗余）。
+#   => 最优是"只开 sort"，不是"全开"。
+#
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/best.yaml ...
+
+# ── 定位模式 ──────────────────────────────────────────────
+locator_mode: iterative_zoom
+
+# ── 上下文：不累积（累积确认负向）──────────────────────────
+context_mode: single                # accumulate 确认负向：M3 vs sort −5、GPT −3。单步定位不受益跨轮记忆。
+accumulate_images: false            # 图像累积更负，关。
+
+# ── 迭代骨架：精度优先（多轮 + 每轮复查，不为省调用妥协）────
+iterative_rounds: 8                 # 8 轮 > 5 轮：更多收窄/纠错机会，精度不低于少轮（代价是调用多）。M3 省调用见 m3_optimal。
+iterative_scale_mode: preserve      # preserve（小图放大、大图不缩）；属于 legacy_baseline→quality 的三项改进之一。
+iterative_prompt_layout: cache      # cache（规则前置吃缓存，省 token，行为等价 legacy）。
+iterative_max_side: 0
+iterative_max_scale: 5
+iterative_min_short_side: 512       # 小目标短边放大到 512，看得清。
+iterative_min_scale: 1.0
+iterative_final_max_side: 0
+iterative_final_max_scale: 8        # final 放大更高，定坐标更准。
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# ── 验证步骤：精度优先全开（每个都是 commit gate / 纠错机会）──
+enable_staged_crop: true            # 分阶段引导（窗口→区域→控件组）。
+enable_crop_check: true             # 每轮复查裁剪框，拦截坏裁剪。
+crop_check_mode: every              # 每轮复查（非 last_only）：精度导向，多拦截。
+enable_crop_retry: true
+crop_retry_limit: 6                 # 重选上限 6：多给纠错机会。
+enable_final_candidate_detect: true # final 图补充检测候选。
+enable_final_recheck: true          # 定坐标后对比更宽图复查点对不对。
+enable_final_verify: false          # 单独验证点（消融无收益，关）。
+enable_final_recrop: true           # 找不到目标换更大框重试。
+final_recrop_limit: 0               # 0=试完所有候选。
+enable_legacy_pipeline: false
+
+# ── 候选列表：只开 sort（唯一确认稳定正收益）──────────────
+candidate_sort: relevance           # ★ 唯一两模型都强、GPT 零掉点：M3 +5（救回7掉2）、GPT +3（救回3掉0）。
+candidate_limit: 60
+candidate_dedup_iou: 0.0            # 关：dedup 单开有正 Δ 但带掉点，且叠 sort 后拖累（on<sort）。
+reasoning_first: false              # 关：GPT 上无用（+0 救回1掉1），叠加拖累。
+coords_crop_local: false            # 关：M3 上救回样本是 sort 子集（冗余），GPT 独立救回被掉点抵消。
+
+# ── 超时 ──────────────────────────────────────────────────
+runtime_timeout_s: 180

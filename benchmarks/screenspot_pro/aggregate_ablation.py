@@ -21,10 +21,13 @@ SAMPLES = [
     ("fruitloops_windows", 1, "correct"), ("illustrator_windows", 0, "correct"),
     ("inventor_windows", 0, "correct"), ("linux_common_linux", 0, "correct"),
 ]
-ARMS = ["off", "abl_reason", "abl_sort", "abl_dedup", "abl_coords", "on"]
+ARMS = ["off", "abl_reason", "abl_sort", "abl_dedup", "abl_coords",
+        "abl_accum_text", "abl_accum_img", "on"]
 ARM_LABEL = {
     "off": "OFF 基线", "abl_reason": "+reason", "abl_sort": "+sort",
-    "abl_dedup": "+dedup", "abl_coords": "+coords", "on": "ON 全开",
+    "abl_dedup": "+dedup", "abl_coords": "+coords",
+    "abl_accum_text": "sort+累积文", "abl_accum_img": "sort+累积图",
+    "on": "ON 全开",
 }
 MODELS = ["gpt-5_5", "MiniMax-M3"]
 
@@ -89,6 +92,26 @@ def main() -> None:
                 mark = {"correct": "C", "wrong": "w", "wrong_format": "f"}.get(v, "?")
                 line += f"{mark:>8s}"
             print(line)
+
+        # 累积 arm 相对 abl_sort（而非 OFF）的净效果：累积是叠在 sort 之上的，
+        # 真正想知道的是"在 sort 基础上再加累积"是涨是跌。
+        sort = data.get("abl_sort", {})
+        sort_c = sum(1 for v in sort.values() if v == "correct")
+        accum_vs_sort: dict = {}
+        if sort:
+            print(f"\n  累积 vs abl_sort 基线（sort={sort_c}/{len(sort)}）：")
+            for arm in ("abl_accum_text", "abl_accum_img"):
+                cur = data.get(arm, {})
+                if not cur:
+                    continue
+                c = sum(1 for v in cur.values() if v == "correct")
+                resc = sum(1 for s in cur if sort.get(s) != "correct" and cur[s] == "correct")
+                lst = sum(1 for s in cur if sort.get(s) == "correct" and cur[s] != "correct")
+                accum_vs_sort[arm] = {"correct": c, "delta_vs_sort": c - sort_c,
+                                      "rescued": resc, "lost": lst}
+                print(f"    {ARM_LABEL[arm]:12s} {c:>3d}/{len(cur):<3d}  "
+                      f"Δvs sort {c - sort_c:+d}  (救回 {resc}, 掉点 {lst})")
+            summary["models"][tag]["accum_vs_sort"] = accum_vs_sort
 
     out = BASE / "ablation_summary.json"
     out.write_text(json.dumps(summary, ensure_ascii=False, indent=2))

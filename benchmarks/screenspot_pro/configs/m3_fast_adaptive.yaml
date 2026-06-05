@@ -1,6 +1,11 @@
-# M3 最优配置(消融得出): 5轮 + 末轮复查 + widen回退(不打转) + final图限3072(修MiniMax HTTP400)：5 轮迭代 + 只在最后一轮复查 + 复查拒绝则从整图重裁。
-# 相对 known_good(8 轮 + 每轮复查)大幅减少调用次数，适合 M3 这种单次慢的模型。
-# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/fast.yaml ...
+# m3_fast_adaptive：m3_fast 的自适应缩放变体。
+# 与 m3_fast 同骨架（5 轮 + 只末轮复查 + widen 回退），唯一差异是缩放策略：
+#   scale_mode=target_pixels —— 按裁剪框大小自动定放大倍数，让送进模型的图
+#   像素量恒定（逐轮 ~1.5MP / final ~2.5MP），大图不放大。
+#   m3_fast 用 preserve（小图放大到短边512、大图限3072）。
+# 哪种缩放更好尚未直接对比（参数扫描的 scale_target_px arm 在测）。
+# 注意：本配置和 m3_fast 一样都没开 candidate_sort（最优解见 m3_optimal）。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/m3_fast_adaptive.yaml ...
 
 locator_mode: iterative_zoom
 
@@ -12,12 +17,12 @@ accumulate_images: false
 iterative_rounds: 5
 
 # 缩放（沿用新策略：小图放大、大图不缩）
-iterative_scale_mode: preserve
-iterative_max_side: 3072
+iterative_scale_mode: target_pixels
+iterative_max_side: 0
 iterative_max_scale: 5
 iterative_min_short_side: 512
 iterative_min_scale: 1.0
-iterative_final_max_side: 3072
+iterative_final_max_side: 0
 iterative_final_max_scale: 8
 iterative_final_min_short_side: 640
 iterative_final_min_scale: 1.0
@@ -47,3 +52,7 @@ enable_legacy_pipeline: false
 iterative_prompt_layout: cache
 
 runtime_timeout_s: 180
+
+# 自适应缩放: 每张图放大到约这么多像素(文件大小恒定), 大图不放
+iterative_target_pixels: 1500000
+iterative_final_target_pixels: 2500000

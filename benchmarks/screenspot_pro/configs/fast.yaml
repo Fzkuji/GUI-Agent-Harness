@@ -1,6 +1,8 @@
-# 优化版配置（更快）：5 轮迭代 + 只在最后一轮复查 + 复查拒绝则从整图重裁。
-# 相对 known_good(8 轮 + 每轮复查)大幅减少调用次数，适合 M3 这种单次慢的模型。
-# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/fast.yaml ...
+# ⚠️ 已废弃 —— 请改用 m3_fast.yaml（或最优解 m3_optimal.yaml）。
+# fast 是最早的省调用版（5 轮 + 只末轮复查），但 scale 不限边、未限 3072，
+# 后来的 m3_fast 在它基础上加了 max_side=3072（修 MiniMax HTTP400）等修正，
+# 完全覆盖了 fast 的作用。保留此文件仅为历史可追溯，新实验勿用。
+# 原说明：5 轮迭代 + 只在最后一轮复查 + 复查拒绝则从整图重裁，省调用，适合 M3。
 
 locator_mode: iterative_zoom
 

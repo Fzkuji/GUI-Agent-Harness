@@ -65,3 +65,11 @@ gui_harness/memory/apps/
 # Local build/package artifacts
 *.egg-info/
 uv.lock
+
+# 实验结果（大量本地 jsonl，不入库）
+benchmarks/screenspot_pro/results/
+# UI-Vision 原始数据集（1.4G）和归一化后的图，只保留 prepare 脚本
+benchmarks/ui_vision_raw/
+benchmarks/ui_vision/data/
+# 本地 Claude 配置
+.claude/

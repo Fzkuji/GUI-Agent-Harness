@@ -1,0 +1,62 @@
+# 累积消融组（图像+文本累积）：在 abl_sort 基线（candidate_sort=relevance）之上，
+# context_mode=accumulate 且 accumulate_images=true —— 每个已接受的裁剪轮次的
+# 文本上下文 + 该轮 crop 图像 + 模型回复全部累积进下一轮 prompt。
+# 验证"让模型看到自己前几轮看过的图"是否比只累积文本更有效（代价是 token 更多）。
+# 与 abl_accum_text.yaml 仅差 accumulate_images 一项。
+
+locator_mode: iterative_zoom
+
+# 上下文 / 缓存（本组相对 abl_sort 的改动：context_mode + accumulate_images）
+context_mode: accumulate
+accumulate_images: true
+
+# 迭代轮数
+iterative_rounds: 5
+
+# 缩放（target_pixels 自适应）
+iterative_scale_mode: target_pixels
+iterative_max_side: 0
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 0
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+# 复查策略
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: last_only
+crop_check_reject_mode: widen
+enable_crop_retry: true
+crop_retry_limit: 3
+enable_final_candidate_detect: true
+enable_final_recheck: false
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+
+# prompt 布局
+iterative_prompt_layout: cache
+
+runtime_timeout_s: 180
+
+# 自适应缩放像素目标
+iterative_target_pixels: 1500000
+iterative_final_target_pixels: 2500000
+
+# === 基线开关：与 abl_sort.yaml 一致（candidate_sort=relevance）===
+reasoning_first: false
+candidate_sort: relevance
+candidate_dedup_iou: 0.0
+candidate_limit: 60
+coords_crop_local: false

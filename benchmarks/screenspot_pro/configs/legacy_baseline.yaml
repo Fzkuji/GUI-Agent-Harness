@@ -1,7 +1,13 @@
-# main 分支基线配置 —— 用现在分支的字段名复现 main(a3d0a35)当时跑的设置。
-# main 没有 YAML，靠 start_full_autoretry.py 设环境变量 + dataclass 默认；
-# 这里把那套等价映射成新字段名，用于和现在的实验对照。
-# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/main_baseline.yaml ...
+# legacy_baseline：最原始基线（原名 main_baseline）—— 一切优化的起点。
+# 复现 main(a3d0a35) 当时跑的设置：scale_mode=fill（老缩放公式，把中小图放大
+# 填满 max_side=2048）+ prompt_layout=legacy（规则内联的老 prompt）+ 8 轮 + 每轮
+# 复查，无 candidate_sort。main 当时没有 YAML（靠 start_full_autoretry 设环境变量 +
+# dataclass 默认），这里把那套等价映射成现分支字段名。
+#
+# 重要：仓库里全量 1581 样本的 GPT-5.5 结果（87.9%）就是用这套设置跑的——它是
+# 用来当对照的基准，不是最优解。后续所有优化（quality_8round / m3_* 系列）都是
+# 在它基础上逐项改进。新实验请勿再用本配置，仅作对照。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/legacy_baseline.yaml ...
 
 # ── 定位模式 ──────────────────────────────────────────────
 locator_mode: iterative_zoom

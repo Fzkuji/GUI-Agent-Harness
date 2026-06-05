@@ -1,7 +1,14 @@
-# ScreenSpot-Pro 定位器配置（LlamaFactory 风格：一个文件配置一切）
-# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/known_good.yaml ...
-# 每个键对应 ScreenSpotLocatorConfig 的一个字段。改这个文件就改了整个 run 的行为。
-# 不用环境变量。
+# quality_8round：质量优先配置（原名 known_good）。
+# 相对 legacy_baseline 的三项改进：缩放 fill→preserve（小图放大不缩中小图）、
+# prompt legacy→cache（规则前置吃缓存、省 token）、candidate_sort none→relevance
+# （detector 候选按相关性排序，消融唯一确认正收益项）。
+# 保留 8 轮迭代 + 每轮复查（精度优先，每样本 LLM 调用 ~16 次，比 m3_fast 多）。
+# 适用：追求最高精度、不在乎调用次数的模型（如 GPT、Claude）。M3 用 m3_optimal 省调用。
+# start_full_autoretry.py 的全量跑默认用本配置。
+#
+# 配置体系：LlamaFactory 风格，一个 YAML 配置一切，每个键对应 ScreenSpotLocatorConfig
+# 的一个字段，改本文件即改整个 run 行为，不用环境变量。
+# 跑法： python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/quality_8round.yaml ...
 
 # ── 定位模式 ──────────────────────────────────────────────
 locator_mode: iterative_zoom        # iterative_zoom（裁剪缩放）/ crop_first（旧流程）
@@ -43,6 +50,15 @@ enable_final_verify: false          # 定完坐标后单独验证这个点是不
 enable_final_recrop: true           # 最终图找不到目标时换更大的框重试
 final_recrop_limit: 0               # 换框重试次数上限（0=不限，试完所有候选）
 enable_legacy_pipeline: false       # 迭代失败后是否退回旧 crop_first 流程
+
+# ── 候选列表优化（消融验证：candidate_sort=relevance 是唯一稳定正收益项，
+#    M3 +5 / GPT +3，无副作用；其余 reasoning_first / dedup / coords_crop_local
+#    消融无稳定增益，暂不开）──────────────────────────────────
+candidate_sort: relevance           # detector 候选按与目标的相关性排序再截断/编号（none=原始检测序）
+candidate_limit: 60                 # 排序后给模型的候选数上限
+candidate_dedup_iou: 0.0            # 候选去重 IoU 阈值；0=不去重（消融无稳定增益）
+reasoning_first: false              # 先推理后给 bbox（消融无稳定增益）
+coords_crop_local: false            # 只用裁剪图局部坐标系（消融无稳定增益）
 
 # ── 超时 ──────────────────────────────────────────────────
 runtime_timeout_s: 180              # 单次 LLM 调用超时

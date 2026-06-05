@@ -103,7 +103,7 @@ def build_screen_script(
     # Locator behaviour is driven entirely by a config file (--config below),
     # not env vars. The file lists every ScreenSpotLocatorConfig field; edit it
     # to change the run. No GUI_HARNESS_SCREENSPOT_* exports here.
-    config_file = REPO_ROOT / "benchmarks" / "screenspot_pro" / "configs" / "known_good.yaml"
+    config_file = REPO_ROOT / "benchmarks" / "screenspot_pro" / "configs" / "quality_8round.yaml"
     lines = [
         "set -u",
         f"cd {shlex.quote(str(REPO_ROOT))}",
