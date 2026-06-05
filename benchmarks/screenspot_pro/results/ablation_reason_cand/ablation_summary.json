@@ -1,0 +1,99 @@
+{
+  "samples": 20,
+  "models": {
+    "gpt-5_5": {
+      "off_correct": 12,
+      "arms": {
+        "off": {
+          "correct": 12,
+          "n": 20,
+          "delta": 0,
+          "rescued": 0,
+          "lost": 0
+        },
+        "abl_reason": {
+          "correct": 12,
+          "n": 20,
+          "delta": 0,
+          "rescued": 1,
+          "lost": 1
+        },
+        "abl_sort": {
+          "correct": 15,
+          "n": 20,
+          "delta": 3,
+          "rescued": 3,
+          "lost": 0
+        },
+        "abl_dedup": {
+          "correct": 13,
+          "n": 20,
+          "delta": 1,
+          "rescued": 2,
+          "lost": 1
+        },
+        "abl_coords": {
+          "correct": 14,
+          "n": 20,
+          "delta": 2,
+          "rescued": 3,
+          "lost": 1
+        },
+        "on": {
+          "correct": 13,
+          "n": 20,
+          "delta": 1,
+          "rescued": 2,
+          "lost": 1
+        }
+      }
+    },
+    "MiniMax-M3": {
+      "off_correct": 6,
+      "arms": {
+        "off": {
+          "correct": 6,
+          "n": 20,
+          "delta": 0,
+          "rescued": 0,
+          "lost": 0
+        },
+        "abl_reason": {
+          "correct": 9,
+          "n": 20,
+          "delta": 3,
+          "rescued": 5,
+          "lost": 2
+        },
+        "abl_sort": {
+          "correct": 11,
+          "n": 20,
+          "delta": 5,
+          "rescued": 7,
+          "lost": 2
+        },
+        "abl_dedup": {
+          "correct": 10,
+          "n": 20,
+          "delta": 4,
+          "rescued": 6,
+          "lost": 2
+        },
+        "abl_coords": {
+          "correct": 10,
+          "n": 20,
+          "delta": 4,
+          "rescued": 5,
+          "lost": 1
+        },
+        "on": {
+          "correct": 10,
+          "n": 20,
+          "delta": 4,
+          "rescued": 5,
+          "lost": 1
+        }
+      }
+    }
+  }
+}
