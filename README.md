@@ -17,11 +17,11 @@
 
   <p>
     <img src="https://img.shields.io/badge/Platform-macOS_%7C_Windows_%7C_Linux-black?logo=apple" />
-    <img src="https://img.shields.io/badge/Provider-Claude_%7C_OpenClaw_%7C_OpenAI-orange" />
+    <img src="https://img.shields.io/badge/Provider-OpenAI_%7C_Anthropic_%7C_MiniMax-orange" />
     <img src="https://img.shields.io/badge/Detection-GPA--GUI--Detector-green" />
     <img src="https://img.shields.io/badge/OCR-Apple_Vision_%7C_EasyOCR-blue" />
     <img src="https://img.shields.io/badge/License-MIT-yellow" />
-    <img src="https://img.shields.io/badge/OSWorld_Multi--Apps-79.8%25_(72.6/91)-brightgreen" />
+    <img src="https://img.shields.io/badge/MMBench--GUI--L2-91.52%25-brightgreen" />
   </p>
 </div>
 
@@ -56,7 +56,7 @@ gui-agent --work-dir /private/tmp/gui-agent-desktop "Install the Orchis GNOME th
 gui-agent --work-dir /private/tmp/gui-agent-vm --vm http://172.16.82.132:5000 "Open GitHub in Chrome and Python docs"
 ```
 
-**Designed as an LLM tool.** The LLM receives a GUI task, calls `gui-agent` as a CLI tool, and gets back a result summary — it never needs to understand GUI automation internals.
+Built on [OpenProgram](https://github.com/Fzkuji/OpenProgram) — the runtime handles provider abstraction, context management, and structured LLM calls. The harness adds GUI perception (YOLO detection, OCR, template matching) and action execution (mouse, keyboard, clipboard).
 
 ## Grounding Pipeline: Iterative Zoom
 
@@ -106,15 +106,15 @@ Full per-platform breakdown: [benchmarks/mmbench_gui_l2/](benchmarks/mmbench_gui
 For full task automation (beyond grounding), the harness runs a 4-phase loop:
 
 - **Observe** (Python) — Screenshot + YOLO detection + OCR + template match. Identifies visible UI state.
-- **Verify** (LLM) — Checks whether the previous action succeeded. Doesn't decide task completion.
+- **Verify** (LLM) — Checks whether the previous action succeeded.
 - **Plan** (LLM) — Sees the screenshot, detected components, and verification result. Chooses one action.
-- **Dispatch** (Python) — Executes the action. For clicks, delegates to the iterative zoom grounding pipeline above.
+- **Dispatch** (Python) — Executes the action. For clicks, delegates to the iterative zoom grounding pipeline.
 
 All phases are `@agentic_function` calls with structured feedback between steps.
 
 ## Visual Memory
 
-UI components are detected once, labeled by a VLM, and stored as templates. On subsequent encounters, template matching replaces expensive re-detection (~5x faster, ~60x fewer tokens). States are modeled as sets of visible components, matched by Jaccard similarity. Components track consecutive misses and auto-forget after 15 consecutive failures.
+UI components are detected once, labeled by a VLM, and stored as templates. On subsequent encounters, template matching replaces expensive re-detection (~5x faster, ~60x fewer tokens). States are modeled as sets of visible components, matched by Jaccard similarity. Components auto-forget after 15 consecutive misses.
 
 ## OSWorld Results
 
@@ -129,301 +129,75 @@ UI components are detected once, labeled by a VLM, and stored as templates. On s
 
 ## Quick Start
 
-### Step 1: Install GUI Agent Harness
-
-> **This harness is an OpenProgram program — it runs *inside* OpenProgram,
-> not on its own.** Install OpenProgram first, then add this harness to it.
-> (Installing this repo by itself will import-error on `openprogram`.)
+### 1. Install
 
 ```bash
-# 1. Install the host (one step, all platforms)
 pip install openprogram
-
-# 2. Add this harness — clones it into OpenProgram's functions/agentics/
-#    and installs the harness's own heavy deps (ultralytics→torch, OpenCV,
-#    Pillow, pynput …). Restart OpenProgram; it's auto-detected and
-#    `gui_agent` becomes available.
 openprogram programs install gui
 ```
 
-Alternatively, install dependencies manually:
-
-```bash
-pip install -r requirements.txt
-```
-
-> **Platform note:** the **core action layer** — screen capture, mouse/keyboard
-> input, window focus, and clipboard — runs on **macOS, Windows, and Linux**
-> (screenshots via Pillow `ImageGrab`, input via `pynput`, window control via
-> the Win32 API on Windows / `wmctrl`+`xdotool` on Linux). The **advanced visual
-> perception** (Apple Accessibility window introspection and Apple Vision OCR) is
-> macOS-tuned; on Windows/Linux the agent falls back to YOLO UI detection +
-> EasyOCR. HiDPI display scaling is handled automatically — the process is made
-> per-monitor DPI-aware on Windows and screenshot↔click coordinates are unified,
-> so clicks land correctly on scaled (125% / 150% / …) displays.
+Installs [OpenProgram](https://github.com/Fzkuji/OpenProgram) (the host runtime), clones this harness, and installs all deps (ultralytics, OpenCV, Pillow, pynput).
 
 <details>
-<summary><b>Manual install / local development</b></summary>
-
-`programs install gui` just clones into OpenProgram's agentics folder and
-pip-installs the clone (resolving this repo's own `pyproject.toml` deps).
-By hand, or to develop in place:
+<summary>Manual / dev install</summary>
 
 ```bash
-# find OpenProgram's agentics folder
 AGENTICS=$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics'))")
-
-# clone in (a real directory — no symlink; works on Windows too)
 git clone https://github.com/Fzkuji/GUI-Agent-Harness "$AGENTICS/GUI-Agent-Harness"
-
-# install this harness's deps (cv2 / ultralytics / … from its pyproject)
 pip install "$AGENTICS/GUI-Agent-Harness"
 ```
-
-Note: `openprogram` is the **host**, not a dependency of this repo — it's
-always present at runtime (the harness loads from inside it), so this repo's
-`pyproject.toml` does not pin it. Installing this repo standalone (without
-OpenProgram) will `pip install` fine but fail at import with
-`ModuleNotFoundError: openprogram`.
-
 </details>
 
-### Step 2: Set up an LLM provider
-
-GUI Agent Harness needs an LLM to make decisions. Install at least one provider:
-
-**Option A: Claude Code CLI (recommended)**
+### 2. Provider
 
 ```bash
-npm install -g @anthropic-ai/claude-code
-claude login
-```
-
-Uses your Claude subscription — no per-token cost. The agent runs as `claude -p` under the hood.
-
-**Option B: Anthropic API**
-
-```bash
+openprogram providers login openai-codex    # ChatGPT subscription (recommended)
+# or set an API key:
 export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Pay-per-token. Set the key in your shell profile for persistence.
-
-**Option C: OpenAI API**
-
-```bash
 export OPENAI_API_KEY=sk-...
 ```
 
-The system auto-detects the best available provider. You can also force one with `--provider`.
+Auto-detects available providers. Override with `--provider` and `--model`.
 
-### Step 3: Platform setup
+### 3. Platform
 
-**macOS:**
-- Grant accessibility permissions: System Settings → Privacy & Security → Accessibility → add your Terminal app
-- Apple Vision OCR works automatically (no extra install)
+- **macOS**: grant Accessibility permission to Terminal
+- **Linux**: `pip install easyocr` + `apt install wmctrl xdotool`
+- **Windows**: `pip install easyocr` (Win32 API built-in, HiDPI auto-detected)
 
-**Linux:**
-- Install EasyOCR for text detection: `pip install easyocr`
-- Window focus / bounds use `wmctrl` / `xdotool` — install via your package manager.
-
-**Windows:**
-- Install EasyOCR for text detection: `pip install easyocr`
-- Window focus / list / bounds use the built-in Win32 API (no extra install).
-- Visual perception is macOS-tuned (Windows uses YOLO + EasyOCR). HiDPI display scaling is auto-detected, so clicks land correctly on scaled displays.
-
-### Step 4: Run
+### 4. Run
 
 ```bash
-# Local desktop
-gui-agent --work-dir /private/tmp/gui-agent-firefox --app firefox "Open Firefox and go to google.com"
-
-# Remote VM (e.g., OSWorld)
-gui-agent --work-dir /private/tmp/gui-agent-vm --vm http://VM_IP:5000 "Install the Orchis GNOME theme"
-
-# Specify provider and model
-gui-agent --work-dir /private/tmp/gui-agent-wechat --provider claude-code --model opus --app wechat "Send hello in WeChat"
+gui-agent --work-dir /tmp/gui-agent-firefox --app firefox "Open Firefox, go to google.com"
+gui-agent --work-dir /tmp/gui-agent-vm --vm http://VM_IP:5000 "Install the Orchis GNOME theme"
 ```
-
-### Use as LLM skill
-
-GUI Agent Harness is designed to be called by an LLM as a tool. After `pip install`, register the project as a skill so your LLM can discover and use it.
-
-LLM skill systems typically scan a skills directory for subdirectories containing a `SKILL.md` file. To register GUI Agent Harness, copy or symlink the project into your LLM's skills directory:
-
-```bash
-# Example: copy into OpenClaw's skills directory
-cp -r GUI-Agent-Harness ~/.openclaw/skills/gui-agent
-
-# Or symlink (recommended — stays in sync with git)
-ln -s /path/to/GUI-Agent-Harness ~/.openclaw/skills/gui-agent
-```
-
-**Claude Code** auto-discovers `SKILL.md` from the current working directory or configured skill paths:
-
-```bash
-# Option 1: work from the project directory (auto-discovered)
-cd /path/to/GUI-Agent-Harness
-
-# Option 2: add to Claude Code's skill search paths
-claude config set skillPaths '["<path-to-GUI-Agent-Harness>"]'
-```
-
-Once registered, the LLM reads `SKILL.md` and knows when and how to call `gui-agent` — no further configuration needed.
-
-## CLI Options
-
-```
-gui-agent [OPTIONS] TASK
-
-Arguments:
-  TASK                  Natural language task description
-
-Options:
-  --work-dir PATH       Required. Runtime working directory for file writes/commands
-  --vm URL              Remote VM HTTP API (e.g., http://172.16.82.132:5000)
-  --provider NAME       LLM provider: auto, claude-code, openclaw, anthropic, openai
-  --model NAME          Override model name (e.g., opus, sonnet, gpt-4o)
-  --max-steps N         Max actions before stopping (default: 15)
-  --app NAME            App name for component memory (default: desktop)
-  --no-general          Disable command-line fallback; use GUI actions only
-```
-
-Detailed Chinese usage notes, including local app, VM, OSWorld, and Python-call examples, are in [docs/USAGE_CN.md](docs/USAGE_CN.md).
-
-## Architecture
-
-```
-gui-agent --work-dir /path/to/work-dir "task description"
-    │
-    ▼
-gui_agent()                    ← @agentic_function, drives the loop
-    │
-    ├── for step in 1..max_steps:
-    │       │
-    │       ▼
-    │   gui_step()             ← @agentic_function, orchestration
-    │       │
-    │       ├── 1. Observe     (Python) — screenshot + detect + match + state ID
-    │       ├── 2. Verify      (LLM)   — check previous action's result
-    │       ├── 3. Plan        (LLM)   — decide next action
-    │       └── 4. Dispatch    (Python) — execute: click/type/scroll/general
-    │       │
-    │       ▼
-    │   build_step_feedback()  ← structured result → next iteration
-    │
-    └── return result summary
-```
-
-**Observe** — Pure Python. Takes a screenshot, runs GPA-GUI-Detector + OCR, matches against stored component templates, identifies the current UI state.
-
-**Verify** — LLM call. Examines the screenshot after the previous action. Reports whether the action succeeded. Does not decide task completion.
-
-**Plan** — LLM call. Sees the screenshot, detected components, verification result, and known state transitions. Chooses one action (click, type, scroll, general, done).
-
-**Dispatch** — Pure Python. Executes the planned action. For clicks, uses template matching to find precise coordinates. For `general`, delegates to the LLM with full tool access (Bash, file I/O, etc.).
-
-## Visual Memory
-
-When a UI element is first detected, it gets a **dual representation**: a cropped visual template (for fast matching) and a VLM-assigned label (for reasoning). Stored per-app, reused across all future sessions.
-
-```
-memory/
-├── linux/                     # Platform-specific memory
-│   └── apps/
-│       ├── desktop/           # General desktop components
-│       ├── chromium/          # Browser UI
-│       │   └── sites/         # Per-website memory
-│       ├── gimp/
-│       └── libreoffice-calc/
-│           ├── components.json    # Component registry
-│           ├── states.json        # UI states (component sets)
-│           ├── transitions.json   # State graph edges
-│           └── components/        # Template images
-```
-
-**Activity-based forgetting** — Components track consecutive misses. After 15 misses, auto-removed. Keeps memory aligned with the app's current UI.
-
-**State matching** — States are sets of visible components, matched by Jaccard similarity (>0.7 = same state, >0.85 = auto-merge).
-
-## Detection Stack
-
-| Detector | Speed | Finds |
-|----------|-------|-------|
-| [GPA-GUI-Detector](https://huggingface.co/Salesforce/GPA-GUI-Detector) | ~0.3s | Icons, buttons, input fields |
-| Apple Vision OCR / EasyOCR | ~1.6s | Text elements |
-| Template Match | ~0.3s | Known components (after first detection) |
-
-## Built on OpenProgram
-
-GUI Agent Harness is built on [OpenProgram](https://github.com/Fzkuji/OpenProgram) — the reference implementation of the **Agentic Programming** paradigm, where ordinary Python functions call the LLM only when reasoning is needed. Each function (`verify_step`, `plan_next_action`, `general_action`) is an `@agentic_function` that calls the LLM exactly once and returns structured data.
-
-```python
-from openprogram import agentic_function
-
-@agentic_function(render_range={"callers": 0, "subcalls": 0})
-def plan_next_action(task, img_path, ..., runtime=None) -> dict:
-    """Decide the next action to take toward completing the task."""
-    # The per-call instruction + screen data are built into `context`.
-    reply = runtime.exec(content=[
-        {"type": "text", "text": context},
-        {"type": "image", "path": img_path},
-    ])
-    return parse_json(reply)
-```
-
-The per-call prompt lives in `runtime.exec(content=...)`; the docstring documents the function (and is rendered into context as description). The function signature defines the interface. The framework handles context management, history summarization, and provider abstraction.
-
-> **Naming**: *Agentic Programming* is the paradigm — Python controls the flow, the `@agentic_function` decorator records each call as a node in a flat-DAG context, and the LLM only reasons when asked. *OpenProgram* is the product (the Python package that ships the runtime). The `@agentic_function` decorator keeps the paradigm name as a visible badge of lineage.
-
-## LLM Provider Priority
-
-| Priority | Provider | Cost | Notes |
-|----------|----------|------|-------|
-| 1 | OpenClaw | Subscription | Auto-detected if `openclaw` CLI exists |
-| 2 | Claude Code CLI | Subscription | Auto-detected if `claude` CLI exists |
-| 3 | Anthropic API | Per-token | Requires `ANTHROPIC_API_KEY` |
-| 4 | OpenAI API | Per-token | Requires `OPENAI_API_KEY` |
-
-Override with `--provider` and `--model` flags.
 
 ## Project Structure
 
 ```
 GUI-Agent-Harness/
 ├── gui_harness/
-│   ├── main.py                # CLI entry point + gui_agent loop
-│   ├── openprogram_compat.py  # OpenProgram boundary — agentic_function + create_runtime
-│   ├── tasks/
-│   │   └── execute_task.py    # 4-phase step: observe → verify → plan → dispatch
-│   ├── action/
-│   │   ├── input.py           # Mouse/keyboard primitives
-│   │   └── general_action.py  # Free-form LLM action with tool access
-│   ├── perception/
-│   │   └── screenshot.py      # Screenshot capture (local + VM)
+│   ├── main.py                   # CLI entry + agent loop
+│   ├── openprogram_compat.py     # OpenProgram boundary
+│   ├── action/input.py           # Mouse, keyboard, clipboard
+│   ├── perception/               # Screenshot, YOLO detection, OCR
 │   ├── planning/
-│   │   ├── component_memory.py  # Template matching + state management
-│   │   └── learn.py           # First-time app component learning
-│   ├── memory/                # Memory management utilities
-│   └── adapters/
-│       └── vm_adapter.py      # Redirect all I/O to remote VM
+│   │   ├── component_memory.py   # Visual memory + template matching
+│   │   └── screenspot_locator.py # Iterative zoom grounding pipeline
+│   └── adapters/vm_adapter.py    # Remote VM I/O
 ├── benchmarks/
-│   └── osworld/               # OSWorld benchmark runner + results
-├── memory/                    # Visual memory storage (per-platform, per-app)
-├── SKILL.md                   # LLM skill definition for gui-agent
+│   ├── screenspot_pro/           # ScreenSpot Pro (1,581 samples, 87.9%)
+│   ├── screenspot_v2/            # ScreenSpot v2 (1,272 samples, 95.83%)
+│   ├── mmbench_gui_l2/           # MMBench-GUI-L2 (3,594 samples, 91.52%)
+│   └── osworld/                  # OSWorld
+├── memory/                       # Per-app visual templates
+├── SKILL.md                      # LLM skill definition
 └── pyproject.toml
 ```
 
-## Requirements
-
-- **Python 3.12+**
-- **macOS, Windows, or Linux** for the core action layer (macOS + Apple Silicon recommended for the full Vision-OCR perception stack)
-- At least one LLM provider (Claude Code CLI, OpenClaw, or API key)
-- For VM automation: OSWorld or compatible HTTP API
-
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Citation
 
@@ -438,7 +212,6 @@ MIT — see [LICENSE](LICENSE) for details.
 ```
 
 ---
-
 <p align="center">
-  <sub>Built with <a href="https://github.com/Fzkuji/OpenProgram">OpenProgram</a> — the Agentic Programming paradigm, productized</sub>
+  <sub>Built with <a href="https://github.com/Fzkuji/OpenProgram">OpenProgram</a></sub>
 </p>
