@@ -136,36 +136,41 @@ UI components are detected once, labeled by a VLM, and stored as templates. On s
 
 ### 1. Install
 
-This harness is an **OpenProgram program** — it runs inside an OpenProgram host.
-**Install OpenProgram first, then add this harness into it.** It installs into
-**`<OpenProgram>/openprogram/functions/agentics/GUI-Agent-Harness/`** and
-**auto-registers**, so `gui_agent` shows up in the web UI and the function list.
+The GUI agent is an **OpenProgram program** — it runs inside an OpenProgram host,
+installs into **`<OpenProgram>/openprogram/functions/agentics/GUI-Agent-Harness/`**,
+and **auto-registers** there (so `gui_agent` shows up in the web UI and the
+function list with no extra wiring). You don't install it standalone — you install
+it into a host. Pick your case:
 
-The complete, one-command path does both — clone the
-[OpenProgram](https://github.com/Fzkuji/OpenProgram) host and run its installer
-(the GUI agent is installed by default):
+**A. You just want to run the GUI agent.** Install the OpenProgram host — the GUI
+agent is included **by default**:
 
 ```bash
+# macOS / Linux
 git clone https://github.com/Fzkuji/OpenProgram && cd OpenProgram
-./scripts/install.sh        # macOS / Linux   ·   Windows:  .\scripts\install.ps1
+./scripts/install.sh
+
+# Windows (PowerShell)
+git clone https://github.com/Fzkuji/OpenProgram; cd OpenProgram
+.\scripts\install.ps1
 ```
 
-NVIDIA GPU? add `--cuda cu124` (use your own CUDA tag). That installs the host +
-web UI, clones this harness into `openprogram/functions/agentics/`, and finishes
-its setup (PyTorch + YOLO weight + EasyOCR) — `pip` alone can't fetch the weight
-and OCR models, so the script is the source of truth. Full matrix and flags:
-**[docs/install.md](docs/install.md)**.
+NVIDIA GPU? add `--cuda cu124` (use your own CUDA tag). This installs the host +
+web UI, drops this harness into `openprogram/functions/agentics/GUI-Agent-Harness/`,
+and finishes its setup (PyTorch + YOLO weight + EasyOCR) — `pip` alone can't fetch
+the weight/OCR, so the script is the source of truth.
 
-<details>
-<summary>Already have an OpenProgram host? Add just the GUI agent.</summary>
+**B. You already have an OpenProgram host.** Add just the GUI agent — it lands in
+the same `functions/agentics/` path and auto-registers:
 
 ```bash
-openprogram programs install gui          # clone + register into functions/agentics/
-# then finish the GUI assets (weight + OCR) from the harness dir:
+openprogram programs install gui          # clone + register into openprogram/functions/agentics/
+# then fetch the GUI assets (weight + OCR) from the harness dir:
 cd "$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics','GUI-Agent-Harness'))")"
 ./scripts/install.sh --no-host            # Windows: .\scripts\install.ps1 -NoHost
 ```
-</details>
+
+Full matrix and flags: **[docs/install.md](docs/install.md)**.
 
 ### 2. Provider
 
@@ -188,8 +193,16 @@ The installer (step 1) handles these automatically; for a manual setup:
 
 ### 4. Run
 
+`--work-dir` is an absolute path the agent may write to; use a native path per OS.
+
 ```bash
+# macOS / Linux — local desktop
 gui-agent --work-dir /tmp/gui-agent-firefox --app firefox "Open Firefox, go to google.com"
+
+# Windows (PowerShell) — local desktop
+gui-agent --work-dir C:\temp\gui-agent-firefox --app firefox "Open Firefox, go to google.com"
+
+# Any platform — drive a remote VM (e.g. OSWorld)
 gui-agent --work-dir /tmp/gui-agent-vm --vm http://VM_IP:5000 "Install the Orchis GNOME theme"
 ```
 

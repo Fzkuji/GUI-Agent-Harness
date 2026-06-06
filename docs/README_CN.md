@@ -85,19 +85,23 @@ LLM不需要了解GUI自动化的工作原理——它只需调用工具。
 
 ### 第一步：安装
 
-本 harness 是一个 **OpenProgram 程序**——运行在 OpenProgram host 内部。**先装 OpenProgram，再把本 harness 装进去**：它会安装到 **`<OpenProgram>/openprogram/functions/agentics/GUI-Agent-Harness/`** 并**自动注册**，`gui_agent` 随即出现在网页 UI 和函数列表里。
+GUI agent 是一个 **OpenProgram 程序**——运行在 OpenProgram host 内部，安装到 **`<OpenProgram>/openprogram/functions/agentics/GUI-Agent-Harness/`** 并**自动注册**（`gui_agent` 随即出现在网页 UI 和函数列表，无需额外配置）。它不单独安装，而是装进一个 host。看你属于哪种情况：
 
-完整一键安装（克隆 OpenProgram host 跑安装器，默认就会装好本 harness + PyTorch + YOLO 权重 + EasyOCR）：
+**A. 只想跑 GUI agent。** 装 OpenProgram host——GUI agent **默认就一起装好**：
 
 ```bash
+# macOS / Linux
 git clone https://github.com/Fzkuji/OpenProgram && cd OpenProgram
-./scripts/install.sh        # macOS / Linux   ·   Windows:  .\scripts\install.ps1
+./scripts/install.sh
+
+# Windows (PowerShell)
+git clone https://github.com/Fzkuji/OpenProgram; cd OpenProgram
+.\scripts\install.ps1
 ```
 
-有 N 卡？加 `--cuda cu124`（填你自己的 CUDA 版本）。`pip` 单独装**不够**——YOLO 权重和 OCR 模型靠 pip 装不了，必须用安装脚本。完整依赖矩阵与参数见 **[docs/install.md](install.md)**。
+有 N 卡？加 `--cuda cu124`（填你自己的 CUDA 版本）。这会装好 host + 网页 UI，把本 harness 放进 `openprogram/functions/agentics/GUI-Agent-Harness/`，并完成其配置（PyTorch + YOLO 权重 + EasyOCR）——`pip` 单独装不了权重/OCR，必须用脚本。
 
-<details>
-<summary>已经有 OpenProgram host？只加 GUI agent。</summary>
+**B. 已经有 OpenProgram host。** 只加 GUI agent——它会落到同样的 `functions/agentics/` 路径并自动注册：
 
 ```bash
 openprogram programs install gui          # 克隆并注册到 openprogram/functions/agentics/
@@ -105,7 +109,8 @@ openprogram programs install gui          # 克隆并注册到 openprogram/funct
 cd "$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics','GUI-Agent-Harness'))")"
 ./scripts/install.sh --no-host            # Windows: .\scripts\install.ps1 -NoHost
 ```
-</details>
+
+完整依赖矩阵与参数见 **[docs/install.md](install.md)**。
 
 ### 第二步：配置LLM Provider
 
@@ -146,15 +151,20 @@ export OPENAI_API_KEY=sk-...
 
 ### 第四步：运行
 
+`--work-dir` 是 agent 可写的绝对路径，按你的系统填对应路径：
+
 ```bash
-# 本地桌面
-gui-agent "打开Firefox并访问google.com"
+# macOS / Linux — 本地桌面
+gui-agent --work-dir /tmp/gui-agent-firefox --app firefox "打开 Firefox 并访问 google.com"
 
-# 远程虚拟机（如OSWorld）
-gui-agent --vm http://VM_IP:5000 "安装Orchis GNOME主题"
+# Windows (PowerShell) — 本地桌面
+gui-agent --work-dir C:\temp\gui-agent-firefox --app firefox "打开 Firefox 并访问 google.com"
 
-# 指定provider和模型
-gui-agent --provider claude-code --model opus "在微信中发送你好"
+# 任意平台 — 驱动远程虚拟机（如 OSWorld）
+gui-agent --work-dir /tmp/gui-agent-vm --vm http://VM_IP:5000 "安装 Orchis GNOME 主题"
+
+# 指定 provider / 模型
+gui-agent --work-dir /tmp/gui-agent --provider claude-code --model opus "在微信中发送你好"
 ```
 
 ### 作为LLM Skill使用
