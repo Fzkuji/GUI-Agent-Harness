@@ -11,10 +11,10 @@ Pillow>=10.0
 ultralytics>=8.3.0
 requests>=2.31
 
-# Model weights / hub
+# Model hub client — used to download the GPA-GUI-Detector YOLO weight.
+# (transformers/accelerate are NOT needed: the detector is a YOLO model run by
+# ultralytics+torch, and EasyOCR ships its own models — neither is imported.)
 huggingface-hub
-transformers
-accelerate
 
 # OCR — EasyOCR for Linux/Windows (macOS uses Apple Vision natively)
 easyocr>=1.7.0

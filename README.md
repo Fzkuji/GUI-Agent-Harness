@@ -136,20 +136,33 @@ UI components are detected once, labeled by a VLM, and stored as templates. On s
 
 ### 1. Install
 
+This harness is an **OpenProgram program** — it runs inside an OpenProgram host.
+**Install OpenProgram first, then add this harness into it** (it lands in
+`functions/agentics/` and auto-registers, so `gui_agent` appears in the web UI).
+
+The complete, one-command path does both — clone the
+[OpenProgram](https://github.com/Fzkuji/OpenProgram) host and run its installer
+with `--gui`:
+
 ```bash
-pip install openprogram
-openprogram programs install gui
+git clone https://github.com/Fzkuji/OpenProgram && cd OpenProgram
+./scripts/install.sh --gui        # macOS / Linux   (--cuda cu121 for NVIDIA)
+.\scripts\install.ps1 -Gui        # Windows         (-Cuda cu121 for NVIDIA)
 ```
 
-Installs [OpenProgram](https://github.com/Fzkuji/OpenProgram) (the host runtime), clones this harness, and installs all deps (ultralytics, OpenCV, Pillow, pynput).
+That installs the host + web UI, clones this harness into `functions/agentics/`,
+and finishes its setup (PyTorch + YOLO weight + EasyOCR). `pip install` alone is
+**not** enough — the weight and OCR models aren't on PyPI; the script is the
+source of truth. Full matrix and flags: **[docs/install.md](docs/install.md)**.
 
 <details>
-<summary>Manual / dev install</summary>
+<summary>Already have an OpenProgram host? Add just the GUI agent.</summary>
 
 ```bash
-AGENTICS=$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics'))")
-git clone https://github.com/Fzkuji/GUI-Agent-Harness "$AGENTICS/GUI-Agent-Harness"
-pip install "$AGENTICS/GUI-Agent-Harness"
+openprogram programs install gui          # clone + register into functions/agentics/
+# then finish the GUI assets (weight + OCR) from the harness dir:
+cd "$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics','GUI-Agent-Harness'))")"
+./scripts/install.sh --no-host            # Windows: .\scripts\install.ps1 -NoHost
 ```
 </details>
 
@@ -166,9 +179,11 @@ Auto-detects available providers. Override with `--provider` and `--model`.
 
 ### 3. Platform
 
-- **macOS**: grant Accessibility permission to Terminal
-- **Linux**: `pip install easyocr` + `apt install wmctrl xdotool`
-- **Windows**: `pip install easyocr` (Win32 API built-in, HiDPI auto-detected)
+The installer (step 1) handles these automatically; for a manual setup:
+
+- **macOS**: `xcode-select --install` (Swift, for Apple Vision OCR) + grant Terminal **Screen Recording** & **Accessibility** in System Settings → Privacy
+- **Linux**: `apt install xclip wmctrl xdotool scrot` (xclip required for clipboard) + `pip install easyocr`
+- **Windows**: nothing extra — Win32 API + PowerShell clipboard are built-in, HiDPI auto-detected
 
 ### 4. Run
 
