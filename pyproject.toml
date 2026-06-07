@@ -19,6 +19,7 @@ dependencies = [
     "Pillow",
     "ultralytics",
     "requests",
+    "huggingface-hub",   # lazy auto-download of the GPA-GUI-Detector weight
 ]
 
 [project.optional-dependencies]

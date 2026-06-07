@@ -85,41 +85,20 @@ LLM不需要了解GUI自动化的工作原理——它只需调用工具。
 
 ### 第一步：安装
 
-GUI agent 是一个 **OpenProgram 程序**——和其它 harness 一样，它通过放进 host 的 **`openprogram/functions/agentics/GUI-Agent-Harness/`** 目录来接入 OpenProgram，放进去就**自动注册**（随即出现在网页 UI 和函数列表，无需额外配置）。所以分两步装：
+GUI agent 就是个普通的 OpenProgram 程序——两步：
 
-**1) 先装 OpenProgram host**（已有可跳过）——按 [OpenProgram](https://github.com/Fzkuji/OpenProgram) 自己的安装方式装。
+1. **装 OpenProgram**（host）——见 [github.com/Fzkuji/OpenProgram](https://github.com/Fzkuji/OpenProgram)。
+2. **装 GUI agent：**
 
-**2) 把本 harness 加进 host，再跑它的安装器**——克隆到 host 的 `functions/agentics/` 目录，运行 `scripts/install.sh --no-host`，它会装 PyTorch + YOLO 权重 + EasyOCR（自动识别 N 卡→CUDA，否则 CPU）：
+   ```bash
+   openprogram programs install gui
+   ```
 
-```bash
-# macOS / Linux
-AGENTICS="$(python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics'))")"
-git clone https://github.com/Fzkuji/GUI-Agent-Harness "$AGENTICS/GUI-Agent-Harness"
-cd "$AGENTICS/GUI-Agent-Harness" && ./scripts/install.sh --no-host
-```
+完事。`gui_agent` 随即注册好，出现在网页 UI 和 `gui-agent` 命令里。第一次跑 `openprogram` 会自动引导你配 provider；GUI agent 在首次使用时会自动下载检测权重 + OCR 模型。
 
-```powershell
-# Windows (PowerShell)
-$AGENTICS = python -c "import openprogram,os;print(os.path.join(os.path.dirname(openprogram.__file__),'functions','agentics'))"
-git clone https://github.com/Fzkuji/GUI-Agent-Harness "$AGENTICS\GUI-Agent-Harness"
-cd "$AGENTICS\GUI-Agent-Harness"; .\scripts\install.ps1 -NoHost
-```
+> **macOS：** 在 系统设置 → 隐私与安全性 中给终端授予 屏幕录制 + 辅助功能 权限，它才能看屏幕、控鼠标键盘。NVIDIA GPU 加速、离线预取、进阶参数见 **[docs/install.md](install.md)**。
 
-> 快捷方式：`openprogram programs install gui` 会帮你克隆到 `functions/agentics/`，然后再跑 harness 的 `scripts/install.sh --no-host` 补权重/OCR。**仅 macOS：** 在 系统设置 → 隐私与安全性 中给终端授予 **屏幕录制** 和 **辅助功能** 权限，agent 才能看屏幕、控制鼠标键盘。
-
-完整依赖矩阵与参数见 **[docs/install.md](install.md)**。
-
-### 第二步：配置 Provider
-
-GUI agent 通过 **OpenProgram host** 调用 LLM，所以 provider **在 OpenProgram 里配**（不要用环境变量）：
-
-```bash
-openprogram setup            # 引导式：选 provider 并登录（或自动接管已登录的 CLI）
-```
-
-也可以在网页 UI 的 设置 → Providers 里管理。单次运行可用 `--provider` / `--model` 临时覆盖。
-
-### 第三步：运行
+### 第二步：运行
 
 `--work-dir` 是 agent 可写的绝对路径，按你的系统填对应路径：
 

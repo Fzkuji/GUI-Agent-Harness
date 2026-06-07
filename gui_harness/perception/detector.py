@@ -220,14 +220,38 @@ def take_fullscreen(out_path="/tmp/ui_detect_full.png"):
 _gpa_model = None
 
 
+def _ensure_gpa_weight():
+    """Make sure the detector weight exists, downloading it on first use.
+
+    Mirrors how EasyOCR fetches its models lazily: if the weight isn't at
+    GPA_MODEL yet, pull it from the Hugging Face hub (Salesforce/GPA-GUI-Detector,
+    ~40MB) into that path. Keeps install to two steps — no manual weight fetch.
+    """
+    if os.path.exists(GPA_MODEL):
+        return
+    target_dir = os.path.dirname(GPA_MODEL) or "."
+    os.makedirs(target_dir, exist_ok=True)
+    try:
+        from huggingface_hub import hf_hub_download
+        print(f"[gui] downloading GPA-GUI-Detector weight (~40MB) → {GPA_MODEL} …")
+        path = hf_hub_download("Salesforce/GPA-GUI-Detector", "model.pt",
+                               local_dir=target_dir)
+        # hf may place it under the repo-relative name; normalize to GPA_MODEL.
+        if os.path.abspath(path) != os.path.abspath(GPA_MODEL) and os.path.exists(path):
+            import shutil
+            shutil.copy(path, GPA_MODEL)
+    except Exception as e:  # noqa: BLE001
+        raise FileNotFoundError(
+            f"GPA-GUI-Detector weight not found at {GPA_MODEL} and auto-download "
+            f"failed ({type(e).__name__}: {e}). Fetch it manually: "
+            f"hf download Salesforce/GPA-GUI-Detector model.pt --local-dir "
+            f"{target_dir}  (or set $GPA_MODEL_PATH).") from e
+
+
 def load_gpa_detector():
     global _gpa_model
     if _gpa_model is None:
-        if not os.path.exists(GPA_MODEL):
-            raise FileNotFoundError(
-                f"GPA-GUI-Detector model not found at {GPA_MODEL}. Download "
-                f"Salesforce/GPA-GUI-Detector model.pt to that path, or point "
-                f"$GPA_MODEL_PATH at it — UI element detection requires it.")
+        _ensure_gpa_weight()
         from ultralytics import YOLO
         _gpa_model = YOLO(GPA_MODEL)
     return _gpa_model
