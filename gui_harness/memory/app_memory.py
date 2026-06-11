@@ -63,7 +63,7 @@ def load_meta(app_dir):
     """Load meta.json from app/site directory. Returns dict with defaults."""
     meta_path = Path(app_dir) / "meta.json"
     if meta_path.exists():
-        with open(meta_path) as f:
+        with open(meta_path, encoding="utf-8") as f:
             return json.load(f)
     return {
         "app": "",
@@ -92,15 +92,25 @@ def _safe_load_json(path, label="file"):
     # Try primary file
     if path.exists():
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
+        except UnicodeDecodeError as e:
+            # Encoding mismatch (e.g. a legacy locale-encoded file on a
+            # zh-Windows box), NOT corruption — never delete the file for
+            # this. Surface it and start from an empty dict for this run.
+            print(
+                f"  [memory] {label} is not UTF-8 ({e}); leaving the file "
+                "untouched and starting empty for this run",
+                file=sys.stderr,
+            )
+            return {}
         except (json.JSONDecodeError, ValueError) as e:
             print(f"  [memory] {label} corrupt ({e}), trying backup...", file=sys.stderr)
 
     # Try backup
     if bak_path.exists():
         try:
-            with open(bak_path) as f:
+            with open(bak_path, encoding="utf-8") as f:
                 data = json.load(f)
             # Backup is good — restore it
             _atomic_write_json(path, data)
@@ -191,7 +201,7 @@ def migrate_profile_if_needed(app_dir):
     if (app_dir / "meta.json").exists():
         return
 
-    with open(profile_path) as f:
+    with open(profile_path, encoding="utf-8") as f:
         profile = json.load(f)
 
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -573,7 +583,7 @@ def load_workflows(app_dir):
     """Load workflows.json from app/site directory. Returns dict."""
     wf_path = Path(app_dir) / "workflows.json"
     if wf_path.exists():
-        with open(wf_path) as f:
+        with open(wf_path, encoding="utf-8") as f:
             return json.load(f)
     return {}
 

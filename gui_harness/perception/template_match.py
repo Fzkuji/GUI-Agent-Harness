@@ -79,7 +79,7 @@ def load_index(app_name):
     """Load the template index for an app."""
     path = get_index_path(app_name)
     if path.exists():
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     return {}
 

@@ -98,25 +98,14 @@ def shell_quote(parts: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
-def iterative_env_lines() -> list[str]:
-    return [
-        "export GUI_HARNESS_SCREENSPOT_LOCATOR_MODE=iterative_zoom",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_ROUNDS=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_REVIEW_FINAL=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_VERIFY_FINAL=0",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FALLBACK_TO_CROP=0",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_COMMIT_GATE=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_CROP_RETRIES=6",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGED_CROP=1",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE1_MIN_AREA_PCT=20",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_STAGE2_MIN_AREA_PCT=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SIDE=2048",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MAX_SCALE=5",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_MIN_SHORT_SIDE=512",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SIDE=4096",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MAX_SCALE=8",
-        "export GUI_HARNESS_SCREENSPOT_ITERATIVE_FINAL_MIN_SHORT_SIDE=640",
-    ]
+# NOTE: this launcher used to export GUI_HARNESS_SCREENSPOT_* env vars here.
+# That was dead code: run_screenspot_pro.py builds the locator config solely
+# from --config (or dataclass defaults) and never reads those env vars, so the
+# UI-Vision/MMBench runs silently executed an arm that matched no benchmarked
+# config (see results/ui_vision_gpt_5_5 — single-shot path despite the report
+# header claiming iterative_zoom). The locator arm is now passed explicitly
+# via --config below, same as start_full_autoretry.py.
+DEFAULT_LOCATOR_CONFIG = "benchmarks/screenspot_pro/configs/best.yaml"
 
 
 def build_screen_script(
@@ -128,6 +117,7 @@ def build_screen_script(
     provider: str,
     model: str,
     app_name: str,
+    locator_config: str,
     sample_timeout_s: int,
     exec_timeout_s: int,
     runtime_retries: int,
@@ -142,7 +132,6 @@ def build_screen_script(
         f"export HTTP_PROXY=${{HTTP_PROXY:-{shlex.quote(DEFAULT_PROXY)}}}",
         "export https_proxy=\"$HTTPS_PROXY\"",
         "export http_proxy=\"$HTTP_PROXY\"",
-        *iterative_env_lines(),
         "status=0",
         (
             shell_quote(
@@ -193,6 +182,7 @@ def build_screen_script(
                     "--output \"$output\" "
                     "--work-dir \"$work\" "
                     f"--app-name {shlex.quote(app_name)} "
+                    f"--config {shlex.quote(locator_config)} "
                     f"--provider {shlex.quote(provider)} "
                     f"--model {shlex.quote(model)} "
                     f"--runtime-retries {runtime_retries} "
@@ -234,6 +224,14 @@ def main() -> int:
     parser.add_argument("--provider", default=DEFAULT_PROVIDER)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--app-name", default="screenspot_pro")
+    parser.add_argument(
+        "--locator-config",
+        default=DEFAULT_LOCATOR_CONFIG,
+        help="Locator config YAML passed to run_screenspot_pro.py --config. "
+             "REQUIRED for the run to use a benchmarked arm — without it the "
+             "runner falls back to dataclass defaults that match no published "
+             "result.",
+    )
     parser.add_argument("--shards", type=int, default=6)
     parser.add_argument("--sample-timeout-s", type=int, default=1500)
     parser.add_argument("--exec-timeout-s", type=int, default=300)
@@ -262,6 +260,7 @@ def main() -> int:
         provider=args.provider,
         model=args.model,
         app_name=args.app_name,
+        locator_config=args.locator_config,
         sample_timeout_s=args.sample_timeout_s,
         exec_timeout_s=args.exec_timeout_s,
         runtime_retries=args.runtime_retries,

@@ -2,7 +2,11 @@
 
 Model: GPT-5.5 (openai-codex)
 Samples: 5479/5479 ✅
-Pipeline: legacy (main_baseline.yaml, iterative_zoom 8 rounds)
+Pipeline: single-shot Phase-3 (`find_target_in_known`). CORRECTION: this header
+previously claimed "iterative_zoom 8 rounds", but the per-row data contradicts
+it — all 5479 rows carry `listed_entry`/`direct_pixel` grounding types and
+component-memory phase timings, with zero iterative-zoom traces. The app_name
+routing gate into the locator never fired in this run.
 
 ## Final
 | Correct | Wrong | WF | Accuracy |

@@ -512,6 +512,23 @@ def find_target_in_known(
         for t in texts[:60]
     ) or "(none)"
 
+    # target_convention="element": element-grounding benchmarks (UI-Vision)
+    # annotate the NAMED ELEMENT itself (its label text / icon), not the
+    # associated interactive control the default policy steers toward. Env-
+    # gated so every other caller keeps the byte-identical default prompt.
+    convention_block = ""
+    if os.environ.get("GUI_HARNESS_TARGET_CONVENTION", "").lower() == "element":
+        convention_block = """Target convention for this benchmark:
+- The target names an ELEMENT, often tersely; the answer is the named element
+  itself — its visible label text, icon, or field — not a nearby control
+  associated with it. For 'wrap lines', click the words 'wrap lines', not the
+  checkbox beside them.
+- The named element may live in application chrome — a toolbar, menu bar,
+  address bar, status bar, tab strip, or side panel — not only in the page or
+  document content. Check chrome regions before concluding it is absent.
+
+"""
+
     context = f"""Task: {task}
 Target: {target}
 
@@ -521,7 +538,7 @@ Known UI components (labeled, with coordinates):
 OCR text on screen:
 {text_lines}
 
-You may locate the target in either of two ways:
+{convention_block}You may locate the target in either of two ways:
 1. Pick one entry from the known components or OCR text. Use the exact label
    as written in the lists above.
 2. If the target is visible in the screenshot but is not represented by any

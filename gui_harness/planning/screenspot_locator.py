@@ -116,6 +116,119 @@ Reply with ONLY JSON:
 _CROP_DECISION_RULES = _CROP_DECISION_RULES_INTRO + "\n\n" + _CROP_DECISION_RULES_BODY
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# target_convention="element" prompt variants.
+#
+# ScreenSpot-Pro annotates the CLICKABLE CONTROL that completes the
+# instruction, so the default ("control") rules steer toward toggles, slider
+# thumbs, and close affordances and away from text labels. UI-Vision (and
+# element-grounding benchmarks generally) annotate the NAMED ELEMENT itself —
+# usually the visible label text or icon — and their instructions are often a
+# terse element name rather than a task. With the control rules the locator
+# systematically clicks the checkbox 10px LEFT of a label whose text box is
+# the ground truth. These variants keep the zoom mechanics identical and only
+# swap the target-selection policy. Selected per run via
+# ``ScreenSpotLocatorConfig.target_convention`` so the ScreenSpot-Pro path is
+# byte-identical when the knob stays "control".
+# ═══════════════════════════════════════════════════════════════════════════
+
+_CROP_DECISION_RULES_BODY_ELEMENT = """Rules:
+- Return bbox coordinates in the DISPLAYED CROP image coordinate system.
+- Use the OCR/component candidate list as explicit grounding evidence. Candidate
+  labels, centers, and boxes should guide which window/section/control group to
+  keep. If a target-related candidate is present, the next crop should include
+  it or include the larger unresolved region containing it.
+- When multiple candidate clusters could satisfy the instruction, crop to a
+  region that preserves the competing clusters until later rounds or the commit
+  gate can disambiguate them.
+- This benchmark annotates the NAMED ELEMENT itself — usually its visible
+  label text, icon, or field. The instruction may be a terse element name
+  rather than a task; locate the element it names.
+- The named element may live in application chrome — a toolbar, menu bar,
+  address bar, status bar, tab strip, or side panel — not only in the page or
+  document content. Do not zoom into a content area merely because it shows
+  related content; preserve chrome regions that could contain the named
+  element until they are ruled out.
+- If the instruction names an application/window, ignore matching desktop
+  icons, other windows, document content, or web pages outside that app unless
+  the instruction explicitly points there.
+- For toolbar/menu commands with many similar icons, keep the whole local
+  toolbar/menu group until the requested icon or row is unambiguous.
+- If the target names a file, tab, embedded panel, or nested window, preserve
+  enough surrounding controls to decide which layer the instruction refers to.
+- Maintain target identity across rounds. If an earlier round identified a
+  concrete element matching the name, the next crop should stay on that same
+  element, not jump to a different plausible element with a similar label.
+  Only switch targets if the earlier identification is clearly inconsistent
+  with the instruction and screenshot.
+- Prefer one high-recall crop over many tiny guesses. Do not crop so tightly
+  that the target loses its label, icon context, or neighboring disambiguators.
+- This crop is pending until a separate commit gate accepts it. If there is
+  any unresolved ambiguity, return a larger, more conservative crop.
+- Follow the staged crop guidance. The first committed crop must be a real
+  crop from the full image, but it should be a window/region crop, not an
+  immediate final-element crop.
+- If the target is already clear enough and further cropping would risk cutting
+  off context, use action="final".
+- If the target is not visible in this crop, use action="recrop" to back out
+  to a wider crop and try again. Do not give up; the target is assumed to
+  exist somewhere in the original screenshot.
+- Do not return a final click point in this stage.
+
+Reply with ONLY JSON:
+{"action": "crop|final|recrop", "bbox": [x1, y1, x2, y2], "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+_CROP_DECISION_RULES_ELEMENT = (
+    _CROP_DECISION_RULES_INTRO + "\n\n" + _CROP_DECISION_RULES_BODY_ELEMENT
+)
+
+
+_FINAL_CLICK_RULES_ELEMENT = """Choose the exact center of the NAMED target element. Use the upscaled
+image for precision. Candidate boxes are hints only: if a candidate covers a
+combined toolbar group or the wrong element, return explicit x/y for the true
+target instead of using candidate_id.
+
+Click policy:
+- The target is the element the instruction names — usually its visible label
+  text, icon, field, or menu item. Click the center of that element's own
+  visible extent.
+- When a setting has both a control (checkbox/radio/toggle/slider) and a text
+  label next to it, the annotated element is the NAMED one: if the instruction
+  refers to the setting by its label text, click the center of the label text
+  itself, not the control beside it.
+- Do not click a related or representative element elsewhere (e.g. content
+  that matches the words) when a chrome element — toolbar icon, menu item,
+  panel entry — carries the instruction's name.
+- For adjacent toolbar clusters, do not click the center of the whole cluster;
+  choose the specific icon/item named by the instruction.
+- If two elements both seem plausible, prefer the one whose own name/icon
+  matches the instruction exactly over one that is merely functionally
+  related.
+- If this crop does not contain a trustworthy match for the named element,
+  return action="recrop" so the caller can retry from a wider crop. Do not
+  invent a coordinate in an unrelated region.
+
+Reply with ONLY JSON:
+{"action": "click|recrop", "candidate_id": "z0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}"""
+
+
+def _crop_rules_for(config: "ScreenSpotLocatorConfig") -> tuple[str, str, str]:
+    """(full_rules, intro, body) for the run's target convention."""
+    if config.target_convention == "element":
+        return (
+            _CROP_DECISION_RULES_ELEMENT,
+            _CROP_DECISION_RULES_INTRO,
+            _CROP_DECISION_RULES_BODY_ELEMENT,
+        )
+    return (_CROP_DECISION_RULES, _CROP_DECISION_RULES_INTRO, _CROP_DECISION_RULES_BODY)
+
+
+def _final_click_rules_for(config: "ScreenSpotLocatorConfig") -> str:
+    if config.target_convention == "element":
+        return _FINAL_CLICK_RULES_ELEMENT
+    return _FINAL_CLICK_RULES
+
+
 _COMMIT_GATE_RULES_BODY = """Accept the proposed crop only if all of these are true:
 - The requested clickable target is still inside the magenta rectangle.
 - The component/OCR evidence inside the magenta rectangle is consistent with
@@ -265,6 +378,21 @@ class ScreenSpotLocatorConfig:
     context_mode: str = "single"
     accumulate_images: bool = False
     runtime_timeout_s: int = 180
+    # Which thing the benchmark's ground truth annotates:
+    #   "control" — the actionable widget that completes the instruction
+    #               (ScreenSpot-Pro). Click policy steers to toggles/sliders
+    #               and away from text labels.
+    #   "element" — the named element itself, usually its label text or icon
+    #               (UI-Vision). Click policy targets the named element's own
+    #               visible extent and never swaps a label for its control.
+    target_convention: str = "control"
+    # What to return when every final-click attempt is exhausted without a
+    # verified click (today: None — the sample scores wrong with no point):
+    #   "none"      — keep legacy behaviour, return None.
+    #   "keep_best" — return the centre of the deepest committed crop as a
+    #                 low-confidence salvage answer. A lost-but-zoomed-in run
+    #                 is still a far better guess than no answer at all.
+    exhaustion_fallback: str = "none"
 
     @classmethod
     def from_env(cls) -> "ScreenSpotLocatorConfig":
@@ -359,6 +487,16 @@ class ScreenSpotLocatorConfig:
             ),
             accumulate_images=_env_bool("GUI_HARNESS_SCREENSPOT_ACCUMULATE_IMAGES", False),
             runtime_timeout_s=_env_int("GUI_HARNESS_SCREENSPOT_RUNTIME_TIMEOUT_S", 180, minimum=0),
+            target_convention=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_TARGET_CONVENTION",
+                "control",
+                {"control", "element"},
+            ),
+            exhaustion_fallback=_env_choice(
+                "GUI_HARNESS_SCREENSPOT_EXHAUSTION_FALLBACK",
+                "none",
+                {"none", "keep_best"},
+            ),
         )
 
 
@@ -492,12 +630,13 @@ Rejected crop attempts from this same current crop:
             candidates_block = f"""Detected OCR/component candidates inside this crop, shown in displayed-crop
 coordinates:
 {candidate_lines or "(none)"}"""
+            _rules_full, _rules_intro, _rules_body = _crop_rules_for(config)
             if config.iterative_prompt_layout == "legacy":
                 # Byte-for-byte origin/main: framing prose -> candidates -> Rules
                 # -> JSON, all in one text block, no cache prefix, no accumulation.
                 context = (
-                    dynamic_head + "\n\n" + _CROP_DECISION_RULES_INTRO + "\n\n"
-                    + candidates_block + "\n\n" + _CROP_DECISION_RULES_BODY
+                    dynamic_head + "\n\n" + _rules_intro + "\n\n"
+                    + candidates_block + "\n\n" + _rules_body
                 )
                 content = [
                     {"type": "text", "text": context},
@@ -526,7 +665,7 @@ coordinates:
                     )
                 context = dynamic_head + "\n\n" + candidates_block + "\n\n" + tail
                 content = [
-                    _cacheable_prefix_block(_CROP_DECISION_RULES),
+                    _cacheable_prefix_block(_rules_full),
                     *thread_blocks,
                     {"type": "text", "text": context},
                     {"type": "image", "path": crop_path},
@@ -734,6 +873,46 @@ coordinates:
                 located.setdefault("iterative_zoom", {})["final_recrop_attempt"] = final_attempt_idx + 1
                 located["iterative_zoom"]["final_recrop_source_box"] = final_box
             return located
+    if config.exhaustion_fallback == "keep_best":
+        # Every final-click attempt was exhausted without a verified click.
+        # Salvage the centre of the deepest committed crop: the zoom loop got
+        # there believing the target was inside, so its centre is a far better
+        # guess than returning None (which scores as no answer at all).
+        committed = [e["next_box"] for e in history if e.get("next_box")]
+        salvage_box = committed[-1] if committed else current_box
+        cx = int((salvage_box[0] + salvage_box[2]) / 2)
+        cy = int((salvage_box[1] + salvage_box[3]) / 2)
+        if 0 < cx <= img_w and 0 < cy <= img_h:
+            last_seen = next(
+                (e.get("target_visible_element") for e in reversed(history)
+                 if e.get("target_visible_element")),
+                "",
+            )
+            print(
+                f"  [screenspot_zoom] exhausted; keep_best salvage ({cx},{cy}) "
+                f"from {salvage_box}",
+                file=__import__("sys").stderr,
+            )
+            return {
+                "id": "iterative_zoom",
+                "label": last_seen or "iterative_zoom_keep_best",
+                "name": last_seen or "iterative_zoom_keep_best",
+                "source": "screenspot_iterative_zoom",
+                "grounding_type": "iterative_zoom_keep_best",
+                "cx": cx,
+                "cy": cy,
+                "x": cx - 24,
+                "y": cy - 24,
+                "w": 48,
+                "h": 48,
+                "confidence": 0.1,
+                "reasoning": "exhaustion fallback: centre of deepest committed crop",
+                "iterative_zoom": {
+                    "rounds": len(history),
+                    "history": history,
+                    "keep_best_salvage_box": salvage_box,
+                },
+            }
     return None
 
 
@@ -1420,10 +1599,11 @@ Crop history:
 
 Detected OCR/component candidates in this final crop:
 {candidate_lines or "(none)"}"""
+    _click_rules = _final_click_rules_for(config)
     if config.iterative_prompt_layout == "legacy":
         # origin/main: dynamic+history+candidates -> click-policy rules+JSON,
         # one text block, no cache prefix.
-        context = final_head + "\n\n" + _FINAL_CLICK_RULES
+        context = final_head + "\n\n" + _click_rules
         final_content = [
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
@@ -1436,7 +1616,7 @@ Detected OCR/component candidates in this final crop:
             + '"target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}'
         )
         final_content = [
-            _cacheable_prefix_block(_FINAL_CLICK_RULES),
+            _cacheable_prefix_block(_click_rules),
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
         ]
@@ -1610,6 +1790,33 @@ def _iterative_zoom_review_click(
             f"{item['source']}: {item['description']} original_box={box} "
             f"display_scale={scale:.4f} visible={item.get('visible', '')}"
         )
+    if config.target_convention == "element":
+        review_policy = """Review policy:
+- Keep the proposed click only if it lands on the element the instruction
+  names — its own visible label text, icon, field, or menu item.
+- Replace it if a wider crop reveals the actual named element elsewhere (e.g.
+  in a toolbar, menu, or panel the zoom path cropped away).
+- Never replace a click on the named element's label/icon with an associated
+  control (checkbox, slider, toggle) beside it — the benchmark annotates the
+  named element itself.
+- Treat earlier crop decisions as an anchor. If the final click switched away
+  from an earlier concrete element matching the name, replace only when the
+  wider crop clearly shows the earlier element matches the name better."""
+    else:
+        review_policy = """Review policy:
+- Keep the proposed click only if it is the actual clickable ScreenSpot target.
+- Replace it if a wider crop reveals a better actionable control for the same
+  instruction that the zoom path cropped away.
+- For turn on/off tasks, never replace with passive status text. Keep or choose
+  an actual toggle/button/switch.
+- Treat earlier crop decisions as an anchor. If the final click switched away
+  from an earlier concrete actionable control, replace only when the wider crop
+  clearly shows the earlier control better satisfies the instruction.
+- For modify/change/adjust/set requests, preserve the direct editable control
+  type. If the proposed click is on the relevant slider track/thumb, input,
+  dropdown, checkbox, toggle, or color swatch, keep it. Do not replace an
+  actionable control with the nearby label, category icon, header, preview, or
+  explanatory text for that same setting."""
     context = f"""Task: {task}
 Target: {target}
 Original screenshot size: {img_w}x{img_h}
@@ -1626,20 +1833,7 @@ Proposed click:
 Attached crop sources:
 {chr(10).join(crop_lines)}
 
-Review policy:
-- Keep the proposed click only if it is the actual clickable ScreenSpot target.
-- Replace it if a wider crop reveals a better actionable control for the same
-  instruction that the zoom path cropped away.
-- For turn on/off tasks, never replace with passive status text. Keep or choose
-  an actual toggle/button/switch.
-- Treat earlier crop decisions as an anchor. If the final click switched away
-  from an earlier concrete actionable control, replace only when the wider crop
-  clearly shows the earlier control better satisfies the instruction.
-- For modify/change/adjust/set requests, preserve the direct editable control
-  type. If the proposed click is on the relevant slider track/thumb, input,
-  dropdown, checkbox, toggle, or color swatch, keep it. Do not replace an
-  actionable control with the nearby label, category icon, header, preview, or
-  explanatory text for that same setting.
+{review_policy}
 
 If replacing, return x/y in the DISPLAYED CROP coordinates of the chosen source
 (r0, r1, r2, ...). Reply with ONLY JSON:
@@ -1667,7 +1861,9 @@ If replacing, return x/y in the DISPLAYED CROP coordinates of the chosen source
     }
     if action != "replace":
         return result
-    if _review_replacement_breaks_control_type(task, target, proposed, result):
+    # The control-type guard protects SSPro's control annotations; under the
+    # element convention a label IS a legitimate replacement target.
+    if config.target_convention != "element" and _review_replacement_breaks_control_type(task, target, proposed, result):
         result["action"] = "keep"
         result["reasoning"] = (
             "review replacement rejected because it would replace a direct "

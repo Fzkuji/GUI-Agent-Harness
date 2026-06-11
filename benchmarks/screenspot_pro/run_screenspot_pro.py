@@ -82,6 +82,13 @@ def raise_sample_timeout(_signum, _frame) -> None:
     raise SampleTimeoutError("sample exceeded watchdog timeout")
 
 
+# The sample watchdog rides on SIGALRM, which only exists on POSIX. On
+# Windows the watchdog is skipped (with a notice) — the per-call
+# --exec-timeout-s budget (OPENPROGRAM_EXEC_TIMEOUT_S) still bounds each
+# model call, which is what actually hangs in practice.
+_HAS_SIGALRM = hasattr(signal, "SIGALRM")
+
+
 def list_annotation_files() -> list[str]:
     payload = urllib.request.urlopen(HF_API_ANNOTATIONS, timeout=30).read().decode()
     entries = json.loads(payload)
@@ -165,7 +172,7 @@ def ensure_sample(
             download_retries,
         )
 
-    samples = json.loads(ann_path.read_text())
+    samples = json.loads(ann_path.read_text(encoding="utf-8"))
     if index < 0 or index >= len(samples):
         raise IndexError(f"index {index} out of range for {annotation} ({len(samples)} samples)")
 
@@ -483,7 +490,7 @@ def load_locator_config(config_path: str):
         if Path(config_path).is_absolute()
         else (REPO_ROOT / config_path)
     ).resolve()
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     if path.suffix.lower() in {".yaml", ".yml"}:
         import yaml
         file_dict = yaml.safe_load(raw) or {}
@@ -732,7 +739,7 @@ def main() -> None:
         os.environ.pop("GUI_HARNESS_ERROR_EVENTS", None)
     existing_ids: set[str] = set()
     if args.skip_existing and output.exists():
-        for line in output.read_text().splitlines():
+        for line in output.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
@@ -761,13 +768,21 @@ def main() -> None:
     else:
         locator_config = ScreenSpotLocatorConfig()
     if args.sample_timeout_s > 0:
-        signal.signal(signal.SIGALRM, raise_sample_timeout)
+        if _HAS_SIGALRM:
+            signal.signal(signal.SIGALRM, raise_sample_timeout)
+        else:
+            print(
+                "[screenspot] note: --sample-timeout-s needs SIGALRM (POSIX); "
+                "skipping the sample watchdog on this platform. The per-call "
+                "--exec-timeout-s budget still applies.",
+                file=sys.stderr,
+            )
 
     annotations = list_annotation_files() if args.all_annotations else [args.annotation]
     indexes = parse_range(args.indexes)
     results = []
     abort_run = False
-    with output.open("a") as f:
+    with output.open("a", encoding="utf-8") as f:
         for annotation in annotations:
             ann_path = data_dir / "annotations" / annotation
             if not ann_path.exists():
@@ -777,7 +792,7 @@ def main() -> None:
                     args.download_timeout_s,
                     args.download_retries,
                 )
-            samples = json.loads(ann_path.read_text())
+            samples = json.loads(ann_path.read_text(encoding="utf-8"))
             annotation_indexes = indexes if indexes else list(range(len(samples)))
             for index in annotation_indexes:
                 sample_meta = samples[index]
@@ -795,7 +810,7 @@ def main() -> None:
                 retry_history: list[dict] = []
                 max_attempts = max(1, args.retry_provider_errors + 1)
                 for attempt in range(1, max_attempts + 1):
-                    if args.sample_timeout_s > 0:
+                    if args.sample_timeout_s > 0 and _HAS_SIGALRM:
                         signal.alarm(args.sample_timeout_s)
                     try:
                         result = run_one(
@@ -810,7 +825,7 @@ def main() -> None:
                             locator_config=locator_config,
                         )
                     finally:
-                        if args.sample_timeout_s > 0:
+                        if args.sample_timeout_s > 0 and _HAS_SIGALRM:
                             signal.alarm(0)
                     result["attempt"] = attempt
                     if retry_history:

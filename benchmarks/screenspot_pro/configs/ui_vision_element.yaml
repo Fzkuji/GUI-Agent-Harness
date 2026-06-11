@@ -1,0 +1,56 @@
+# ui_vision_element.yaml — UI-Vision 定位配置(元素本体惯例)。
+#
+# 与 m3_optimal 的唯一差别:target_convention: element。
+#
+# 依据(300 样本切片失败挖掘,2026-06-10):UI-Vision 的 gt 标注的是"被命名的
+# 元素本体"(通常是标签文字/图标自身的范围),而 ScreenSpot-Pro 标注的是"完成
+# 指令的可点击控件"。control 政策在 UI-Vision 上会系统性地点到标签左边 10px 的
+# checkbox(功能正确、判分错误)。element 变体只换目标选择政策,缩放机制不变;
+# SSPro 路径(target_convention 默认 control)字节不变,回归安全。
+#
+# 跑法:
+#   python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/ui_vision_element.yaml \
+#     --data-dir benchmarks/screenspot_pro/data_ui_vision --annotation ui_vision_basic.json ...
+
+locator_mode: iterative_zoom
+context_mode: single
+accumulate_images: false
+iterative_rounds: 5
+iterative_scale_mode: preserve
+iterative_max_side: 3072
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 3072
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: last_only
+crop_check_reject_mode: widen
+enable_crop_retry: true
+crop_retry_limit: 3
+enable_final_candidate_detect: true
+enable_final_recheck: false
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+iterative_prompt_layout: cache
+candidate_sort: relevance
+candidate_limit: 60
+candidate_dedup_iou: 0.0
+reasoning_first: false
+coords_crop_local: false
+runtime_timeout_s: 180
+
+# ── UI-Vision 专属 ─────────────────────────────────────────
+target_convention: element   # gt = 被命名元素本体(标签/图标),不是关联控件
