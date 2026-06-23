@@ -1,6 +1,7 @@
 {
   "run_name": "qwen25vl3b_gui_aima_like",
-  "status": "running",
+  "status": "stopped_after_user_request",
+  "stop_reason": "User asked to stop after the first batch; runner had already reached 107 samples.",
   "model": "Qwen2.5-VL-3B-Instruct",
   "api": "http://127.0.0.1:8000",
   "pipeline": "GUI Agent Harness iterative grounding",
@@ -12,5 +13,5 @@
   "wrong": 31,
   "wrong_format": 21,
   "accuracy_completed": 0.514019,
-  "updated_at": "2026-06-24T00:11:03+0800"
+  "updated_at": "2026-06-24T01:56:26+0800"
 }
