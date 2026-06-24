@@ -1,16 +1,16 @@
 {
   "run_name": "qwen25vl3b_gui_aima_like",
-  "status": "completed_to_1500_samples",
+  "status": "completed_to_1550_samples",
   "model": "Qwen2.5-VL-3B-Instruct",
   "api": "http://127.0.0.1:8000",
   "pipeline": "GUI Agent Harness iterative grounding",
   "dataset": "GUIAct",
   "annotation_file": "guiact_bbox.json",
   "total_planned": 42545,
-  "completed": 1500,
-  "correct": 718,
-  "wrong": 452,
-  "wrong_format": 330,
-  "accuracy_completed": 0.478667,
-  "updated_at": "2026-06-25T05:52:43+0800"
+  "completed": 1550,
+  "correct": 743,
+  "wrong": 467,
+  "wrong_format": 340,
+  "accuracy_completed": 0.479355,
+  "updated_at": "2026-06-25T06:04:57+0800"
 }
