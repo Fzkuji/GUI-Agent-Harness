@@ -1,0 +1,62 @@
+{
+  "run_name": "qwen25vl3b_gui_aima_like",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "pipeline": "GUI Agent Harness iterative grounding",
+  "datasets": [
+    {
+      "folder": "GUIAct",
+      "dataset": "GUIAct",
+      "annotation_file": "guiact_bbox.json",
+      "status": "completed_to_1000_samples",
+      "completed": 1000,
+      "correct": 474,
+      "wrong": 305,
+      "wrong_format": 221,
+      "accuracy": 0.474
+    },
+    {
+      "folder": "AndroidControl",
+      "dataset": "AndroidControl",
+      "annotation_file": "androidcontrol_bbox.json",
+      "status": "not_run_yet",
+      "completed": 0,
+      "correct": 0,
+      "wrong": 0,
+      "wrong_format": 0,
+      "accuracy": null
+    },
+    {
+      "folder": "Wave-UI",
+      "dataset": "Wave-UI",
+      "annotation_file": "wave_ui_bbox.json",
+      "status": "not_run_yet",
+      "completed": 0,
+      "correct": 0,
+      "wrong": 0,
+      "wrong_format": 0,
+      "accuracy": null
+    },
+    {
+      "folder": "UGround",
+      "dataset": "UGround single-round",
+      "annotation_file": "uground_bbox_single_60k.json",
+      "status": "not_run_yet",
+      "completed": 0,
+      "correct": 0,
+      "wrong": 0,
+      "wrong_format": 0,
+      "accuracy": null
+    },
+    {
+      "folder": "GTA1",
+      "dataset": "GTA1 no-web",
+      "annotation_file": "gta_data_wo_web_output_60k.json",
+      "status": "not_run_yet",
+      "completed": 0,
+      "correct": 0,
+      "wrong": 0,
+      "wrong_format": 0,
+      "accuracy": null
+    }
+  ]
+}

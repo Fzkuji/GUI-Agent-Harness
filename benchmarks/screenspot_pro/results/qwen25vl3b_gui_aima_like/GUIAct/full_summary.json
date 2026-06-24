@@ -1,6 +1,6 @@
 {
   "run_name": "qwen25vl3b_gui_aima_like",
-  "status": "running",
+  "status": "completed_to_1000_samples",
   "model": "Qwen2.5-VL-3B-Instruct",
   "api": "http://127.0.0.1:8000",
   "pipeline": "GUI Agent Harness iterative grounding",
