@@ -1,10 +1,10 @@
 # Qwen2.5-VL-3B GUIAct Run
 
-Status: completed_to_1850_samples
+Status: completed_to_1900_samples
 
 | Dataset | Completed | Planned | Correct | Wrong | Wrong format | Accuracy |
 |---|---:|---:|---:|---:|---:|---:|
-| GUIAct | 1850 | 42545 | 885 | 570 | 395 | 47.8% |
+| GUIAct | 1900 | 42545 | 904 | 588 | 408 | 47.6% |
 
 Results file: `results.jsonl`
 Errors file: `errors.jsonl`
