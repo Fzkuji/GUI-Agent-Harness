@@ -7,10 +7,10 @@
   "dataset": "GUIAct",
   "annotation_file": "guiact_bbox.json",
   "total_planned": 42545,
-  "completed": 950,
-  "correct": 448,
-  "wrong": 293,
-  "wrong_format": 209,
-  "accuracy_completed": 0.471579,
-  "updated_at": "2026-06-25T01:54:19+0800"
+  "completed": 1000,
+  "correct": 474,
+  "wrong": 305,
+  "wrong_format": 221,
+  "accuracy_completed": 0.474,
+  "updated_at": "2026-06-25T02:03:28+0800"
 }
