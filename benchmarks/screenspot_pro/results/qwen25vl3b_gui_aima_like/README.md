@@ -10,7 +10,7 @@ Wave-UI, UGround, and GTA1 do not get mixed.
 
 | Folder | Dataset | Annotation file | Status | Completed | Correct | Wrong | Wrong format | Accuracy |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| `GUIAct/` | GUIAct | `guiact_bbox.json` | completed to 1000 samples | 1000 | 474 | 305 | 221 | 47.4% |
+| `GUIAct/` | GUIAct | `guiact_bbox.json` | completed to 1050 samples | 1050 | 501 | 316 | 233 | 47.7% |
 | `AndroidControl/` | AndroidControl | `androidcontrol_bbox.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
 | `Wave-UI/` | Wave-UI | `wave_ui_bbox.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
 | `UGround/` | UGround single-round | `uground_bbox_single_60k.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
@@ -29,35 +29,3 @@ Each dataset folder should use the same file names:
 Large intermediate crops, screenshots, and per-step traces should remain under:
 
 `/home/zichuanfu2/GUI-Attention-Harness/runs/qwen25vl3b_gui_aima_like/work/`
-
-## JSONL Schema
-
-Each row in `results.jsonl` follows the existing ScreenSpot-style format:
-
-```json
-{
-  "sample_id": "GUIAct_xxx",
-  "dataset": "GUIAct",
-  "annotation_file": "guiact_bbox.json",
-  "image_path": "/absolute/path/to/image.png",
-  "instruction": "click ...",
-  "gt_bbox": [x1, y1, x2, y2],
-  "prediction_px": [x, y],
-  "prediction_norm": [0.5, 0.5],
-  "correctness": "correct",
-  "location": {
-    "source": "gui_agent_harness",
-    "grounding_type": "iterative_zoom_crop_refine",
-    "reasoning": "...",
-    "api_model": "Qwen2.5-VL-3B-Instruct"
-  },
-  "error": null,
-  "elapsed_s": 0.0
-}
-```
-
-`correctness` should be one of:
-
-- `correct`: predicted point falls inside the ground-truth box.
-- `wrong`: predicted point is outside the ground-truth box.
-- `wrong_format`: no valid point was produced.
