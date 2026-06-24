@@ -4,7 +4,7 @@ Status: running
 
 | Dataset | Completed | Planned | Correct | Wrong | Wrong format | Accuracy |
 |---|---:|---:|---:|---:|---:|---:|
-| GUIAct | 150 | 42545 | 71 | 46 | 33 | 47.3% |
+| GUIAct | 200 | 42545 | 97 | 64 | 39 | 48.5% |
 
 Results file: `results.jsonl`
 Errors file: `errors.jsonl`
