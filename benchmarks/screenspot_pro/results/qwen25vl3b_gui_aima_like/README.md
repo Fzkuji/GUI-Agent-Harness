@@ -10,7 +10,7 @@ Wave-UI, UGround, and GTA1 do not get mixed.
 
 | Folder | Dataset | Annotation file | Status | Completed | Correct | Wrong | Wrong format | Accuracy |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| `GUIAct/` | GUIAct | `guiact_bbox.json` | completed to 1450 samples | 1450 | 691 | 439 | 320 | 47.7% |
+| `GUIAct/` | GUIAct | `guiact_bbox.json` | completed to 1500 samples | 1500 | 718 | 452 | 330 | 47.9% |
 | `AndroidControl/` | AndroidControl | `androidcontrol_bbox.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
 | `Wave-UI/` | Wave-UI | `wave_ui_bbox.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
 | `UGround/` | UGround single-round | `uground_bbox_single_60k.json` | not run yet | 0 | 0 | 0 | 0 | N/A |
