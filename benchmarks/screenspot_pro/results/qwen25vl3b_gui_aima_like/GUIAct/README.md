@@ -12,7 +12,7 @@ Pipeline: GUI Agent Harness iterative grounding.
 
 | Completed | Correct | Wrong | Wrong format | Accuracy |
 |---:|---:|---:|---:|---:|
-| 2150 | 1010 | 669 | 471 | 47.0% |
+| 2184 | 1024 | 679 | 481 | 46.9% |
 
 The current run contains unique GUIAct sample ids only. The runner reads
 `results.jsonl` before each batch and skips existing sample ids.
