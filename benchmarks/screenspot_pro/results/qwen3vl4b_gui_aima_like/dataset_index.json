@@ -7,12 +7,12 @@
       "folder": "GUIAct",
       "dataset": "GUIAct",
       "annotation_file": "guiact_bbox.json",
-      "status": "completed_to_300_samples",
-      "completed": 300,
-      "correct": 202,
-      "wrong": 88,
-      "wrong_format": 10,
-      "accuracy": 0.673333
+      "status": "completed_to_350_samples",
+      "completed": 350,
+      "correct": 237,
+      "wrong": 102,
+      "wrong_format": 11,
+      "accuracy": 0.677143
     },
     {
       "folder": "AndroidControl",
