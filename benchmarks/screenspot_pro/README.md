@@ -130,20 +130,58 @@ Each model has a *native* coordinate format; feeding the wrong format costs
 3. `use_hints` on/off at the winning format.
 4. 3-probe diagnostic to classify the model.
 
-**Directory layout** (scripts grouped by function; core modules kept at root
-because they are imported/subprocess-called by the others)
-- root: `model_profiles.py`, `run_screenspot_pro.py`, `refusal_judge.py`,
-  `prepare_gui_grounding_datasets.py` — shared modules.
-- `runners/` — per-model / per-benchmark runners (`run_sspro_native.py`,
-  `run_sspro_aliyun.py`, `run_sspro_codex.py`, `run_sspro_singleshot.py`,
-  `run_sspro_slice_arm.py`, `run_osworld_g.py`, `run_osworld_g_refusal.py`).
-- `data_prep/` — dataset builders (`prepare_*`, `make_*_slice`).
-- `reporting/` — aggregation & reports (`report_*`, `sync_full_final`,
-  `finalize_full_results`, `count_completed_range`, `update_network_retry_queue`).
-- `launchers/` — detached full-run starters (`start_*`).
-- `figures/` — paper-figure generators.
-- `configs/` — harness pipeline configs (`legacy_baseline.yaml`, `sspro_stack_zoom.yaml`).
-- `docs/` — reports and research logs (below).
+**Directory structure** — scripts are grouped by function; the four
+sibling-imported / subprocess-called modules stay at the root so every caller
+resolves them.
+
+```
+benchmarks/screenspot_pro/
+├── model_profiles.py              # per-model strategy registry (imported by runners)
+├── run_screenspot_pro.py          # canonical harness (iterative-zoom) runner; imported + subprocess-called
+├── refusal_judge.py               # feasibility/refusal classifier layer (imported)
+├── prepare_gui_grounding_datasets.py  # UI-Vision/MMBench normalizer (imported + subprocess-called)
+├── __init__.py
+│
+├── runners/                       # per-model / per-benchmark evaluation runners
+│   ├── run_sspro_native.py        #   unified native single-shot (profile-driven) ← main SOP entry
+│   ├── run_sspro_aliyun.py        #   SSPro via Aliyun Token-Plan VLMs (harness)
+│   ├── run_sspro_codex.py         #   SSPro via official Codex CLI (gpt-5.5)
+│   ├── run_sspro_singleshot.py    #   pure single-call GPT-5.5 baseline
+│   ├── run_sspro_slice_arm.py     #   SSPro-300 slice arm driver
+│   ├── run_osworld_g.py           #   OSWorld-G harness run
+│   └── run_osworld_g_refusal.py   #   OSWorld-G refusal-layer eval
+│
+├── data_prep/                     # dataset builders / slice makers
+│   ├── prepare_osworld_g.py
+│   ├── prepare_screenspot_versions.py
+│   ├── make_sspro_slice.py
+│   └── make_ui_vision_slice.py
+│
+├── reporting/                     # aggregation, reports, result maintenance
+│   ├── report_full_final.py
+│   ├── report_screenspot_versions.py
+│   ├── report_gui_grounding_datasets.py
+│   ├── report_ui_vision_slice.py
+│   ├── sync_full_final.py
+│   ├── finalize_full_results.py
+│   ├── count_completed_range.py
+│   └── update_network_retry_queue.py
+│
+├── launchers/                     # detached full-run starters (screen sessions)
+│   ├── start_full_autoretry.py
+│   ├── start_gui_grounding_datasets.py
+│   ├── start_screenspot_versions.py
+│   └── start_wrong_format_retry.py
+│
+├── figures/                       # paper-figure generators
+│   ├── generate_paper_figures.py
+│   └── render_zoom_example.py
+│
+├── configs/                       # harness pipeline configs (legacy_baseline / sspro_stack_zoom)
+├── results/<model>/               # tracked per-model result summaries
+├── data*/                         # local benchmark data (gitignored)
+└── docs/                          # reports + research logs (below)
+```
 
 **Per-model SOP entry points**: `model_profiles.py` (registry) +
 `runners/run_sspro_native.py` (native single-shot) + `run_screenspot_pro.py`
