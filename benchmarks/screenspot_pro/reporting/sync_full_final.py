@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_BASE_RUN = Path("runs/screenspot_pro/iter_zoom_recrop_full_parallel_20260601_2056")
 DEFAULT_FINAL_DIR = Path("runs/screenspot_pro/iter_zoom_recrop_full_final_20260602")
 DEFAULT_LEGACY_OVERLAYS = (

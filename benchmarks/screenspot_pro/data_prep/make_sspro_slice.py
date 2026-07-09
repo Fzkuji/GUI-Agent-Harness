@@ -13,7 +13,7 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 SEED = 42
 TARGET = 300
 

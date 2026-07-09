@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FINAL_DIR = Path("runs/screenspot_pro/iter_zoom_recrop_full_final_20260602")
 
 
@@ -89,7 +89,7 @@ def main() -> int:
     final_dir = Path(args.final_dir)
     run_command([
         args.python,
-        "benchmarks/screenspot_pro/sync_full_final.py",
+        "benchmarks/screenspot_pro/reporting/sync_full_final.py",
         "--final-dir",
         str(final_dir),
     ])
@@ -97,7 +97,7 @@ def main() -> int:
     if not args.skip_autoretry:
         result = run_command([
             args.python,
-            "benchmarks/screenspot_pro/start_full_autoretry.py",
+            "benchmarks/screenspot_pro/launchers/start_full_autoretry.py",
             "--cooldown-minutes",
             str(args.cooldown_minutes),
             "--final-dir",

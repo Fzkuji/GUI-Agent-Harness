@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parents[1]
 OUT = REPO / "runs" / "figures" / "example"
 OUT.mkdir(parents=True, exist_ok=True)

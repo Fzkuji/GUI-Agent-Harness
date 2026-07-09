@@ -13,7 +13,7 @@ import glob
 import json
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parents[1]
 OLD_SP = {"basic": 73.1, "functional": 67.0, "spatial": 66.0}
 

@@ -23,7 +23,7 @@ from zipfile import BadZipFile, ZipFile, is_zipfile
 from PIL import Image
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PROXY = "http://127.0.0.1:6152"
 
 DATASETS: dict[str, dict[str, Any]] = {

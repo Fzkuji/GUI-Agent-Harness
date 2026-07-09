@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PYTHON = "../GUI-Agent-Harness-run-origin-main/.venv/bin/python"
 DEFAULT_SCREEN_NAME = "screenspot_wf_retry"
 DEFAULT_METADATA = Path("runs/screenspot_pro/wf_retry_latest.json")

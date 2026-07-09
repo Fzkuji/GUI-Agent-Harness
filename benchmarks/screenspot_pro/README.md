@@ -130,15 +130,26 @@ Each model has a *native* coordinate format; feeding the wrong format costs
 3. `use_hints` on/off at the winning format.
 4. 3-probe diagnostic to classify the model.
 
-**Core files**
-- `model_profiles.py` — per-model strategy registry (format / pipeline / probe verdicts).
-- `run_sspro_native.py` — unified native single-shot runner (profile-driven).
-- `run_screenspot_pro.py` — canonical harness (iterative-zoom) runner.
-- `gui_harness/planning/coord_formats.py` — coordinate-format single source of truth.
+**Directory layout** (scripts grouped by function; core modules kept at root
+because they are imported/subprocess-called by the others)
+- root: `model_profiles.py`, `run_screenspot_pro.py`, `refusal_judge.py`,
+  `prepare_gui_grounding_datasets.py` — shared modules.
+- `runners/` — per-model / per-benchmark runners (`run_sspro_native.py`,
+  `run_sspro_aliyun.py`, `run_sspro_codex.py`, `run_sspro_singleshot.py`,
+  `run_sspro_slice_arm.py`, `run_osworld_g.py`, `run_osworld_g_refusal.py`).
+- `data_prep/` — dataset builders (`prepare_*`, `make_*_slice`).
+- `reporting/` — aggregation & reports (`report_*`, `sync_full_final`,
+  `finalize_full_results`, `count_completed_range`, `update_network_retry_queue`).
+- `launchers/` — detached full-run starters (`start_*`).
+- `figures/` — paper-figure generators.
 - `configs/` — harness pipeline configs (`legacy_baseline.yaml`, `sspro_stack_zoom.yaml`).
+- `docs/` — reports and research logs (below).
 
-**Reproduction probes** — `probe_*.py` (format / hints / thinking / reversal),
-each referenced from `docs/COORDINATE_FORMAT_FINDINGS.md` §10.
+**Per-model SOP entry points**: `model_profiles.py` (registry) +
+`runners/run_sspro_native.py` (native single-shot) + `run_screenspot_pro.py`
+(harness) + `gui_harness/planning/coord_formats.py` (format source of truth).
+The one-off `probe_*.py` diagnostics behind the findings live in git history
+(see `docs/COORDINATE_FORMAT_FINDINGS.md` §10).
 
 **Docs** (in `docs/`)
 - `GROUNDING_CAPABILITY_REPORT.html` — clean results report (two capability types).

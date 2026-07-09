@@ -19,7 +19,7 @@ import argparse
 import json
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 OLD_RESULTS = HERE.parent / "ui_vision" / "results" / "gpt-5.5" / "results.jsonl"
 SPLITS = ("basic", "functional", "spatial")
 

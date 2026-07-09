@@ -28,8 +28,8 @@ without committing local datasets, screenshots, JSONL outputs, or work caches.
 - Final result: 1581/1581 completed, 1390 correct / 191 wrong / 0 wrong_format
 - Accuracy: 87.92%
 - Ignored infrastructure rows during merge: 81
-- Reporter: `benchmarks/screenspot_pro/report_full_final.py`
-- Merger: `benchmarks/screenspot_pro/sync_full_final.py`
+- Reporter: `benchmarks/screenspot_pro/reporting/report_full_final.py`
+- Merger: `benchmarks/screenspot_pro/reporting/sync_full_final.py`
 
 ## ScreenSpot v2
 
@@ -63,7 +63,7 @@ without committing local datasets, screenshots, JSONL outputs, or work caches.
   - mobile-text 285/290 (98.28%)
   - web-icon 194/203 (95.57%)
   - web-text 227/234 (97.01%)
-- Reporter: `benchmarks/screenspot_pro/report_screenspot_versions.py`
+- Reporter: `benchmarks/screenspot_pro/reporting/report_screenspot_versions.py`
 
 ## Claude ScreenSpot-Pro 78-Sample Comparison
 

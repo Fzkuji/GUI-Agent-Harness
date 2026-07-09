@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FINAL_DIR = Path("runs/screenspot_pro/iter_zoom_recrop_full_final_20260602")
 DEFAULT_SCREEN = "screenspot_full_final_autoretry"
 DEFAULT_PYTHON = os.environ.get("GUI_HARNESS_PYTHON", sys.executable)
@@ -25,7 +25,7 @@ DEFAULT_MODEL = "gpt-5.5"
 
 def run_sync(final_dir: Path, python: str) -> dict[str, Any]:
     subprocess.run(
-        [python, "benchmarks/screenspot_pro/sync_full_final.py", "--final-dir", str(final_dir)],
+        [python, "benchmarks/screenspot_pro/reporting/sync_full_final.py", "--final-dir", str(final_dir)],
         cwd=REPO_ROOT,
         check=True,
         text=True,
@@ -145,7 +145,7 @@ def build_screen_script(
     lines.append("  wait \"$pid\" || status=1")
     lines.append("done")
     lines.append(
-        shell_quote([python, "benchmarks/screenspot_pro/sync_full_final.py", "--final-dir", str(final_dir)])
+        shell_quote([python, "benchmarks/screenspot_pro/reporting/sync_full_final.py", "--final-dir", str(final_dir)])
     )
     lines.append("exit \"$status\"")
     return "\n".join(lines) + "\n"

@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parents[1]
 ANN_DIR = HERE / "data" / "annotations"
 IMG_DIR = HERE / "data" / "images"

@@ -18,7 +18,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 DATA = HERE / "data_osworld_g"
 ANN_DIR = DATA / "annotations"
 IMG_DIR = DATA / "raw_images"
