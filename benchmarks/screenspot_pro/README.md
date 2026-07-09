@@ -71,7 +71,7 @@ Each model has a *native* coordinate format; feeding the wrong format costs
   **harness +21.3pt**, the clearest demonstration our method adds real value.
 - Format ablation: point2d 27% > xy1000 24% > frac01 22% > abs 0%.
 - 3-probe evidence/robustness both positive → general-reasoning.
-- Results: `results/full_m3_optimal/` (harness), `runs/sspro_native/MiniMax-M3/` (single-shot).
+- Results: `results/minimax_m3/` (harness), `runs/sspro_native/MiniMax-M3/` (single-shot).
 
 ### kimi-k2.6  ·  native format: {x,y} + [0,1] fractions
 - Native single-shot **56.6%** (full 1581, frac01). Harness not paired-tested.
@@ -147,6 +147,6 @@ each referenced from `docs/COORDINATE_FORMAT_FINDINGS.md` §10.
 - `BEST_CONFIG.md`, `UI_VISION_OPTIMIZATION_LOG.md` — config/experiment logs.
 
 **Result directories** (`results/` tracked; `runs/` local, gitignored)
-- `results/<model>/` — tracked summaries (gpt_5_5, claude_opus_4_7/4_8, full_m3_optimal).
+- `results/<model>/` — tracked summaries (gpt_5_5, claude_opus_4_7/4_8, minimax_m3).
 - `runs/sspro_native/<model>/` — this-session single-shot per-sample records.
 - `runs/sspro_aliyun/<model>/`, `runs/sspro_stack/` — harness per-sample records.

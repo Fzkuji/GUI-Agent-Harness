@@ -34,7 +34,7 @@ def load(glob_pat):
 
 def uiv_stats():
     old = {}
-    f = HERE / "results/ui_vision_gpt_5_5/results.jsonl"
+    f = HERE.parent / "ui_vision" / "results" / "gpt-5.5" / "results.jsonl"
     for l in open(f, encoding="utf-8"):
         r = json.loads(l)
         old[r["sample_id"]] = r

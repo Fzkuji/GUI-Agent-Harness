@@ -40,7 +40,7 @@ from prepare_gui_grounding_datasets import (  # noqa: E402
 
 SPLITS = ("basic", "functional", "spatial")
 DATA_DIR = HERE / "data_ui_vision"
-OLD_RESULTS = HERE / "results" / "ui_vision_gpt_5_5" / "results.jsonl"
+OLD_RESULTS = HERE.parent / "ui_vision" / "results" / "gpt-5.5" / "results.jsonl"
 
 
 def stratified_indexes(sizes: dict[str, int], total: int, seed: int) -> dict[str, list[int]]:

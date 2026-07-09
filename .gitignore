@@ -68,9 +68,9 @@ gui_harness/memory/apps/
 uv.lock
 
 # 实验结果（大量本地 jsonl，不入库）
-# 用 /* 忽略 results 下每个子项，但放行 full_m3_optimal 这一批入库保存
+# 用 /* 忽略 results 下每个子项，但放行 minimax_m3 这一批入库保存
 benchmarks/screenspot_pro/results/*
-!benchmarks/screenspot_pro/results/full_m3_optimal/
+!benchmarks/screenspot_pro/results/minimax_m3/
 # UI-Vision 原始数据集（1.4G）和归一化后的图，只保留 prepare 脚本
 benchmarks/ui_vision_raw/
 benchmarks/ui_vision/data/

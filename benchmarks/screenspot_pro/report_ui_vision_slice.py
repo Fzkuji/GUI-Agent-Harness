@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-OLD_RESULTS = HERE / "results" / "ui_vision_gpt_5_5" / "results.jsonl"
+OLD_RESULTS = HERE.parent / "ui_vision" / "results" / "gpt-5.5" / "results.jsonl"
 SPLITS = ("basic", "functional", "spatial")
 
 
