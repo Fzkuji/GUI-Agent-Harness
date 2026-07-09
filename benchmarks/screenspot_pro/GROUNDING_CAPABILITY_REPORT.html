@@ -1,0 +1,706 @@
+<title>GUI Grounding 的两种能力:通用视觉推理 vs 训练特化技能</title>
+<style>
+  :root {
+    --bg: #f5f6fa; --surface: #ffffff; --surface-raised: #fbfbfd;
+    --ink: #1b2331; --ink-muted: #5b6472; --ink-faint: #8891a0; --border: #e1e4ea;
+    --accent: #2a4b8d; --accent-ink: #1c3163; --accent-soft: #e9edf9;
+    --pos: #1f7a5c; --pos-soft: #e2f3ec; --pos-ink: #145940;
+    --neg: #b23b3f; --neg-soft: #fbe9e8; --neg-ink: #832a2d;
+    --warn: #ebd26c; --warn-soft: #fbf3d5;
+    --mono-bg: #eef0f5;
+    --shadow: 0 1px 2px rgba(20,24,40,.04), 0 8px 24px rgba(20,24,40,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141c; --surface: #161c27; --surface-raised: #1b2230;
+    --ink: #e8eaf1; --ink-muted: #9aa3b5; --ink-faint: #6b7386; --border: #2a3242;
+    --accent: #86a4ec; --accent-ink: #c1d0f7; --accent-soft: #1c2740;
+    --pos: #57c79b; --pos-soft: #16302a; --pos-ink: #8fe0bd;
+    --neg: #e2807f; --neg-soft: #3a2023; --neg-ink: #f0a8a6;
+    --warn: #ebd26c; --warn-soft: #3a3210;
+    --mono-bg: #1c2330; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141c; --surface: #161c27; --surface-raised: #1b2230;
+      --ink: #e8eaf1; --ink-muted: #9aa3b5; --ink-faint: #6b7386; --border: #2a3242;
+      --accent: #86a4ec; --accent-ink: #c1d0f7; --accent-soft: #1c2740;
+      --pos: #57c79b; --pos-soft: #16302a; --pos-ink: #8fe0bd;
+      --neg: #e2807f; --neg-soft: #3a2023; --neg-ink: #f0a8a6;
+      --mono-bg: #1c2330; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 780px; margin: 0 auto; padding: 64px 28px 120px; }
+  .eyebrow {
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 12.5px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px;
+  }
+  h1 {
+    font-family: Georgia,"Iowan Old Style","Times New Roman",serif; font-size: 33px;
+    line-height: 1.24; font-weight: 600; margin: 0 0 16px; text-wrap: balance;
+  }
+  .abstract {
+    font-size: 16.5px; color: var(--ink-muted); max-width: 68ch; text-wrap: balance;
+    margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border);
+  }
+  h2 {
+    font-family: Georgia,"Iowan Old Style",serif; font-size: 22px; font-weight: 600;
+    margin: 52px 0 14px;
+  }
+  h3 { font-size: 16px; font-weight: 650; margin: 26px 0 10px; }
+  p { margin: 0 0 14px; }
+  strong { font-weight: 650; }
+  code {
+    font-family: ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    background: var(--mono-bg); padding: 1.5px 6px; border-radius: 4px;
+    font-size: .87em; color: var(--accent-ink);
+  }
+  .thesis {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 24px 26px; margin: 0 0 44px; box-shadow: var(--shadow);
+  }
+  .thesis .label {
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--accent); margin-bottom: 10px; font-weight: 600;
+  }
+  .thesis p { font-size: 16px; margin-bottom: 0; }
+  .flow { display: flex; align-items: center; gap: 8px; font-family: ui-monospace,"SF Mono",Consolas,monospace;
+    font-size: 13px; flex-wrap: wrap; margin: 4px 0 18px; }
+  .flow .step { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
+  .flow .arrow { color: var(--ink-faint); }
+  .probe-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 0 0 20px; }
+  @media (max-width: 680px) { .probe-grid { grid-template-columns: 1fr; } }
+  .probe-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .probe-card .probe-id { font-family: ui-monospace,monospace; font-size: 11.5px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; font-weight: 650; }
+  .probe-card .probe-name { font-weight: 650; margin-bottom: 8px; font-size: 14.5px; }
+  .probe-card p { font-size: 13px; color: var(--ink-muted); margin-bottom: 0; }
+  .table-wrap { overflow-x: auto; margin: 4px 0 24px; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); }
+  thead th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--ink-faint); font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; background: var(--surface-raised);
+  }
+  tbody td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child, thead th:first-child { white-space: normal; font-weight: 550; }
+  .num-cell { font-family: ui-monospace,"SF Mono",Consolas,monospace; white-space: nowrap; }
+  .pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; font-family: ui-monospace,"SF Mono",Consolas,monospace; }
+  .pill.pos { background: var(--pos-soft); color: var(--pos-ink); }
+  .pill.neg { background: var(--neg-soft); color: var(--neg-ink); }
+  .pill.best { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+  .sub { font-size: 11.5px; color: var(--ink-faint); display: block; margin-top: 2px; }
+  .verdict-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 4px 0 8px; }
+  @media (max-width: 620px) { .verdict-grid { grid-template-columns: 1fr; } }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .verdict-card .model-name { font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 12.5px; color: var(--ink-faint); margin-bottom: 4px; }
+  .verdict-card .verdict-title { font-size: 17px; font-weight: 650; margin-bottom: 10px; }
+  .verdict-card .verdict-title.type-shortcut { color: var(--neg-ink); }
+  .verdict-card .verdict-title.type-mixed { color: var(--ink-muted); }
+  .verdict-card .verdict-title.type-reasoning { color: var(--accent-ink); }
+  .verdict-card p { font-size: 13.5px; color: var(--ink-muted); margin-bottom: 0; }
+  .divider { height: 1px; background: var(--border); margin: 52px 0 0; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--ink-faint); }
+  .limits { list-style: none; padding: 0; margin: 8px 0; }
+  .limits li { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; display: flex; gap: 10px; }
+  .limits li:last-child { border-bottom: none; }
+  .limits .tag {
+    flex-shrink: 0; font-family: ui-monospace,monospace; font-size: 11px; padding: 2px 8px; border-radius: 5px;
+    background: var(--mono-bg); color: var(--ink-faint); height: fit-content; margin-top: 2px;
+  }
+  .bars { margin: 4px 0 6px; }
+  .bars-label { font-family: ui-monospace,monospace; font-size: 12.5px; color: var(--ink-faint); margin: 18px 0 8px; }
+  .bars-label:first-child { margin-top: 0; }
+  .bar-row { display: grid; grid-template-columns: 168px 1fr 52px; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .bar-row .bl { font-size: 13.5px; color: var(--ink-muted); white-space: nowrap; }
+  .bar-row.hl .bl { color: var(--ink); font-weight: 650; }
+  .bar-track { background: var(--mono-bg); border-radius: 6px; height: 19px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; background: var(--ink-faint); }
+  .bar-fill.best { background: var(--accent); }
+  .bar-row .bv { font-family: ui-monospace,monospace; font-size: 12.5px; text-align: right; font-weight: 600; }
+  .format-native { font-size: 13.5px; color: var(--ink-muted); margin: 2px 0 18px; }
+
+  /* diagnostic fingerprint: diverging bars, shared scale across all probes */
+  .fingerprint { margin: 4px 0 28px; }
+  .fp-scale {
+    display: grid; grid-template-columns: 130px 1fr; gap: 12px; margin-bottom: 4px;
+  }
+  .fp-scale-track {
+    position: relative; font-family: ui-monospace,monospace; font-size: 10.5px; color: var(--ink-faint);
+    display: flex; justify-content: space-between; padding: 0 2px;
+  }
+  .fp-group {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px 14px; margin-bottom: 12px; box-shadow: var(--shadow);
+  }
+  .fp-model-name {
+    font-weight: 650; font-size: 14.5px; margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px;
+  }
+  .fp-model-name .fp-verdict {
+    font-family: ui-monospace,monospace; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px;
+  }
+  .fp-verdict.shortcut { background: var(--neg-soft); color: var(--neg-ink); }
+  .fp-verdict.reasoning { background: var(--pos-soft); color: var(--pos-ink); }
+  .fp-verdict.mixed { background: var(--mono-bg); color: var(--ink-muted); }
+  .fp-row { display: grid; grid-template-columns: 130px 1fr 74px; align-items: center; gap: 12px; margin-bottom: 7px; }
+  .fp-row .fp-label { font-size: 12.5px; color: var(--ink-faint); font-family: ui-monospace,monospace; }
+  .fp-track { position: relative; height: 18px; background: var(--mono-bg); border-radius: 4px; overflow: visible; }
+  .fp-track::after {
+    content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1.5px;
+    background: var(--ink-faint); opacity: .5; transform: translateX(-50%);
+  }
+  .fp-fill { position: absolute; top: 1px; bottom: 1px; border-radius: 3px; }
+  .fp-fill.pos { left: 50%; background: var(--pos); }
+  .fp-fill.neg { right: 50%; background: var(--neg); }
+  .fp-row .fp-val { font-family: ui-monospace,monospace; font-size: 12px; text-align: right; font-weight: 600; }
+  .fp-row .fp-val.pos-t { color: var(--pos-ink); }
+  .fp-row .fp-val.neg-t { color: var(--neg-ink); }
+  .fp-row .fp-val.na { color: var(--ink-faint); font-weight: 400; font-style: italic; font-size: 11.5px; }
+  /* unipolar bar for format-robustness (std-dev, 0..30pt, smaller=better — no sign, so no center split) */
+  .fp-fill-uni { position: absolute; top: 1px; bottom: 1px; left: 0; border-radius: 3px; }
+  .fp-fill-uni.good { background: var(--pos); }
+  .fp-fill-uni.mid { background: var(--warn); }
+  .fp-fill-uni.bad { background: var(--neg); }
+
+  /* noise band: approx ±1 SE for a proportion-difference at n≈48-50, overlaid on any -30..+30 track */
+  .noise-band {
+    position: absolute; left: 33.3%; width: 33.4%; top: 0; bottom: 0;
+    background: repeating-linear-gradient(45deg, var(--ink-faint) 0 2px, transparent 2px 7px);
+    opacity: .18; pointer-events: none;
+  }
+  .noise-caption {
+    font-size: 12px; color: var(--ink-faint); margin: 2px 0 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .noise-caption .swatch {
+    width: 22px; height: 12px; border-radius: 2px; flex-shrink: 0;
+    background: repeating-linear-gradient(45deg, var(--ink-faint) 0 2px, transparent 2px 7px); opacity: .5;
+  }
+
+  /* format-robustness slope chart: native -> foreign hint-effect, does the sign flip? */
+  .slope-wrap { margin: 4px 0 28px; }
+  .slope-axis {
+    display: grid; grid-template-columns: 140px 1fr; gap: 14px; margin-bottom: 10px;
+  }
+  .slope-axis-track {
+    display: flex; justify-content: space-between; font-family: ui-monospace,monospace;
+    font-size: 10.5px; color: var(--ink-faint); padding: 0 2px;
+  }
+  .slope-row {
+    display: grid; grid-template-columns: 140px 1fr 100px; align-items: center; gap: 14px;
+    margin-bottom: 14px;
+  }
+  .slope-row .slope-model { font-size: 14px; font-weight: 650; }
+  .slope-row .slope-verdict-tag {
+    font-family: ui-monospace,monospace; font-size: 10.5px; padding: 3px 8px; border-radius: 5px;
+    text-align: center; font-weight: 600; white-space: nowrap;
+  }
+  .slope-verdict-tag.flip { background: var(--neg-soft); color: var(--neg-ink); }
+  .slope-verdict-tag.stable { background: var(--pos-soft); color: var(--pos-ink); }
+  .slope-verdict-tag.partial { background: var(--warn-soft); color: var(--warn); }
+  .slope-verdict-tag.weak { background: var(--mono-bg); color: var(--ink-faint); }
+  .slope-track { position: relative; height: 34px; }
+  .slope-track .slope-zero {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px; background: var(--ink-faint);
+    opacity: .55; transform: translateX(-50%);
+  }
+  .slope-track .slope-zero::after {
+    content: '0'; position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+    font-family: ui-monospace,monospace; font-size: 9.5px; color: var(--ink-faint);
+  }
+  .slope-line {
+    position: absolute; top: 50%; height: 2.5px; transform: translateY(-50%); border-radius: 2px;
+  }
+  .slope-line.flip { background: linear-gradient(90deg, var(--neg), var(--pos)); }
+  .slope-line.stable-pos { background: var(--pos); opacity: .55; }
+  .slope-line.stable-neg { background: var(--neg); opacity: .55; }
+  .slope-line.partial-pos { background: repeating-linear-gradient(90deg, var(--warn) 0 6px, transparent 6px 10px); opacity: .8; }
+  .slope-dot {
+    position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%;
+    transform: translate(-50%, -50%); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border);
+  }
+  .slope-dot.native { background: var(--accent); z-index: 2; }
+  .slope-dot.foreign { background: var(--ink-faint); z-index: 2; }
+  .slope-legend {
+    display: flex; gap: 20px; font-size: 12.5px; color: var(--ink-muted); margin: 6px 0 20px;
+  }
+  .slope-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .slope-legend .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .slope-legend .dot.native { background: var(--accent); }
+  .slope-legend .dot.foreign { background: var(--ink-faint); }
+
+  /* true format robustness: spread of RAW accuracy across the 4 coordinate formats */
+  .robust-row {
+    display: grid; grid-template-columns: 150px 1fr 90px; align-items: center; gap: 14px;
+    margin-bottom: 16px;
+  }
+  .robust-row .robust-model { font-size: 14px; }
+  .robust-row .robust-model .std-val {
+    display: block; font-family: ui-monospace,monospace; font-size: 11px; color: var(--ink-faint); margin-top: 2px;
+  }
+  .robust-track { position: relative; height: 30px; background: var(--mono-bg); border-radius: 6px; }
+  .robust-range {
+    position: absolute; top: 50%; height: 4px; background: var(--accent); opacity: .35;
+    transform: translateY(-50%); border-radius: 2px;
+  }
+  .robust-dot {
+    position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: var(--accent);
+    transform: translate(-50%,-50%); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border);
+  }
+  .robust-row .robust-verdict {
+    font-family: ui-monospace,monospace; font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 5px; text-align: center; white-space: nowrap;
+  }
+  .robust-verdict.good { background: var(--pos-soft); color: var(--pos-ink); }
+  .robust-verdict.mid { background: var(--warn-soft); color: var(--warn); }
+  .robust-verdict.bad { background: var(--neg-soft); color: var(--neg-ink); }
+  .robust-axis {
+    display: grid; grid-template-columns: 150px 1fr 90px; gap: 14px; margin-bottom: 6px;
+  }
+  .robust-axis-track {
+    display: flex; justify-content: space-between; font-family: ui-monospace,monospace;
+    font-size: 10.5px; color: var(--ink-faint); padding: 0 2px;
+  }
+</style>
+
+<div class="page">
+
+  <div class="eyebrow">ScreenSpot-Pro · 研究结论报告</div>
+  <h1>GUI Grounding 的两种能力:通用视觉推理,还是训练出的特化捷径</h1>
+  <p class="abstract">
+    对四个模型(按格式鲁棒性从优到劣排列:GPT-5.5、MiniMax-M3、kimi-k2.6、qwen3.7-plus)的坐标
+    定位能力做跨模型诊断。
+    核心问题不是"哪个模型分数更高",而是:<strong>这个分数是不是靠真正理解画面得到的</strong>。
+    我们提出并验证了一套三探针诊断法,把模型的坐标输出能力区分为两类——可被证据和推理持续改进的
+    <strong>通用视觉推理能力</strong>,与监督训练出的、换个表达方式就近乎失效的<strong>格式绑定
+    特化捷径</strong>。我们的方法(证据脚手架 + 迭代裁剪)只对前者有效,这不是方法的局限,而是
+    对能力性质的正确识别。
+  </p>
+
+  <div class="thesis">
+    <div class="label">核心论点</div>
+    <p>
+      单发定位分数高,不等于模型"看懂"了画面。一个模型如果只在训练时用过的坐标表达方式下准确,
+      换成等价的另一种表达就崩到接近零,说明它在做的是命中记忆、不是理解场景。
+      <strong>真正值得投入工程的,是那种不挑输出格式、能被证据和多轮修正持续放大的能力</strong>——
+      这正是我们的方法要挖掘的目标,也是三探针诊断法要识别出来的信号。
+    </p>
+  </div>
+
+  <h2>方法:三探针诊断法</h2>
+  <div class="flow">
+    <span class="step">A · thinking 开关</span><span class="arrow">→</span>
+    <span class="step">B · 母语格式 + 证据</span><span class="arrow">→</span>
+    <span class="step">C · 陌生格式重测 B</span>
+  </div>
+  <div class="probe-grid">
+    <div class="probe-card">
+      <div class="probe-id">探针 A</div>
+      <div class="probe-name">推理敏感性</div>
+      <p>打开显式 thinking。通用推理能力应更准或持平;特化捷径会变差——想得越久,越偏离已经
+      训练好的直接映射。</p>
+    </div>
+    <div class="probe-card">
+      <div class="probe-id">探针 B</div>
+      <div class="probe-name">证据敏感性</div>
+      <p>在模型自己最擅长的格式下注入检测候选证据。通用推理能力应更准(真的在权衡信息);
+      特化捷径会变差——证据打断了训练好的直通路径。</p>
+    </div>
+    <div class="probe-card">
+      <div class="probe-id">探针 C</div>
+      <div class="probe-name">证据符号一致性</div>
+      <p>把模型逼到没训练过的格式,重做探针 B,只看证据效应的<strong>符号</strong>变没变(不要求
+      数值本身一致——数值本身是否稳定是另一件事,见下文)。通用推理能力符号不变;特化捷径会
+      <strong>反转</strong>——这一条最有力,反转现象没法用"模型能力不够"解释。</p>
+    </div>
+  </div>
+
+  <h2>每个模型习惯的坐标输出格式</h2>
+  <p>
+    在做诊断之前必须先找到每个模型自己的"母语"——同一批 50 题,单发、无提示,只切换坐标输出格式
+    (绝对像素 / <code>[0,1]</code> 浮点分数 / <code>[0,1000]</code> 整数 / <code>point_2d</code>)。
+    四个模型给出四种不同的答案,<strong>没有一个格式是万能默认</strong>。
+  </p>
+
+  <div class="bars-label">GPT-5.5 —— 偏好绝对像素(computer-use 训练习惯)</div>
+  <div class="bars">
+    <div class="bar-row hl"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill best" style="width:62%"></div></div><span class="bv">62%</span></div>
+    <div class="bar-row"><span class="bl">{x,y}/point_2d [0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:56%"></div></div><span class="bv">56%</span></div>
+    <div class="bar-row"><span class="bl">[0,1] 浮点分数</span><div class="bar-track"><div class="bar-fill" style="width:50%"></div></div><span class="bv">50%</span></div>
+  </div>
+
+  <div class="bars-label">MiniMax-M3 —— 偏好 point_2d + [0,1000](跟 qwen 同款,但天花板低得多)</div>
+  <div class="bars">
+    <div class="bar-row"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill" style="width:1%"></div></div><span class="bv">0%</span></div>
+    <div class="bar-row"><span class="bl">[0,1] 浮点分数</span><div class="bar-track"><div class="bar-fill" style="width:22%"></div></div><span class="bv">22%</span></div>
+    <div class="bar-row"><span class="bl">{x,y} 整数 [0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:24%"></div></div><span class="bv">24%</span></div>
+    <div class="bar-row hl"><span class="bl">point_2d 整数 [0,1000]</span><div class="bar-track"><div class="bar-fill best" style="width:27%"></div></div><span class="bv">27%</span></div>
+  </div>
+
+  <div class="bars-label">kimi-k2.6 —— 偏好 [0,1] 浮点分数(第三种习惯,跟前两者都不同)</div>
+  <div class="bars">
+    <div class="bar-row"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill" style="width:19%"></div></div><span class="bv">19%</span></div>
+    <div class="bar-row hl"><span class="bl">{x,y} [0,1] 浮点分数</span><div class="bar-track"><div class="bar-fill best" style="width:60%"></div></div><span class="bv">60%</span></div>
+    <div class="bar-row"><span class="bl">{x,y} 整数 [0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:44%"></div></div><span class="bv">44%</span></div>
+    <div class="bar-row"><span class="bl">point_2d 整数 [0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:36%"></div></div><span class="bv">36%</span></div>
+  </div>
+  <p class="format-native">
+    即使明确要求别的格式,kimi 的原始输出仍频繁"漂移"回 <code>[0,1]</code> 分数、JSON 也常畸形——
+    这种漂移本身就是证据:<code>[0,1]</code> 才是它训练里更根深蒂固的习惯。
+  </p>
+
+  <div class="bars-label">qwen3.7-plus —— 偏好 point_2d + [0,1000] 整数(Qwen-VL 官方 grounding 约定)</div>
+  <div class="bars">
+    <div class="bar-row"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill" style="width:16%"></div></div><span class="bv">16%</span></div>
+    <div class="bar-row"><span class="bl">[0,1] 浮点分数(+hires)</span><div class="bar-track"><div class="bar-fill" style="width:58%"></div></div><span class="bv">58%</span></div>
+    <div class="bar-row"><span class="bl">{x,y} [0,1000](+hires)</span><div class="bar-track"><div class="bar-fill" style="width:69%"></div></div><span class="bv">69%</span></div>
+    <div class="bar-row hl"><span class="bl">point_2d [0,1000](+hires)</span><div class="bar-track"><div class="bar-fill best" style="width:79%"></div></div><span class="bv">79%</span></div>
+  </div>
+  <p class="format-native">
+    M3 和 qwen 认的是同一种格式约定,但即使在各自最优格式下,M3 的天花板(27%)也远低于 qwen(79%)
+    ——<strong>格式对了只是排除了一种低级错误,不代表两者的底层能力性质相同</strong>,这正是三探针诊断法
+    要进一步区分的地方(见下)。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>模型</th><th>母语格式</th><th>最优单发分</th></tr></thead>
+      <tbody>
+        <tr><td>GPT-5.5</td><td class="num-cell">绝对像素</td><td class="num-cell">62%</td></tr>
+        <tr><td>MiniMax-M3</td><td class="num-cell">point_2d + [0,1000]</td><td class="num-cell">27%</td></tr>
+        <tr><td>kimi-k2.6</td><td class="num-cell">{x,y} + [0,1]</td><td class="num-cell">60%</td></tr>
+        <tr><td>qwen3.7-plus</td><td class="num-cell">point_2d + [0,1000]</td><td class="num-cell">79%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    四个模型三种不同约定,GPT 和 kimi/qwen/M3 甚至完全相反(绝对像素 vs 归一化)。<strong>新模型接入
+    前必须先做这个消融,不能套用任何一个已知模型的结论。</strong>
+  </p>
+
+  <h2>真正的格式鲁棒性:换格式时,准确率本身稳不稳</h2>
+  <p>
+    上面的消融数据本身就包含了鲁棒性的答案,只是之前没有直接算出来。<strong>鲁棒性不该用"提示帮了
+    多少分"来衡量,而应该看同一个模型在 4 种坐标格式下的原始准确率,方差是大是小</strong>——方差
+    小,说明模型的定位能力跟你怎么问它没什么关系,这才是真正意义上不挑格式;方差大,说明它只在
+    一种特定格式下才"开窍",换个问法就近乎失灵,这正是格式绑定特化技能的直接证据。下面按标准差从
+    小到大排列(越靠上越鲁棒),每个点是一种格式下的原始准确率:
+  </p>
+  <div class="robust-axis">
+    <div></div>
+    <div class="robust-axis-track"><span>0%</span><span>50%</span><span>100%</span></div>
+    <div></div>
+  </div>
+  <div class="robust-row">
+    <div class="robust-model">GPT-5.5<span class="std-val">标准差 4.2pt</span></div>
+    <div class="robust-track">
+      <div class="robust-range" style="left:50%; width:12%;"></div>
+      <div class="robust-dot" style="left:62%;"></div>
+      <div class="robust-dot" style="left:56%;"></div>
+      <div class="robust-dot" style="left:50%;"></div>
+    </div>
+    <span class="robust-verdict good">最鲁棒</span>
+  </div>
+  <div class="robust-row">
+    <div class="robust-model">MiniMax-M3<span class="std-val">标准差 10.7pt</span></div>
+    <div class="robust-track">
+      <div class="robust-range" style="left:0%; width:27%;"></div>
+      <div class="robust-dot" style="left:0%;"></div>
+      <div class="robust-dot" style="left:22%;"></div>
+      <div class="robust-dot" style="left:24%;"></div>
+      <div class="robust-dot" style="left:27%;"></div>
+    </div>
+    <span class="robust-verdict mid">中等</span>
+  </div>
+  <div class="robust-row">
+    <div class="robust-model">kimi-k2.6<span class="std-val">标准差 14.8pt</span></div>
+    <div class="robust-track">
+      <div class="robust-range" style="left:19%; width:41%;"></div>
+      <div class="robust-dot" style="left:19%;"></div>
+      <div class="robust-dot" style="left:60%;"></div>
+      <div class="robust-dot" style="left:44%;"></div>
+      <div class="robust-dot" style="left:36%;"></div>
+    </div>
+    <span class="robust-verdict mid">中等偏差</span>
+  </div>
+  <div class="robust-row">
+    <div class="robust-model">qwen3.7-plus<span class="std-val">标准差 24.0pt</span></div>
+    <div class="robust-track">
+      <div class="robust-range" style="left:16%; width:63%;"></div>
+      <div class="robust-dot" style="left:16%;"></div>
+      <div class="robust-dot" style="left:58%;"></div>
+      <div class="robust-dot" style="left:69%;"></div>
+      <div class="robust-dot" style="left:79%;"></div>
+    </div>
+    <span class="robust-verdict bad">最不鲁棒</span>
+  </div>
+  <p>
+    结果非常清楚:<strong>GPT 的 4 个点几乎挤在一起(50~62%,标准差只有 4.2pt)——不管你用哪种
+    格式问它,它给出的答案质量几乎不变</strong>,这才是名副其实的格式鲁棒。<strong>qwen 则相反,
+    4 个点从 16% 一路铺到 79%,标准差高达 24.0pt——极度依赖一种特定格式</strong>,换一种问法
+    性能直接腰斩甚至更糟,这是它被判定为"格式绑定特化技能"最直接的证据,比探针 A/B/C 更直观。
+    M3 和 kimi 落在中间,M3 虽然天花板低,但至少在几种格式下表现相对一致;kimi 的方差比 M3 大,
+    说明它对格式的依赖比 M3 更重一些。
+  </p>
+
+  <h2>跨模型诊断结果</h2>
+  <p>
+    下面每个模型一组,三行放在一起看。前两行(A/B)是效应量,共用<strong>−30pt 到 +30pt</strong>
+    的双向刻度,柱子往右(绿)= 这个操作让模型更准,往左(红)= 让模型更差;第三行是上一节算出来的
+    <strong>格式鲁棒性(标准差)</strong>,改用 0~30pt 的单向刻度,柱子越短越鲁棒。
+  </p>
+
+  <div class="fp-scale">
+    <div></div>
+    <div class="fp-scale-track"><span>−30pt</span><span>0</span><span>+30pt</span></div>
+  </div>
+  <div class="noise-caption"><span class="swatch"></span>斜纹阴影 = 粗略噪声带(n≈48~50 的比例差,
+    独立两组近似标准误 SE=√(p(1−p)/n),约 ±10pt;落在带内的效应量不应过度解读为可靠信号)</div>
+
+  <div class="fingerprint">
+    <div class="fp-group">
+      <div class="fp-model-name">GPT-5.5 <span class="fp-verdict reasoning">通用推理</span></div>
+      <div class="fp-row"><span class="fp-label">A · 推理敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill pos" style="width:3.3%"></div></div>
+        <span class="fp-val pos-t">+2pt</span></div>
+      <div class="fp-row"><span class="fp-label">B · 证据敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill pos" style="width:13.3%"></div></div>
+        <span class="fp-val pos-t">+8pt</span></div>
+      <div class="fp-row"><span class="fp-label">格式鲁棒性(标准差)</span>
+        <div class="fp-track"><div class="fp-fill-uni good" style="width:14%"></div></div>
+        <span class="fp-val pos-t">4.2pt</span></div>
+    </div>
+
+    <div class="fp-group">
+      <div class="fp-model-name">MiniMax-M3 <span class="fp-verdict reasoning">通用推理</span></div>
+      <div class="fp-row"><span class="fp-label">A · 推理敏感性</span>
+        <div class="fp-track"></div>
+        <span class="fp-val na">端点无开关</span></div>
+      <div class="fp-row"><span class="fp-label">B · 证据敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill pos" style="width:16.7%"></div></div>
+        <span class="fp-val pos-t">+10pt</span></div>
+      <div class="fp-row"><span class="fp-label">格式鲁棒性(标准差)</span>
+        <div class="fp-track"><div class="fp-fill-uni mid" style="width:35.7%"></div></div>
+        <span class="fp-val">10.7pt</span></div>
+    </div>
+
+    <div class="fp-group">
+      <div class="fp-model-name">kimi-k2.6 <span class="fp-verdict mixed">中间态</span></div>
+      <div class="fp-row"><span class="fp-label">A · 推理敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill pos" style="width:13.3%"></div></div>
+        <span class="fp-val pos-t">+8pt*</span></div>
+      <div class="fp-row"><span class="fp-label">B · 证据敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill neg" style="width:38.3%"></div></div>
+        <span class="fp-val neg-t">−23pt</span></div>
+      <div class="fp-row"><span class="fp-label">格式鲁棒性(标准差)</span>
+        <div class="fp-track"><div class="fp-fill-uni mid" style="width:49.3%"></div></div>
+        <span class="fp-val">14.8pt</span></div>
+    </div>
+
+    <div class="fp-group">
+      <div class="fp-model-name">qwen3.7-plus <span class="fp-verdict shortcut">特化捷径</span></div>
+      <div class="fp-row"><span class="fp-label">A · 推理敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill neg" style="width:31.7%"></div></div>
+        <span class="fp-val neg-t">−19pt</span></div>
+      <div class="fp-row"><span class="fp-label">B · 证据敏感性</span>
+        <div class="fp-track"><div class="noise-band"></div><div class="fp-fill neg" style="width:28.3%"></div></div>
+        <span class="fp-val neg-t">−17pt</span></div>
+      <div class="fp-row"><span class="fp-label">格式鲁棒性(标准差)</span>
+        <div class="fp-track"><div class="fp-fill-uni bad" style="width:80%"></div></div>
+        <span class="fp-val neg-t">24.0pt</span></div>
+    </div>
+  </div>
+
+  <p>
+    这样并排一看,三个信号收敛得很一致:<strong>qwen 的 A、B 两条柱子都扎向负方向,第三条(格式
+    鲁棒性标准差)又是四个模型里最长的一条</strong>——不管是"推理帮不帮倒忙"还是"换格式性能稳不稳",
+    qwen 都表现出专训捷径的特征。<strong>M3 和 GPT 则相反:B 是正的,格式鲁棒性的柱子也明显更短
+    </strong>(GPT 只有 4.2pt,四个模型里最短)。kimi 卡在中间:B 跟 qwen 一样负、甚至更负,A 标了
+    <code>*</code>——有效题准确率其实是正的(+8pt,方向和 qwen 相反),但代价是 12% 的题直接答不出来;
+    格式鲁棒性(14.8pt)也介于 M3 和 qwen 之间,不上不下,这正是"中间态"判定的由来。
+  </p>
+
+  <h3>补充:证据符号一致性(原探针 C)——单独放大看</h3>
+  <p>
+    这里要强调一个区分:探针 C 只判定证据效应的<strong>符号(方向)</strong>变没变,跟接下来那节
+    真正的"格式鲁棒性"(看的是原始准确率本身的方差)是两件不同的事——这个符号是否一致,更多是
+    诊断"专训头 vs 通用推理"的辅助信号,不是鲁棒性指标本身。下面把 B(母语)和 C(陌生)画在
+    同一条线上:线<strong>穿过零线</strong> = 方向反转;线<strong>停在同一侧</strong> = 方向没变。
+  </p>
+  <div class="slope-legend">
+    <span><span class="dot native"></span>母语格式下的证据效应</span>
+    <span><span class="dot foreign"></span>陌生格式下的证据效应</span>
+  </div>
+  <div class="noise-caption"><span class="swatch"></span>斜纹阴影同上——约 ±10pt 的粗略噪声带,
+    kimi 的"名义反转"落点(+3pt)明显在带内,这也是它没被判定为清晰反转的原因</div>
+  <div class="slope-wrap">
+    <div class="slope-axis">
+      <div></div>
+      <div class="slope-axis-track"><span>−30pt</span><span></span><span>+30pt</span></div>
+    </div>
+
+    <div class="slope-row">
+      <div class="slope-model">GPT-5.5</div>
+      <div class="slope-track">
+        <div class="slope-zero"></div>
+        <div class="noise-band"></div>
+        <div class="slope-line stable-pos" style="left:63.3%; width:0%;"></div>
+        <div class="slope-dot native" style="left:63.3%;"></div>
+        <div class="slope-dot foreign" style="left:63.3%; opacity:.5;"></div>
+      </div>
+      <span class="slope-verdict-tag stable">不反转<br>+8→+8</span>
+    </div>
+
+    <div class="slope-row">
+      <div class="slope-model">MiniMax-M3</div>
+      <div class="slope-track">
+        <div class="slope-zero"></div>
+        <div class="noise-band"></div>
+        <div class="slope-line stable-pos" style="left:66.7%; width:16.6%;"></div>
+        <div class="slope-dot native" style="left:66.7%;"></div>
+        <div class="slope-dot foreign" style="left:83.3%;"></div>
+      </div>
+      <span class="slope-verdict-tag stable">不反转<br>+10→+20</span>
+    </div>
+
+    <div class="slope-row">
+      <div class="slope-model">kimi-k2.6</div>
+      <div class="slope-track">
+        <div class="slope-zero"></div>
+        <div class="noise-band"></div>
+        <div class="slope-line flip" style="left:11.7%; width:43.3%;"></div>
+        <div class="slope-dot native" style="left:11.7%;"></div>
+        <div class="slope-dot foreign" style="left:55%;"></div>
+      </div>
+      <span class="slope-verdict-tag weak">名义反转 −23→+3<br>幅度近噪声</span>
+    </div>
+
+    <div class="slope-row">
+      <div class="slope-model">qwen3.7-plus</div>
+      <div class="slope-track">
+        <div class="slope-zero"></div>
+        <div class="noise-band"></div>
+        <div class="slope-line flip" style="left:21.7%; width:71.6%;"></div>
+        <div class="slope-dot native" style="left:21.7%;"></div>
+        <div class="slope-dot foreign" style="left:93.3%;"></div>
+      </div>
+      <span class="slope-verdict-tag flip">反转 −17→+26</span>
+    </div>
+  </div>
+  <p>
+    四条线一起看:<strong>qwen 的线从零线左边远远甩到右边</strong>,方向彻底反转;<strong>kimi
+    名义上跨过了零线,但落点(+3pt)在下面的噪声带里,更可能是采样噪声,不是真的翻了面</strong>;
+    <strong>M3 和 GPT 的线都停在零线右侧,不反转</strong>。这只说明"证据帮倒忙"这件事在换格式后
+    会不会变号,<strong>不能拿来判断谁更"鲁棒"</strong>——真正的格式鲁棒性(原始准确率本身稳不稳)
+    看下一节。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>模型</th><th>A · 推理敏感性</th><th>B · 证据敏感性</th><th>格式鲁棒性(标准差)</th><th>判定</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>GPT-5.5</td>
+          <td><span class="pill pos">+2pt</span><span class="sub">60%→62%,基本打平</span></td>
+          <td><span class="pill pos">+8pt</span><span class="sub">66%→74%</span></td>
+          <td><span class="pill pos">4.2pt(最优)</span><span class="sub">4格式准确率 50~62%</span></td>
+          <td><strong>通用推理</strong></td>
+        </tr>
+        <tr>
+          <td>MiniMax-M3</td>
+          <td><span class="sub" style="margin-top:0;">端点无开关</span></td>
+          <td><span class="pill pos">+10pt</span><span class="sub">24%→35%</span></td>
+          <td><span class="pill">10.7pt</span><span class="sub">4格式准确率 0~27%</span></td>
+          <td><strong>通用推理</strong></td>
+        </tr>
+        <tr>
+          <td>kimi-k2.6</td>
+          <td><span class="pill pos">+8pt*</span><span class="sub">有效题58%→66%,但12%彻底答不出来</span></td>
+          <td><span class="pill neg">−23pt</span><span class="sub">60%→38%</span></td>
+          <td><span class="pill">14.8pt</span><span class="sub">4格式准确率 19~60%</span></td>
+          <td><strong>中间态</strong>(偏特化)</td>
+        </tr>
+        <tr>
+          <td>qwen3.7-plus</td>
+          <td><span class="pill neg">开更差</span><span class="sub">64%→45%</span></td>
+          <td><span class="pill neg">−17pt</span><span class="sub">77%→60%</span></td>
+          <td><span class="pill neg">24.0pt(最差)</span><span class="sub">4格式准确率 16~79%</span></td>
+          <td><strong>特化捷径</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    最干净的对照在 qwen 与 M3 之间——两者的最优坐标格式相同(<code>point_2d</code> + <code>[0,1000]</code>),
+    表现却几乎相反:qwen 的证据敏感性是负的、格式鲁棒性是四个模型里最差的(24.0pt);M3 的证据敏感性是
+    正的、格式鲁棒性明显更好(10.7pt)。<strong>格式相同不代表能力性质相同,这正是需要多个独立信号
+    而非单一分数来判定的原因。</strong>
+  </p>
+
+  <h2>我们的方法在哪里有价值</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>模型</th><th>单发天花板</th><th>Harness(迭代裁剪+证据)</th><th>方法的空间</th></tr></thead>
+      <tbody>
+        <tr><td>GPT-5.5</td><td class="num-cell">—⚠️</td><td class="num-cell"><span class="pill best">88.7%</span></td><td>提示消融独立证明 <span class="pill pos">+16pt</span></td></tr>
+        <tr><td>MiniMax-M3</td><td class="num-cell">26~27%</td><td class="num-cell"><span class="pill best">47.4%</span></td><td><span class="pill pos">+21pt</span>,方法真正起作用</td></tr>
+        <tr><td>qwen3.7-plus</td><td class="num-cell">73~78%</td><td class="num-cell">70%</td><td><span class="pill neg">无</span>——已触及训练天花板</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    qwen 单发反超 harness,不是"qwen 更强",而是<strong>这道题对它而言已经不是一个视觉推理问题</strong>
+    ——它命中的是训练时记住的坐标输出习惯,证据和多轮修正自然帮不上忙。M3 恰好相反:单发能力弱,
+    但一旦给它证据、给它重新裁剪的机会,分数显著上升——这说明它面对的仍然是一个需要推理的视觉问题,
+    也正是我们的方法应该优先投入的目标。
+  </p>
+
+  <h2>每个模型的结论</h2>
+  <div class="verdict-grid">
+    <div class="verdict-card">
+      <div class="model-name">GPT-5.5</div>
+      <div class="verdict-title type-reasoning">通用推理型,三探针全部确证</div>
+      <p>三探针全部为正且不反转,和 M3 是同一签名。推理敏感性接近打平(+2pt,慢近2倍无实质收益),
+      不是 qwen 那种明确的负向拖累。格式鲁棒性四个模型里最优(4.2pt)。</p>
+    </div>
+    <div class="verdict-card">
+      <div class="model-name">MiniMax-M3</div>
+      <div class="verdict-title type-reasoning">通用推理型,主要目标</div>
+      <p>三探针最干净的正例:证据在两种格式下都是正贡献、不反转。单发能力弱,但被我们的方法放大
+      +21pt——这是方法价值最直接的证明。</p>
+    </div>
+    <div class="verdict-card">
+      <div class="model-name">kimi-k2.6</div>
+      <div class="verdict-title type-mixed">中间态,偏特化</div>
+      <p>证据敏感性比 qwen 还负,格式反转不明显。推理敏感性修正后其实是正的(+8pt),但 12% 的题
+      会彻底答不出来——像"想推理但可靠性差",不是纯专训头。可能保留部分可被放大的通用能力,
+      需要 harness 配对数据才能下最终判断。</p>
+    </div>
+    <div class="verdict-card">
+      <div class="model-name">qwen3.7-plus</div>
+      <div class="verdict-title type-shortcut">特化捷径,已收口</div>
+      <p>三探针全部指向同一结论:不吃推理、不吃证据、换格式就崩。单发分数虽高,但是一条训练决定的
+      死胡同,不值得继续投入工程。格式鲁棒性四个模型里最差(24.0pt)。</p>
+    </div>
+  </div>
+
+  <h2>局限</h2>
+  <ul class="limits">
+    <li><span class="tag">已解决</span><span>GPT-5.5 的探针 A 之前判定"调用链路限制、测不了"是错误的——真正的开关是 Runtime 实例的 <code>thinking_level</code> 属性,不是构造/调用参数,已订正并测出结果。</span></li>
+    <li><span class="tag">待办</span><span>kimi 缺 harness 侧的配对数据,"中间态"判断目前只基于单发探针,尚未在 harness 场景下验证。</span></li>
+    <li><span class="tag">样本量</span><span>三探针的 B/C 均基于 48~50 题的子集,方向一致且配对检验非噪声,但精确幅度仍有采样误差(GPT 的 B 探针两次测量的无提示基线相差 58%/66%,详见研究日志)。</span></li>
+    <li><span class="tag">标注*</span><span>kimi 的探针 A(+8pt)是"能给出答案的题里"的准确率差,不是全量平均——thinking 开启时有 12% 的题在150秒内彻底给不出答案,若把这些算作错误,净效应会被完全抵消,生产环境应按此保守口径评估。</span></li>
+  </ul>
+
+  <div class="divider"></div>
+  <footer>
+    <p style="margin-bottom:0;">完整实验过程、数据审计与复现脚本见同目录下
+    <code>COORDINATE_FORMAT_FINDINGS.md</code>(研究日志,含全部原始探针与纠错记录)。本报告只呈现
+    最终结论。</p>
+  </footer>
+
+</div>

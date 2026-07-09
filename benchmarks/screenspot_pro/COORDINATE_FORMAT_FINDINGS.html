@@ -1,0 +1,661 @@
+<title>ScreenSpot-Pro 坐标格式调研 — 完整可视化报告</title>
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface-raised: #fbfbfd;
+    --ink: #1b2331;
+    --ink-muted: #5b6472;
+    --ink-faint: #8891a0;
+    --border: #e1e4ea;
+    --accent: #2a4b8d;
+    --accent-ink: #1c3163;
+    --accent-soft: #e9edf9;
+    --pos: #1f7a5c;
+    --pos-soft: #e2f3ec;
+    --pos-ink: #145940;
+    --neg: #b23b3f;
+    --neg-soft: #fbe9e8;
+    --neg-ink: #832a2d;
+    --warn: #ebd26c;
+    --warn-soft: #fbf3d5;
+    --mono-bg: #eef0f5;
+    --shadow: 0 1px 2px rgba(20, 24, 40, 0.04), 0 8px 24px rgba(20, 24, 40, 0.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141c; --surface: #161c27; --surface-raised: #1b2230;
+    --ink: #e8eaf1; --ink-muted: #9aa3b5; --ink-faint: #6b7386; --border: #2a3242;
+    --accent: #86a4ec; --accent-ink: #c1d0f7; --accent-soft: #1c2740;
+    --pos: #57c79b; --pos-soft: #16302a; --pos-ink: #8fe0bd;
+    --neg: #e2807f; --neg-soft: #3a2023; --neg-ink: #f0a8a6;
+    --warn: #ebd26c; --warn-soft: #3a3210; --mono-bg: #1c2330;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141c; --surface: #161c27; --surface-raised: #1b2230;
+      --ink: #e8eaf1; --ink-muted: #9aa3b5; --ink-faint: #6b7386; --border: #2a3242;
+      --accent: #86a4ec; --accent-ink: #c1d0f7; --accent-soft: #1c2740;
+      --pos: #57c79b; --pos-soft: #16302a; --pos-ink: #8fe0bd;
+      --neg: #e2807f; --neg-soft: #3a2023; --neg-ink: #f0a8a6;
+      --warn: #ebd26c; --warn-soft: #3a3210; --mono-bg: #1c2330;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: flex; max-width: 1180px; margin: 0 auto; align-items: flex-start; }
+  .toc {
+    position: sticky; top: 0; width: 240px; flex-shrink: 0;
+    height: 100vh; overflow-y: auto; padding: 40px 16px 40px 24px;
+    font-size: 13px; border-right: 1px solid var(--border);
+  }
+  .toc a {
+    display: block; color: var(--ink-muted); text-decoration: none;
+    padding: 5px 10px; border-radius: 6px; margin-bottom: 1px;
+  }
+  .toc a:hover { background: var(--accent-soft); color: var(--accent-ink); }
+  .toc .toc-title {
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint);
+    padding: 0 10px 10px;
+  }
+  .page { flex: 1; min-width: 0; max-width: 840px; margin: 0 auto; padding: 56px 28px 140px; }
+  header.hero { margin-bottom: 44px; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+  .eyebrow {
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 12.5px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  }
+  h1 {
+    font-family: Georgia,"Iowan Old Style","Times New Roman",serif; font-size: 32px;
+    line-height: 1.22; font-weight: 600; margin: 0 0 12px; text-wrap: balance;
+  }
+  .subtitle { font-size: 16.5px; color: var(--ink-muted); max-width: 66ch; text-wrap: balance; }
+  .meta-row {
+    display: flex; gap: 18px; margin-top: 18px; font-size: 12.5px; color: var(--ink-faint);
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; flex-wrap: wrap;
+  }
+  h2 {
+    font-family: Georgia,"Iowan Old Style",serif; font-size: 22px; font-weight: 600;
+    margin: 52px 0 6px; scroll-margin-top: 20px; display: flex; align-items: baseline; gap: 9px;
+  }
+  h2 .num { font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 14px; color: var(--accent); font-weight: 500; }
+  h3 { font-size: 16px; font-weight: 650; margin: 26px 0 8px; }
+  p { margin: 0 0 13px; }
+  p.lede { color: var(--ink-muted); font-size: 14.5px; margin-bottom: 18px; }
+  strong { font-weight: 650; }
+  code {
+    font-family: ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    background: var(--mono-bg); padding: 1.5px 6px; border-radius: 4px;
+    font-size: .87em; color: var(--accent-ink);
+  }
+  .callout {
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 20px 22px; margin: 22px 0; box-shadow: var(--shadow);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout .label {
+    font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--accent); margin-bottom: 8px; font-weight: 600;
+  }
+  .callout.warn .label { color: var(--warn); }
+  .callout p:last-child { margin-bottom: 0; }
+  .table-wrap {
+    overflow-x: auto; margin: 16px 0 8px; border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); }
+  thead th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--ink-faint); font-weight: 600; padding: 11px 15px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; background: var(--surface-raised);
+  }
+  tbody td {
+    padding: 10px 15px; border-bottom: 1px solid var(--border); color: var(--ink);
+    vertical-align: middle; font-variant-numeric: tabular-nums;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child, thead th:first-child { white-space: normal; font-weight: 550; }
+  .num-cell { font-family: ui-monospace,"SF Mono",Consolas,monospace; white-space: nowrap; }
+  .pill {
+    display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 650; font-family: ui-monospace,"SF Mono",Consolas,monospace;
+  }
+  .pill.pos { background: var(--pos-soft); color: var(--pos-ink); }
+  .pill.neg { background: var(--neg-soft); color: var(--neg-ink); }
+  .pill.best { background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; }
+  .pill.pending { background: var(--warn-soft); color: var(--warn); }
+  /* bar chart rows */
+  .bars { margin: 16px 0 20px; }
+  .bar-row { display: grid; grid-template-columns: 150px 1fr 54px; align-items: center; gap: 12px; margin-bottom: 9px; }
+  .bar-row .bl { font-size: 13.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-row.hl .bl { color: var(--ink); font-weight: 650; }
+  .bar-track { background: var(--mono-bg); border-radius: 6px; height: 20px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; background: var(--ink-faint); }
+  .bar-fill.best { background: var(--accent); }
+  .bar-fill.pos { background: var(--pos); }
+  .bar-fill.neg { background: var(--neg); }
+  .bar-row .bv { font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 13px; text-align: right; font-weight: 600; }
+  .bars .bars-title { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 10px; font-family: ui-monospace,monospace; }
+  .verdict-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  @media (max-width: 620px) { .verdict-grid { grid-template-columns: 1fr; } .layout { display: block; } .toc { display: none; } }
+  .verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .verdict-card .model-name { font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 12.5px; color: var(--ink-faint); margin-bottom: 3px; }
+  .verdict-card .verdict-title { font-size: 16px; font-weight: 650; margin-bottom: 8px; }
+  .verdict-card .verdict-title.type-head { color: var(--neg-ink); }
+  .verdict-card .verdict-title.type-mixed { color: var(--warn); }
+  .verdict-card .verdict-title.type-scaffold { color: var(--accent-ink); }
+  .verdict-card .verdict-title.type-unknown { color: var(--ink-faint); }
+  .verdict-card ul { margin: 0; padding-left: 17px; font-size: 13px; color: var(--ink-muted); }
+  .verdict-card li { margin-bottom: 3px; }
+  .divider { height: 1px; background: var(--border); margin: 48px 0 0; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--ink-faint); }
+  .note { font-size: 13px; color: var(--ink-muted); background: var(--accent-soft); border-radius: 8px; padding: 11px 15px; margin: 13px 0; }
+  .note.warn-note { background: var(--warn-soft); color: var(--warn); }
+  .flow { display: flex; align-items: center; gap: 8px; font-family: ui-monospace,"SF Mono",Consolas,monospace; font-size: 12.5px; flex-wrap: wrap; margin: 10px 0 16px; }
+  .flow .step { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+  .flow .arrow { color: var(--ink-faint); }
+  .kv-list { list-style: none; padding: 0; margin: 12px 0; font-size: 13.5px; }
+  .kv-list li { padding: 5px 0; border-bottom: 1px solid var(--border); display: flex; gap: 10px; }
+  .kv-list code { flex-shrink: 0; }
+  .todo-list { list-style: none; margin: 12px 0; padding: 0; }
+  .todo-list li {
+    display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .todo-list li:last-child { border-bottom: none; }
+  .todo-list .box {
+    flex-shrink: 0; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--ink-faint);
+    margin-top: 3px;
+  }
+</style>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="toc-title">目录</div>
+    <a href="#s1">01 · 缘起</a>
+    <a href="#s2">02 · 格式决定性</a>
+    <a href="#s3">03 · 提示效应反转</a>
+    <a href="#s35">03.5 · thinking 开关</a>
+    <a href="#s4">04 · 分辨率</a>
+    <a href="#s5">05 · qwen 不需要 harness</a>
+    <a href="#s55">05.5 · 五连测</a>
+    <a href="#s56">05.6 · 战略解释</a>
+    <a href="#s6">06 · 每模型策略</a>
+    <a href="#s7">07 · 79% 出处</a>
+    <a href="#s75">07.5 · kimi 第三种习惯</a>
+    <a href="#s8">08 · 框架改造</a>
+    <a href="#s9">09 · 数据可靠性审计</a>
+    <a href="#s95">09.5 · GPT 配置不匹配</a>
+    <a href="#s96">09.6 · 跨模型收官 + 诊断矩阵</a>
+    <a href="#s10">10 · 复现脚本</a>
+    <a href="#s11">11 · 待办</a>
+  </nav>
+
+  <div class="page">
+
+    <header class="hero">
+      <div class="eyebrow">ScreenSpot-Pro · GUI Grounding 研究笔记 · 完整版</div>
+      <h1>视觉定位有两种能力:可泛化的通用推理,与格式绑定的特化技能</h1>
+      <p class="subtitle">
+        四个模型(GPT-5.5、qwen3.7-plus、kimi-k2.6、MiniMax-M3)在同一 benchmark 上的对比揭示:
+        单发分数高不代表真正"看懂"了画面——一部分模型的坐标输出是监督训练出的格式绑定捷径,
+        本质上是一次前向直接映射的坐标回归头,不依赖推理也无法被推理改进。我们的方法(证据脚手架+
+        迭代裁剪)瞄准的是<strong>可以被持续放大的通用视觉推理能力</strong>;本文的三探针诊断法,
+        就是用来把这两种能力从表面分数里剥离出来的。本页是 <code>COORDINATE_FORMAT_FINDINGS.md</code>
+        的完整可视化版本,章节编号一一对应。
+      </p>
+      <div class="meta-row">
+        <span>2026-07</span>
+        <span>ScreenSpot-Pro · 1581 样本</span>
+        <span>判分:预测点落入 GT 框,无 IoU</span>
+        <span>baseline50 / qwen504 / 全量1581 三档评测子集</span>
+      </div>
+    </header>
+
+    <div class="callout">
+      <div class="label">核心发现</div>
+      <p>
+        坐标格式敏感性本身就是一个诊断信号:一个模型如果只在某一种坐标约定下"开窍",换个等价的表达
+        方式就崩到接近 0,说明它在做的不是"理解画面、定位元素"这件通用的事,而是命中了训练时记住的
+        一种输出习惯。<strong>真正值得投入工程精力的是那种不挑格式、能被证据和多轮修正持续改进的通用
+        视觉推理能力</strong>——这正是我们的方法(证据脚手架 + 迭代裁剪)所放大的目标。本文提出的
+        三探针诊断法(thinking 敏感性、证据敏感性、证据符号一致性)加上一个更直接的格式鲁棒性
+        指标(同一模型跨4种坐标格式的原始准确率方差,见 §2.5)能在一个模型身上把这两种能力
+        区分开来,而不只是笼统地问"这个模型准不准"。
+      </p>
+    </div>
+
+    <h2 id="s1"><span class="num">01</span> 缘起</h2>
+    <p>
+      qwen3.7-plus 套本 harness(迭代缩放 <code>sspro_stack_zoom.yaml</code>)在 SSPro 全量 <strong>62.9%</strong>,
+      明显低于 GPT-5.5 同 harness 的 <strong>87.9%</strong>,也低于 Qwen 官方自报的 <strong>79%</strong>。
+      逐步排查发现根因是<strong>坐标格式</strong>,而非模型能力、也非分辨率。
+    </p>
+
+    <h2 id="s2"><span class="num">02</span> 关键发现:坐标格式是决定性变量,且模型相关</h2>
+    <p class="lede">qwen3.7-plus 单发格式消融(baseline50,~48题,无提示)</p>
+    <div class="bars">
+      <div class="bar-row"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill neg" style="width:16%"></div></div><span class="bv">16%</span></div>
+      <div class="bar-row"><span class="bl">[0,1] 分数</span><div class="bar-track"><div class="bar-fill" style="width:52%"></div></div><span class="bv">52%</span></div>
+      <div class="bar-row"><span class="bl">[0,1] 分数 +hires</span><div class="bar-track"><div class="bar-fill" style="width:58%"></div></div><span class="bv">58%</span></div>
+      <div class="bar-row"><span class="bl">{x,y}[0,1000] +hires</span><div class="bar-track"><div class="bar-fill" style="width:69%"></div></div><span class="bv">69%</span></div>
+      <div class="bar-row hl"><span class="bl">point_2d[0,1000] +hires</span><div class="bar-track"><div class="bar-fill best" style="width:79%"></div></div><span class="bv">79%</span></div>
+    </div>
+    <p>
+      qwen 训练用 <strong>[0,1000] 归一化整数 + <code>{"point_2d":[x,y]}</code></strong>。喂 [0,1] 分数或
+      绝对像素白丢最多 21 分(58→79)。拆解:[0,1000] scale +11、point_2d 包装 +10。单向、n=48 远超噪声。
+    </p>
+
+    <p class="lede">GPT-5.5 单发格式消融(baseline50,无提示)</p>
+    <div class="bars">
+      <div class="bar-row hl"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill best" style="width:62%"></div></div><span class="bv">62%</span></div>
+      <div class="bar-row"><span class="bl">{x,y}/point_2d[0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:56%"></div></div><span class="bv">56%</span></div>
+      <div class="bar-row"><span class="bl">[0,1] 分数</span><div class="bar-track"><div class="bar-fill neg" style="width:50%"></div></div><span class="bv">50%</span></div>
+    </div>
+    <p>GPT(OpenAI,像素/computer-use 训练)偏好<strong>绝对像素</strong>,所有归一化格式都更差。</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>绝对像素</th><th>[0,1000]+point_2d</th></tr></thead>
+        <tbody>
+          <tr><td>GPT-5.5</td><td class="num-cell"><span class="pill best">62% ✅</span></td><td class="num-cell">56%</td></tr>
+          <tr><td>qwen3.7-plus</td><td class="num-cell">16%</td><td class="num-cell"><span class="pill best">79% ✅</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>没有统一坐标格式,甚至完全相反。</strong></p>
+
+    <h2 id="s3"><span class="num">03</span> OCR/YOLO 提示:格式相关,不是模型无关的杠杆</h2>
+    <p>
+      单发注入检测候选(纯文本,零裁剪),<strong>在旧的次优坐标格式下</strong>测出:GPT +16(58→74)、
+      qwen +26(16→42,abs 格式下)/+6(54→60,frac01 格式下)——曾被当作"模型无关的正向杠杆"。
+      <strong>这个结论错了</strong>,在 qwen 的真实最优格式(point2d_1000+hires)上重测,方向反转:
+    </p>
+    <div class="bars">
+      <div class="bar-row hl"><span class="bl">无提示</span><div class="bar-track"><div class="bar-fill best" style="width:77%"></div></div><span class="bv">77%</span></div>
+      <div class="bar-row"><span class="bl">有提示</span><div class="bar-track"><div class="bar-fill neg" style="width:60%"></div></div><span class="bv">60%</span></div>
+    </div>
+    <p>
+      配对检查排除噪声:同 48 题,9 题被提示拖垮、仅 1 题被救回(9:1)。<strong>qwen 在原生格式下已是很强的
+      单发 grounder,检测候选反而干扰它。</strong>旧的"+26/+6"是次优格式下的假象——格式本来就弱,任何拐棍都
+      显得有用;真正强的格式不需要拐棍。GPT 的 +16 不受影响,它的提示消融本来就在真实最优格式上测的。
+    </p>
+    <div class="note">
+      <strong>铁律</strong>:<code>use_hints</code> 必须在锁定 <code>coord_format</code> 之后重测,不能沿用在
+      其他格式下测出的数字。
+    </div>
+    <p>专门排查是否"候选质量差"导致假阴性——换成 harness 生产级 <code>candidate_sort="relevance"</code> + top-12 重测:</p>
+    <div class="bars">
+      <div class="bar-row hl"><span class="bl">无提示</span><div class="bar-track"><div class="bar-fill best" style="width:77%"></div></div><span class="bv">77%</span></div>
+      <div class="bar-row"><span class="bl">原始堆砌(未排序)</span><div class="bar-track"><div class="bar-fill neg" style="width:60%"></div></div><span class="bv">60%</span></div>
+      <div class="bar-row"><span class="bl">relevance 排序+top12</span><div class="bar-track"><div class="bar-fill neg" style="width:65%"></div></div><span class="bv">65%</span></div>
+    </div>
+    <p>
+      配对:relevance-hint vs 无提示,7 题拖垮、仅 1 题救回(7:1),依然单方向。<strong>候选质量确实是部分原因
+      (−17 收窄到 −12),但不是全部</strong>——qwen 在其原生格式下的直接感知本身就比任何外部候选证据更可靠。
+    </p>
+
+    <h2 id="s35"><span class="num">03.5</span> thinking 开关:另一个独立的负向变量</h2>
+    <p>22 题难样本子集上做 hints×thinking 的 2×2,排查"提示拖累 qwen"是否是 thinking 状态混淆的假象:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>thinking 关</th><th>thinking 开</th></tr></thead>
+        <tbody>
+          <tr><td>无提示</td><td class="num-cell"><span class="pill best">64%</span>(14/22)</td><td class="num-cell">45%(10/22)</td></tr>
+          <tr><td>relevance 提示</td><td class="num-cell">32%(7/22)</td><td class="num-cell">14%(3/22)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      两个变量<strong>独立起作用、互不解释</strong>(排除混淆假设)。但意外收获:<strong>thinking 本身也是负的</strong>,
+      降幅比提示还大(均值 48%→30%)。呼应 Qwen 官方 79.0 就是 thinking-off 测出来的。
+      <code>run_sspro_native.py</code> 已固定 <code>enable_thinking=False</code>。
+    </p>
+
+    <h2 id="s4"><span class="num">04</span> 分辨率:约 2–4M 饱和,非瓶颈</h2>
+    <div class="bars">
+      <div class="bar-row"><span class="bl">max_pixels 1M</span><div class="bar-track"><div class="bar-fill" style="width:45%"></div></div><span class="bv">45%</span></div>
+      <div class="bar-row"><span class="bl">max_pixels 4M</span><div class="bar-track"><div class="bar-fill" style="width:52%"></div></div><span class="bv">52%</span></div>
+      <div class="bar-row"><span class="bl">max_pixels 8M(饱和)</span><div class="bar-track"><div class="bar-fill" style="width:52%"></div></div><span class="bv">≈52%</span></div>
+    </div>
+    <p>发完整 4K 原图已达 ~4M 等效。<code>vl_high_resolution_images=true</code> 另给约 +6(处噪声地板,可选)。<strong>qwen 60% 不是分辨率饿出来的。</strong></p>
+
+    <h2 id="s5"><span class="num">05</span> qwen 的高分是特化技能的天花板,不是我们方法要争的目标</h2>
+    <p class="lede">同 120 题配对(qwen 504 主跑抽样)</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>方法</th><th>正确率</th><th>成本</th></tr></thead>
+        <tbody>
+          <tr><td><strong>原生单发 [0,1000]+point_2d+hires</strong></td><td class="num-cell"><span class="pill best">78%</span></td><td>1 次调用</td></tr>
+          <tr><td>现有 harness(绝对,多轮)</td><td class="num-cell">70%</td><td>~15–20 次调用</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      单看这一组数字,容易得出"qwen 更强、脚手架反而拖后腿"的印象——但 §05.5/§05.6 会证明这不是
+      "脚手架没用",而是<strong>脚手架在正确地暴露一件事:qwen 这 78% 不是靠理解画面得到的,是命中了
+      训练时记住的一种坐标输出习惯</strong>。它不接受证据、不接受复核、换个等价表达就崩掉——这些都是
+      "捷径"而非"能力"的特征。我们的方法无法、也不应该去优化一个不基于推理的捷径;它面向的是接下来
+      在 GPT / M3 上才能看到的那种可持续放大的通用能力。
+    </p>
+
+    <h2 id="s55"><span class="num">05.5</span> 追问:候选提示能不能救回来?——五连测,五连负</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>尝试</th><th>做法</th><th>结果 vs 无提示基线</th></tr></thead>
+        <tbody>
+          <tr><td>原始堆砌</td><td>120条,检测器原序</td><td class="num-cell"><span class="pill neg">−17</span></td></tr>
+          <tr><td>relevance 排序+精简</td><td>生产 candidate_sort,top-12</td><td class="num-cell"><span class="pill neg">−12</span>(配对7:1)</td></tr>
+          <tr><td>OCR 单独</td><td>只给 OCR 文字候选</td><td class="num-cell"><span class="pill neg">−19</span>(22题难样本)</td></tr>
+          <tr><td>detector 单独</td><td>只给 icon 检测候选</td><td class="num-cell"><span class="pill neg">−19</span>(22题难样本)</td></tr>
+          <tr><td>模型自选裁剪两轮精修</td><td>point_2d+bbox_2d,自选框精修</td><td class="num-cell"><span class="pill neg">−14</span>(配对13:6被弄错)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>五种独立方向,全部净负。</strong>2 轮精修不是机制/解析问题(bbox_2d 全部正常解析),是
+      <strong>"再看一眼"这个动作本身系统性地让 qwen 推翻自己本来正确的判断</strong>——跟候选提示拖累它是同一种效应。
+    </p>
+
+    <h2 id="s56"><span class="num">05.6</span> 为什么会这样:专训预测头 vs 通用推理(战略解释)</h2>
+    <p>
+      <strong>假设</strong>:qwen 的 <code>point2d_1000</code> grounding 是监督微调出的专用能力,更接近
+      "坐标回归头"而非"靠推理解题"。三条独立证据支持:
+    </p>
+    <ol style="padding-left: 20px; font-size: 14.5px; color: var(--ink);">
+      <li style="margin-bottom:10px;"><strong>thinking 开关是反的</strong>——若靠推理,想得越久该越准;实测相反(§03.5),说明不是靠推理链条完成的。</li>
+      <li style="margin-bottom:10px;"><strong>"再想想"类操作全部负</strong>(候选证据、二次精修,五个独立实验,§05.5)——没法跟一个回归头"讲道理"。</li>
+      <li><strong>逼它用没专训过的格式,提示效应直接反转</strong>:</li>
+    </ol>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>坐标格式(离专训约定的距离)</th><th>无提示</th><th>有提示</th><th>提示效应</th></tr></thead>
+        <tbody>
+          <tr><td>abs_pixel(完全没专训过)</td><td class="num-cell">16%</td><td class="num-cell">42%</td><td class="num-cell"><span class="pill pos">+26pt</span></td></tr>
+          <tr><td>frac01(半对齐)</td><td class="num-cell">54%</td><td class="num-cell">60%</td><td class="num-cell"><span class="pill pos">+6pt</span></td></tr>
+          <tr><td>point2d_1000(专训原生格式)</td><td class="num-cell">73~77%</td><td class="num-cell">60~65%</td><td class="num-cell"><span class="pill neg">−12~−17pt</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>格式离专训约定越远,提示越正向;越接近,提示越负向——几乎单调。这条曲线本身就是最直接的证据:
+    <strong>提示/证据只在模型被迫依赖通用推理时才有用,一旦命中它记忆好的捷径,证据反而是噪声。</strong></p>
+    <div class="callout">
+      <div class="label">战略结论</div>
+      <p>
+        视觉定位存在两种性质完全不同的能力:一种是监督训练出的<strong>格式绑定特化技能</strong>
+        (qwen 的 <code>point2d_1000</code>)——一次前向直接映射,天花板由训练数据分布固定死,
+        换一种等价表达就近乎失效,工程手段拿不动;另一种是<strong>通用视觉推理能力</strong>
+        (GPT 展现出的模式)——能被证据、多轮修正、脚手架持续放大,且不挑坐标表达方式。
+        <strong>我们的方法要挖掘和放大的是后者</strong>——这才是能迁移到新应用、新界面、新指令的
+        真实能力,而不是在某个 benchmark 的坐标约定上"背对了答案"。qwen 单发领先 harness 这件事,
+        与其说是"qwen 更强",不如说是<strong>这道题对它而言不再是一个视觉推理问题</strong>——我们的
+        方法自然帮不上忙,这恰恰是诊断法要识别出来的信号,而不是方法的短板。未来工程精力应该投在
+        像 GPT、M3 这样能被我们的方法持续拉高的通用推理型模型上。
+      </p>
+    </div>
+
+    <h2 id="s6"><span class="num">06</span> 每模型的能力性质(相反)</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>模型</th><th>坐标格式</th><th>我们的方法是否有空间</th><th>最优分</th></tr></thead>
+        <tbody>
+          <tr><td>GPT-5.5</td><td class="num-cell">绝对像素</td><td><strong>有</strong>——通用推理型,harness 持续正收益</td><td class="num-cell"><span class="pill best">88.7%</span>(单发78.3%⚠️)</td></tr>
+          <tr><td>qwen3.7-plus</td><td class="num-cell">[0,1000]+point_2d</td><td><strong>没有</strong>——特化捷径,单发数字虽高但是天花板</td><td class="num-cell">73~78%(harness仅70%)</td></tr>
+          <tr><td>参照 M3(旧数据)</td><td class="num-cell">—</td><td><strong>有</strong>——单发天花板低,harness明显更好</td><td class="num-cell">47.4%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>通则</strong>:每个模型的坐标格式不同,更重要的是——<strong>能不能被我们的方法改进,取决于它的坐标输出到底是通用推理还是训练记忆,这件事本身需要先诊断,不能只看单发分数高低下结论。</strong></p>
+    <div class="callout warn">
+      <div class="label">⚠️ 数据存疑</div>
+      <p>
+        GPT 单发 78.3%(300题旧数据)<code>grounding_type=direct_pixel</code>,追到代码是旧版
+        <code>active_loop</code> 候选池机制的兜底分支,不是纯净单发调用,产出它的确切旧代码路径已找不到对应版本。
+        GPT harness 88.7% 本身干净(§09 核实),不受影响;但"harness 净赚 +10.4pt"这个具体差值精确度存疑。
+      </p>
+    </div>
+
+    <h2 id="s7"><span class="num">07</span> 关于 79% 的出处(诚实说明)</h2>
+    <p>
+      Qwen 官方自报 ScreenSpot-Pro 79.0(thinking 关闭、方法未公开)。llm-stats 榜列 qwen3.7-plus 0.790,
+      但标注<strong>"23 self-reported results, 0 verified"</strong>——全部厂商自报、零第三方复现
+      (Claude 0.879 / GPT 0.863 同样自报)。我们用官方格式在 baseline50 上<strong>独立复现到 79%</strong>,
+      之前的 52–60% 纯属格式错配。
+    </p>
+    <div class="note warn-note">
+      原始文件 <code>qwen_official.jsonl</code> 后来被一次 sed 脚本误操作覆盖损毁,无法重新核验;但同配方
+      后续独立重跑两次(77%/48题、73%/50题)落在同区间,结论未受影响。
+    </div>
+
+    <h2 id="s75"><span class="num">07.5</span> kimi-k2.6:第三种习惯</h2>
+    <div class="bars">
+      <div class="bar-row"><span class="bl">绝对像素</span><div class="bar-track"><div class="bar-fill neg" style="width:19%"></div></div><span class="bv">19%</span></div>
+      <div class="bar-row hl"><span class="bl">{x,y}[0,1]浮点分数</span><div class="bar-track"><div class="bar-fill best" style="width:60%"></div></div><span class="bv">60%</span></div>
+      <div class="bar-row"><span class="bl">{x,y}整数[0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:44%"></div></div><span class="bv">44%</span></div>
+      <div class="bar-row"><span class="bl">point_2d整数[0,1000]</span><div class="bar-track"><div class="bar-fill" style="width:36%"></div></div><span class="bv">36%</span></div>
+    </div>
+    <p>
+      kimi 既不是 GPT 的绝对像素、也不是 qwen 的 [0,1000]+point_2d,而是<strong>第三种:{x,y} [0,1] 浮点分数</strong>。
+      即使明确要求别的格式,kimi 原始输出仍频繁滑向 [0,1] 分数、JSON 常畸形——这种"漂移"本身就是证据。
+      三家坐标格式无一相同,通则升级:<strong>新模型接入前必须实测格式消融,不能套用其他模型的结论。</strong>
+    </p>
+
+    <h2 id="s8"><span class="num">08</span> 框架改造(2026-07)</h2>
+    <p>发现三种互不相同的模型习惯后,抽成三层,不再用散落各处的 ad-hoc probe 脚本:</p>
+    <ul class="kv-list">
+      <li><code>coord_formats.py</code> <span>坐标格式唯一真源,每种格式一个 prompt 生成函数 + 一个解析函数,含模型漂移的鲁棒兜底</span></li>
+      <li><code>model_profiles.py</code> <span>每模型一条 ModelProfile(provider/coord_format/pipeline/confirmed/hires/use_hints/note),查表决定策略</span></li>
+      <li><code>run_sspro_native.py</code> <span>统一 native-single-shot 跑分器,profile 驱动,取代重复的一次性脚本</span></li>
+    </ul>
+    <p><strong>新模型接入 SOP</strong>:格式消融(~50题×3-4格式)→ native vs harness 配对(~100+题)→ 填一行 profile,不许假设。</p>
+
+    <h2 id="s9"><span class="num">09</span> 数据可靠性审计(2026-07)</h2>
+    <p>系统性回查每个关键数字的原始文件:查 <code>.log</code> 头部、逐条统计 <code>grounding_type</code> 分布、从原始 jsonl 重新计算。</p>
+    <h3>核对干净、可信的</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>数字</th><th>核对结果</th></tr></thead>
+        <tbody>
+          <tr><td>GPT harness 88.7%(300题)</td><td>299/300 为当前版 iterative_zoom_crop_refine</td></tr>
+          <tr><td>M3 harness 47.4%(1581题)</td><td>分布合理,当前版为主+少量keep_best兜底</td></tr>
+          <tr><td>qwen harness 62.9%/65.7%(504题)</td><td>482条全为当前版,22条error对应22条(no location)</td></tr>
+          <tr><td>本次会话全部单发探针(20余个文件)</td><td>逐一从文件重算,与汇报数字<strong>逐一精确一致</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>查出问题、已标注的</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>数字</th><th>问题</th></tr></thead>
+        <tbody>
+          <tr><td>GPT 单发 78.3%(300题)</td><td>grounding_type=direct_pixel,是旧版 active_loop 兜底分支,非纯净单发</td></tr>
+          <tr><td>qwen 79%(原始复现)</td><td>原始文件被误操作损毁,但同配方独立重跑两次落在同区间,结论未受影响</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="s95"><span class="num">09.5</span> ⚠️ 更根本的缺口:87.9% 和 88.7% 不是同一套配置</h2>
+    <div class="callout warn">
+      <div class="label">容易反复忘记,务必记住</div>
+      <ul class="kv-list" style="margin-top:0;">
+        <li><span><strong>87.9%</strong>(GPT-5.5,全量1581题)—— <code>legacy_baseline.yaml</code>(旧基线,fill缩放,无candidate_sort,8轮)。<strong>全量,但配置过时。</strong></span></li>
+        <li><span><strong>88.7%</strong>(GPT-5.5,300题子集)—— <code>sspro_stack_zoom.yaml</code>(当前生产配置,M3/qwen全量也用这套)。<strong>当前配置,但只有300/1581题。</strong></span></li>
+      </ul>
+      <p>
+        "GPT 用当前配置、全量 1581"这个数字从来不存在——"87.9%(同配置)/88.7%"的并列说法不准确,
+        两个数字<strong>配置不同、规模也不同</strong>。<code>candidate_sort=relevance</code> 是唯一确认稳定
+        正收益的改进,真实全量数大概率 ≥87.9%,但<strong>没有实测过,只是推断</strong>。要坐实需 GPT 跑满
+        1581 题(约 1581×~16次调用),截至目前尚未执行。
+      </p>
+    </div>
+
+    <h2 id="s96"><span class="num">09.6</span> 跨模型收官:kimi 全量、M3 格式消融+全量、三探针诊断矩阵</h2>
+
+    <h3>kimi 全量单发(1581/1581,frac01+无提示+thinking关)</h3>
+    <div class="bars">
+      <div class="bar-row hl"><span class="bl">kimi 全量</span><div class="bar-track"><div class="bar-fill best" style="width:56.6%"></div></div><span class="bv">56.6%</span></div>
+    </div>
+    <p>895命中/38错误,跟 baseline50 探针的 56% 几乎完全吻合——kimi"模型最适配单发"这一列的真实全量数字。kimi 的 harness 配对对比仍缺失,<code>pipeline</code> 仍标 <code>confirmed=False</code>。</p>
+
+    <h3>M3 格式消融(baseline50,无提示,Runtime.exec 同全量调用路径)</h3>
+    <div class="bars">
+      <div class="bar-row"><span class="bl">abs_pixel</span><div class="bar-track"><div class="bar-fill neg" style="width:1%"></div></div><span class="bv">0%</span></div>
+      <div class="bar-row"><span class="bl">frac01</span><div class="bar-track"><div class="bar-fill" style="width:22%"></div></div><span class="bv">22%</span></div>
+      <div class="bar-row"><span class="bl">xy1000</span><div class="bar-track"><div class="bar-fill" style="width:24%"></div></div><span class="bv">24%</span></div>
+      <div class="bar-row hl"><span class="bl">point2d_1000</span><div class="bar-track"><div class="bar-fill best" style="width:27%"></div></div><span class="bv">27%</span></div>
+    </div>
+    <p>跟 qwen 同款排序(point2d_1000赢),但天花板低得多(27% vs qwen 79%)——<strong>M3 不只是格式喂错,原生定位能力本身就比 qwen 弱得多</strong>。</p>
+
+    <h3>M3 全量单发(1581/1581) vs harness</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>方法</th><th>正确率</th></tr></thead>
+        <tbody>
+          <tr><td>abs_pixel(旧"标准"参照点)</td><td class="num-cell"><span class="pill neg">0.7%</span>(11命中/43错误)</td></tr>
+          <tr><td>point2d_1000(消融最优)</td><td class="num-cell"><span class="pill">26.1%</span>(412命中/43错误)</td></tr>
+          <tr><td><strong>Harness(1581全量)</strong></td><td class="num-cell"><span class="pill best">47.4%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>harness 赢 +21pt,跟 qwen(单发反超 harness +8pt)方向完全相反。</strong>M3 是需要脚手架的模型,不能照搬 qwen"跳过 harness"的结论。</p>
+
+    <h3>三探针诊断法(正式版)</h3>
+    <p class="lede">判定一个模型的坐标 grounding 是"训练出的专用预测头"还是"通用视觉推理能力",复用已有机制:</p>
+    <div class="flow">
+      <span class="step">A · thinking 开关</span><span class="arrow">→</span>
+      <span class="step">B · 母语格式下加提示</span><span class="arrow">→</span>
+      <span class="step">C · 换成陌生格式重测 B</span>
+    </div>
+    <table style="width:100%; margin-bottom:8px;">
+      <tbody style="font-size:13.5px;">
+        <tr><td style="width:80px; vertical-align:top; padding:7px 0; color:var(--ink-faint); font-family:ui-monospace,monospace;">探针 A</td>
+        <td style="padding:7px 0;">开 thinking 让模型显式推理更久。推理型应更准或持平;<strong>预测头会变差</strong>(想得越久,越偏离已校准的直接映射)。</td></tr>
+        <tr><td style="vertical-align:top; padding:7px 0; color:var(--ink-faint); font-family:ui-monospace,monospace;">探针 B</td>
+        <td style="padding:7px 0;">母语格式下注入 OCR/检测候选证据。推理型应更准;<strong>预测头会变差</strong>(证据打断训练好的直通路径)。</td></tr>
+        <tr><td style="vertical-align:top; padding:7px 0; color:var(--ink-faint); font-family:ui-monospace,monospace;">探针 C</td>
+        <td style="padding:7px 0;">逼到没专训过的格式,重做 B。推理型效应符号不变;<strong>预测头会反转</strong>(被逼出专用通路,退回通用推理,证据才有用)。最有力的一条,反转没法用"模型笨"解释。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>模型</th><th>A·thinking</th><th>B·母语+提示</th><th>C·陌生格式+提示</th><th>判定</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>qwen3.7-plus</td>
+            <td><span class="pill neg">开更差</span><br><span style="font-size:11.5px;color:var(--ink-faint)">64%→45%</span></td>
+            <td><span class="pill neg">−17pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">77%→60%</span></td>
+            <td><span class="pill pos">反转+26pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">16%→42%</span></td>
+            <td><strong>纯专训头</strong></td>
+          </tr>
+          <tr>
+            <td>kimi-k2.6</td>
+            <td><span class="pill pos">+8pt*</span><br><span style="font-size:11.5px;color:var(--ink-faint)">有效题58%→66%,但12%彻底超时答不出</span></td>
+            <td><span class="pill neg">−23pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">60%→38%,比qwen还负</span></td>
+            <td>≈0<br><span style="font-size:11.5px;color:var(--ink-faint)">21%→23%,几乎无反转</span></td>
+            <td><strong>部分专训</strong>,中间态</td>
+          </tr>
+          <tr>
+            <td>MiniMax-M3</td>
+            <td><span class="pill pending">端点无开关</span></td>
+            <td><span class="pill pos">+10pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">24%→35%</span></td>
+            <td><span class="pill pos">+20pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">0%→20%,同向不反转</span></td>
+            <td><strong>通用推理型</strong>,<br>我们方法有空间</td>
+          </tr>
+          <tr>
+            <td>GPT-5.5</td>
+            <td><span class="pill pos">+2pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">60%→62%,基本打平</span></td>
+            <td><span class="pill pos">+8pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">66%→74%⚠️</span></td>
+            <td><span class="pill pos">+8pt</span><br><span style="font-size:11.5px;color:var(--ink-faint)">50%→58%,不反转</span></td>
+            <td><strong>通用推理型</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      kimi 是最有意思的反例:B 探针跟 qwen 同方向、甚至更负,但 C 探针没有复现 qwen 那种戏剧性反转、
+      A 探针也是打平而非明确变差。<strong>说明"专训程度"更像一个连续谱,不是非黑即白的二元分类</strong>。
+      M3 与 GPT 都是最干净的"通用推理型"案例——B、C 两个条件下证据都是正贡献且不反转,跟 qwen(母语负、
+      陌生正、方向翻转)正好相反的签名。GPT 的探针 A 之前误判为"调用链路限制、测不了",订正后测出
+      +2pt(基本打平,远不如 qwen 的 −19pt 负向拖累)。⚠️ GPT 的 B 探针无提示基线两次测量不一致
+      (58% vs 66%,推测是模型运行间随机性,有提示端点两次都是74%,不影响方向性结论,细节见正文)。
+      与它单发天花板低、高度依赖 harness 完全吻合:<strong>M3
+      没有走 qwen 那条训练记忆的捷径,它是在真的做视觉推理,只是能力还不够强——这正是我们的方法
+      应该优先投入的对象。</strong>
+    </p>
+
+    <div class="verdict-grid">
+      <div class="verdict-card">
+        <div class="model-name">qwen3.7-plus</div>
+        <div class="verdict-title type-head">特化捷径,非通用能力</div>
+        <ul><li>78~79% 单发分数命中的是训练记忆,不是画面理解</li><li>三探针全部证实:不吃推理、不吃证据、换格式就崩</li><li>不是我们方法的目标,已判定跳过、不再投入</li></ul>
+      </div>
+      <div class="verdict-card">
+        <div class="model-name">MiniMax-M3</div>
+        <div class="verdict-title type-scaffold">通用能力尚待挖掘,脚手架有效</div>
+        <ul><li>单发天花板仅26~27%,说明它没有走qwen那条记忆捷径</li><li>harness +21pt——我们的方法在这里真正起作用</li><li>三探针B/C双双正贡献不反转,确证通用推理型</li></ul>
+      </div>
+      <div class="verdict-card">
+        <div class="model-name">kimi-k2.6</div>
+        <div class="verdict-title type-mixed">介于两者之间</div>
+        <ul><li>母语格式提示效应比qwen还负(−23pt),部分依赖捷径</li><li>但格式反转不明显、thinking打平,捷径没有qwen那么彻底</li><li>可能还留有可被我们方法放大的通用能力,需补harness配对验证</li></ul>
+      </div>
+      <div class="verdict-card">
+        <div class="model-name">GPT-5.5</div>
+        <div class="verdict-title type-unknown">通用推理型,我们方法的主战场</div>
+        <ul><li>三探针全部为正、不反转,与M3同一签名</li><li>harness 88.7% 干净可信,提示消融独立验证</li><li>thinking(探针A)订正后测出+2pt,基本打平,不是负向拖累</li></ul>
+      </div>
+    </div>
+
+    <h3>一个意外的旁支发现:openprogram 的异步资源泄漏</h3>
+    <p>
+      M3/GPT 走的 <code>Runtime.exec()</code> 路径(openprogram 主仓库)每次调用都用 <code>asyncio.run()</code>
+      开一个全新事件循环,但共享的 httpx <code>AsyncClient</code> 缓存没跟着清理,导致每次调用后清理失败
+      (<code>RuntimeError: Event loop is closed</code>)、连接漏掉,调用越多内存涨得越多。qwen/kimi 走的是
+      本仓库自己写的同步 <code>httpx.Client()</code>,不受影响。已在 openprogram 主仓库修复
+      (commit <code>1f501408</code>,<code>_reap_loop_clients()</code>),验证后 M3 全程 0 次报错、内存不再单调下降。
+    </p>
+
+    <h2 id="s10"><span class="num">10</span> 复现脚本</h2>
+    <ul class="kv-list">
+      <li><code>probe_ablation_gpt.py</code> / <code>probe_ablation_qwen.py</code> <span>4条件(坐标×提示)单发消融</span></li>
+      <li><code>probe_qwen_official.py</code> <span>qwen point_2d [0,1000] + hires</span></li>
+      <li><code>probe_qwen_xy1000.py</code> <span>qwen {x,y}[0,1000](隔离scale vs wrapper)</span></li>
+      <li><code>probe_qwen_hires.py</code> <span>vl_high_resolution_images on/off</span></li>
+      <li><code>probe_gpt_format.py</code> <span>GPT 绝对/[0,1000]/point_2d</span></li>
+      <li><code>probe_qwen_native_vs_harness.py</code> <span>qwen 原生单发 vs harness 120配对</span></li>
+      <li><code>probe_kimi_format.py</code> <span>kimi 4格式消融</span></li>
+      <li><code>probe_kimi_thinking.py</code> <span>kimi thinking on/off(baseline50,frac01)</span></li>
+      <li><code>probe_m3_format.py</code> <span>M3 4格式消融</span></li>
+      <li><code>probe_kimi_hints_reversal.py</code> / <code>probe_m3_hints_reversal.py</code> <span>三探针B/C(母语/陌生格式提示效应,含断点续传)</span></li>
+      <li><code>coord_formats.py</code> <span>坐标格式唯一真源</span></li>
+      <li><code>model_profiles.py</code> <span>每模型profile表</span></li>
+      <li><code>run_sspro_native.py</code> <span>统一native-single-shot跑分器</span></li>
+      <li><code>~/.openprogram/auth/aliyun-token-plan/key.txt</code> <span>阿里云key(仓库外,绝不进git)</span></li>
+    </ul>
+
+    <h2 id="s11"><span class="num">11</span> 待办</h2>
+    <ul class="todo-list">
+      <li><span class="box"></span><span>M3:探针B/C(<code>probe_m3_hints_reversal.py</code>)跑完,填入§09.6矩阵——目前四模型里唯一没做完三探针的</span></li>
+      <li><span class="box"></span><span>kimi:补 native vs harness 配对测试,把 <code>confirmed</code> 转 True——单发全量(56.6%)已有,缺harness侧配对数字</span></li>
+      <li><span class="box"></span><span>GPT-5.5:复核 reasoning_effort/thinking 是否真的传不进 Runtime.exec()(用户对此存疑,需重新排查而非直接认定不可测)</span></li>
+      <li><span class="box"></span><span>在GPT harness同一批300题上重测干净单发,坐实"harness净赚+10.4pt"这个具体数字</span></li>
+      <li><span class="box" style="background:var(--pos-soft); border-color:var(--pos);"></span><span>(已判定不再追加投入,仅记录)qwen已收口于73~78%单发,五个独立脚手架方向全部验证无效,未来精力转向通用推理型模型</span></li>
+      <li><span class="box"></span><span>(可选,低优先级)qwen原生∪harness融合(并集86%,旧数据,可能已过时)</span></li>
+      <li><span class="box"></span><span><code>coords_normalized</code>开关已加入screenspot_locator.py(默认关),因框架冲突判为死胡同,留作实验性选项</span></li>
+    </ul>
+
+    <div class="divider"></div>
+    <footer>
+      <p style="margin-bottom:6px;"><strong>数据来源</strong>:<code>benchmarks/screenspot_pro/model_profiles.py</code>、
+      本文件对应的 <code>COORDINATE_FORMAT_FINDINGS.md</code>(纯文本版,含全部脚注与审计细节)。</p>
+      <p style="margin-bottom:0;">全部单发探针数字均从原始 <code>.jsonl</code> 重新计算校验,不凭会话记忆转述。
+      GPT单发78.3%、GPT thinking可控性、kimi/M3 harness配对对比标注为存疑或待办,未计入结论。</p>
+    </footer>
+
+  </div>
+</div>

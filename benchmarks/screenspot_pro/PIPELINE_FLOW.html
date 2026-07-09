@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness 内部流程 · 迭代缩放定位</title>
+<style>
+  :root {
+    --bg: #f4f6f5;
+    --surface: #ffffff;
+    --surface-2: #eef1ef;
+    --ink: #16201c;
+    --muted: #5c6b65;
+    --faint: #8b9a94;
+    --accent: #2b6f77;
+    --accent-ink: #0d3236;
+    --accent-wash: rgba(43, 111, 119, 0.10);
+    --line: #dbe1dc;
+    --good: #0ca30c;
+    --good-wash: rgba(12, 163, 12, 0.12);
+    --warn: #b7791f;
+    --warn-wash: rgba(250, 178, 25, 0.16);
+    --shadow: 0 1px 2px rgba(16, 24, 20, 0.04), 0 8px 24px -16px rgba(16, 24, 20, 0.18);
+  }
+  :root[data-theme="dark"] {
+    --bg: #101512;
+    --surface: #171f1b;
+    --surface-2: #1d2622;
+    --ink: #e8eeea;
+    --muted: #8fa39c;
+    --faint: #647169;
+    --accent: #4fb8b0;
+    --accent-ink: #bdf0ea;
+    --accent-wash: rgba(79, 184, 176, 0.14);
+    --line: #263029;
+    --good: #35c25a;
+    --good-wash: rgba(53, 194, 90, 0.14);
+    --warn: #e0a83e;
+    --warn-wash: rgba(224, 168, 62, 0.16);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -16px rgba(0, 0, 0, 0.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101512;
+      --surface: #171f1b;
+      --surface-2: #1d2622;
+      --ink: #e8eeea;
+      --muted: #8fa39c;
+      --faint: #647169;
+      --accent: #4fb8b0;
+      --accent-ink: #bdf0ea;
+      --accent-wash: rgba(79, 184, 176, 0.14);
+      --line: #263029;
+      --good: #35c25a;
+      --good-wash: rgba(53, 194, 90, 0.14);
+      --warn: #e0a83e;
+      --warn-wash: rgba(224, 168, 62, 0.16);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -16px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 31px, var(--line) 31px, var(--line) 32px),
+      repeating-linear-gradient(90deg, transparent, transparent 31px, var(--line) 31px, var(--line) 32px),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+  .page { max-width: 900px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  /* ---------- header ---------- */
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px;
+  }
+  h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.15; margin: 0 0 16px; text-wrap: balance; letter-spacing: -0.01em; }
+  .thesis { font-size: 16.5px; color: var(--muted); max-width: 66ch; margin: 0; }
+  .thesis b { color: var(--ink); font-weight: 600; }
+
+  section { margin-top: 56px; }
+  .section-head { margin-bottom: 24px; }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin: 0 0 6px; }
+  h2 { font-size: 21px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .section-sub { font-size: 14px; color: var(--muted); margin: 0; max-width: 68ch; }
+
+  /* ---------- flow timeline ---------- */
+  .flow-item {
+    display: grid;
+    grid-template-columns: 26px 1fr;
+    gap: 16px;
+  }
+  .flow-node { display: flex; flex-direction: column; align-items: center; }
+  .flow-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash);
+    flex: 0 0 auto; margin-top: 4px;
+  }
+  .flow-dot.terminal { background: var(--muted); box-shadow: 0 0 0 3px var(--surface-2); }
+  .flow-line { flex: 1; width: 2px; background: var(--line); margin-top: 4px; min-height: 20px; }
+  .flow-item:last-child .flow-line { display: none; }
+  .flow-body { padding-bottom: 26px; }
+
+  .stage-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 11px;
+    padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  .stage-card h3 { font-size: 15px; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+  .stage-card p.desc { font-size: 13px; color: var(--muted); margin: 0; }
+  .stage-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--faint); background: var(--surface-2); border-radius: 5px; padding: 2px 7px;
+  }
+
+  .branches { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .branch {
+    flex: 1 1 200px; background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
+    border-left: 3px solid var(--line);
+  }
+  .branch .cond { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; margin-bottom: 4px; }
+  .branch .outcome { font-size: 12px; color: var(--muted); }
+  .branch.go { border-left-color: var(--good); }
+  .branch.go .cond { color: var(--good); }
+  .branch.retry { border-left-color: var(--warn); }
+  .branch.retry .cond { color: var(--warn); }
+  .branch.jump { border-left-color: var(--accent); }
+  .branch.jump .cond { color: var(--accent-ink); }
+
+  /* loop grouping */
+  .loop-wrap {
+    border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+    border-radius: 14px;
+    padding: 22px 20px 6px;
+    margin: 4px 0 0 0;
+    position: relative;
+  }
+  .loop-label {
+    position: absolute; top: -13px; left: 16px;
+    background: var(--bg);
+    padding: 0 8px;
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .loop-wrap .flow-item:last-child .flow-line { display: block; min-height: 6px; }
+
+  .callout {
+    margin-top: 26px;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .callout b { color: var(--ink); }
+  .callout .mono { color: var(--accent-ink); font-weight: 600; }
+
+  /* ---------- memory layers ---------- */
+  .memory-box {
+    margin-top: 22px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+  }
+  .memory-box h3 { font-size: 14px; margin: 0 0 4px; }
+  .memory-box > p.desc { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+  .mem-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 0;
+    border-top: 1px dashed var(--line);
+  }
+  .mem-row:first-of-type { border-top: none; }
+  .mem-row .mem-label { font-size: 13px; font-weight: 600; }
+  .mem-row .mem-desc { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .mem-pill {
+    font-size: 10.5px; font-weight: 700; white-space: nowrap;
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .mem-pill.always { background: var(--good-wash); color: var(--good); }
+  .mem-pill.off { background: var(--surface-2); color: var(--faint); border: 1px solid var(--line); }
+
+  .output-card {
+    background: var(--accent-wash);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 11px;
+    padding: 14px 18px;
+    font-size: 13px;
+  }
+  .output-card .mono { color: var(--accent-ink); }
+
+  /* ---------- config reference ---------- */
+  .ref-table {
+    display: grid; grid-template-columns: 200px 1fr;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface);
+  }
+  .ref-row { display: contents; }
+  .ref-cell { padding: 13px 16px; font-size: 13px; border-top: 1px solid var(--line); }
+  .ref-row:first-child .ref-cell { border-top: none; }
+  .ref-group { color: var(--ink); font-weight: 600; background: var(--surface-2); }
+  .ref-fields { color: var(--muted); }
+  .ref-fields .mono { color: var(--accent-ink); background: var(--accent-wash); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+  .ref-flag {
+    display: inline-block; margin-left: 8px; font-size: 10.5px; font-weight: 700;
+    color: var(--warn); background: var(--warn-wash); border-radius: 5px; padding: 1px 6px;
+  }
+
+  footer {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+
+  @media (max-width: 640px) {
+    .ref-table { grid-template-columns: 1fr; }
+    .ref-group { border-top: 1px solid var(--line); }
+    .ref-row:first-child .ref-group { border-top: none; }
+    .branches { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <p class="eyebrow mono">gui_harness/planning/screenspot_locator.py</p>
+  <h1>Harness 内部流程 &middot; 迭代缩放定位</h1>
+  <p class="thesis">
+    <span class="mono">screenspot_locate()</span> 在 <b>pipeline=harness</b> 的模型(目前只有 GPT-5.5)上
+    实际跑的流程——每一个方框都是一次独立的模型调用,分支就是代码里真实存在的判断逻辑,不是简化示意。
+  </p>
+
+  <section>
+    <div class="section-head">
+      <p class="section-label">输入</p>
+      <h2>截图 + 候选证据</h2>
+    </div>
+
+    <div class="flow-item">
+      <div class="flow-node"><div class="flow-dot"></div><div class="flow-line"></div></div>
+      <div class="flow-body">
+        <div class="stage-card">
+          <h3>全图截图 <span class="stage-tag">img_w &times; img_h</span></h3>
+          <p class="desc">GPA-YOLO + OCR 检测(<span class="mono">detect_components</span>)产出候选框,
+          经 <span class="mono">build_candidates</span> 合并为证据列表,随每轮裁剪一起喂给模型。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="loop-wrap">
+      <div class="loop-label">&#8635; 循环 &middot; 最多 <span class="mono">iterative_rounds</span>&nbsp;=&nbsp;8 轮,提前 final 可跳出</div>
+
+      <div class="flow-item">
+        <div class="flow-node"><div class="flow-dot"></div><div class="flow-line"></div></div>
+        <div class="flow-body">
+          <div class="stage-card">
+            <h3>① 裁剪决策 <span class="stage-tag">crop-decision</span></h3>
+            <p class="desc">模型看当前裁剪 + 候选证据(裁剪内/外)+ 历史决策,输出 <span class="mono">action</span>。</p>
+            <div class="branches">
+              <div class="branch go">
+                <div class="cond">action = crop</div>
+                <div class="outcome">提交提议裁剪框 &rarr; 进入 Commit Gate</div>
+              </div>
+              <div class="branch jump">
+                <div class="cond">action = final</div>
+                <div class="outcome">提前跳出循环 &rarr; 直接进入 Final Click</div>
+              </div>
+              <div class="branch retry">
+                <div class="cond">action = recrop</div>
+                <div class="outcome">退回更宽裁剪框,本轮重来</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-item">
+        <div class="flow-node"><div class="flow-dot"></div><div class="flow-line"></div></div>
+        <div class="flow-body">
+          <div class="stage-card">
+            <h3>② Commit Gate <span class="stage-tag">仅 action=crop 触发</span></h3>
+            <p class="desc">单独一次调用审核提议的裁剪框——是否包住目标候选簇、是否留够上下文、
+            有没有丢掉同任务的竞争候选。</p>
+            <div class="branches">
+              <div class="branch go">
+                <div class="cond">accept</div>
+                <div class="outcome">提交新裁剪框(面积达标:stage1&ge;20% / stage2&ge;8%)&rarr; 进入下一轮</div>
+              </div>
+              <div class="branch retry">
+                <div class="cond">reject</div>
+                <div class="outcome">按 <span class="mono">crop_check_reject_mode</span> 退到更宽范围(widen)
+                或全图重来(restart_full),重试 &le; <span class="mono">crop_retry_limit</span>(3)次</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="memory-box">
+      <h3>轮间记忆:文字一直都有,图片默认不留</h3>
+      <p class="desc">三层是独立开关,不是自动打包在一起——GPT 生产配置(<span class="mono">sspro_stack_zoom.yaml</span>)只开了第一层。</p>
+
+      <div class="mem-row">
+        <div>
+          <div class="mem-label">压缩文字摘要(最近 8 轮)</div>
+          <div class="mem-desc"><span class="mono">_format_iterative_history</span>:每轮
+          action / crop_box / next_box / area_fraction / target_visible_element 各一行,
+          塞进下一轮的 prompt。模型知道&ldquo;自己判断过什么&rdquo;,但看不到那几轮的画面。</div>
+        </div>
+        <span class="mem-pill always">始终开启</span>
+      </div>
+
+      <div class="mem-row">
+        <div>
+          <div class="mem-label">完整对话线程 <span class="mono" style="font-size:11px">context_mode=accumulate</span></div>
+          <div class="mem-desc">把每个被接受轮次(gate 拒绝/recrop 不算)发送的完整文本块 + 模型原始回复,
+          滚雪球式累加进后续轮次——比上面的摘要保留细节多得多,但只是文字。</div>
+        </div>
+        <span class="mem-pill off">GPT 现用:关(single)</span>
+      </div>
+
+      <div class="mem-row">
+        <div>
+          <div class="mem-label">把裁剪图也带上 <span class="mono" style="font-size:11px">accumulate_images=true</span></div>
+          <div class="mem-desc">需先开启上一层,再叠这一层:之前被接受轮次的裁剪图会一起留在上下文里,
+          模型能&ldquo;回看&rdquo;走过的每一张图,而不只是文字摘要——但代价是每轮上下文体积线性增长。</div>
+        </div>
+        <span class="mem-pill off">GPT 现用:关</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="section-label">阶段二</p>
+      <h2>Final Click</h2>
+    </div>
+
+    <div class="flow-item">
+      <div class="flow-node"><div class="flow-dot"></div><div class="flow-line"></div></div>
+      <div class="flow-body">
+        <div class="stage-card">
+          <h3>渲染最终裁剪,一次调用给点</h3>
+          <p class="desc">(可选 <span class="mono">enable_final_candidate_detect</span>)在最终区域重新检测候选
+          &rarr; 一次调用给 <span class="mono">x,y</span> 或 <span class="mono">candidate_id</span>
+          &rarr; 映射回原图坐标 <span class="mono">(cx, cy)</span>。</p>
+          <div class="branches">
+            <div class="branch jump">
+              <div class="cond">enable_final_recheck</div>
+              <div class="outcome">额外一次 Review 调用复核:keep(保留)/ replace(替换点)</div>
+            </div>
+            <div class="branch retry">
+              <div class="cond">点击无效 / 模型要求 recrop</div>
+              <div class="outcome"><span class="mono">enable_final_recrop</span>&nbsp;退回更宽裁剪,
+              重试 Final Click &le; <span class="mono">final_recrop_limit</span>(3)次</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-item">
+      <div class="flow-node"><div class="flow-dot terminal"></div><div class="flow-line"></div></div>
+      <div class="flow-body">
+        <div class="stage-card">
+          <h3>Exhaustion Fallback <span class="stage-tag">重试全部耗尽仍无有效点击</span></h3>
+          <div class="branches">
+            <div class="branch retry">
+              <div class="cond">exhaustion_fallback = none</div>
+              <div class="outcome">返回 <span class="mono">None</span> &mdash; 该题判错</div>
+            </div>
+            <div class="branch go">
+              <div class="cond">exhaustion_fallback = keep_best</div>
+              <div class="outcome">返回最深一次已提交裁剪的中心点(低置信度兜底,好过完全没有答案)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow-item">
+      <div class="flow-node"><div class="flow-dot terminal"></div></div>
+      <div class="flow-body">
+        <div class="output-card mono">
+          {"cx": ..., "cy": ..., "grounding_type": "iterative_zoom_crop_refine", "confidence": ..., "reasoning": "..."}
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      为什么算作 <b>~15&ndash;20 次调用</b>:最多 <span class="mono">8</span> 轮裁剪决策,每轮命中 reject 时
+      commit gate 最多重试 <span class="mono">3</span> 次;加 1 次 final click,最多重试
+      <span class="mono">3</span> 次 recrop;可选 1 次 recheck。&mdash;&mdash; 比 native single-shot 的
+      <b>1 次调用</b>贵一个数量级。这正是它对 GPT 有净增益(+10.4pt)、却对 qwen 是净负担(&minus;8pt)的原因:
+      候选约束 + commit gate 对弱定位模型是&ldquo;扶一把&rdquo;,对强定位模型是&ldquo;捆住手脚&rdquo;。
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="section-label">配置面</p>
+      <h2>驱动这套流程的可调组件</h2>
+      <p class="section-sub"><span class="mono">ScreenSpotLocatorConfig</span> 的全部字段,按上面流程里出现的顺序分组。</p>
+    </div>
+
+    <div class="ref-table">
+      <div class="ref-row">
+        <div class="ref-cell ref-group">整体流程形状</div>
+        <div class="ref-cell ref-fields"><span class="mono">locator_mode</span> &middot; <span class="mono">context_mode</span> &middot; <span class="mono">accumulate_images</span> &middot; <span class="mono">enable_legacy_pipeline</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">轮数与裁剪尺度</div>
+        <div class="ref-cell ref-fields">最大的一组&mdash;&mdash;<span class="mono">iterative_rounds</span> &middot; <span class="mono">max_side/scale</span> &middot; <span class="mono">min_short_side</span> &middot; <span class="mono">scale_mode</span> &middot; <span class="mono">target_pixels</span> &middot; <span class="mono">padding_pct</span> &middot; <span class="mono">stage1/2_min_area_pct</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">候选框处理</div>
+        <div class="ref-cell ref-fields"><span class="mono">candidate_limit</span> &middot; <span class="mono">candidate_sort</span> &middot; <span class="mono">candidate_dedup_iou</span> &middot; <span class="mono">final_candidates</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">坐标表达方式</div>
+        <div class="ref-cell ref-fields"><span class="mono">coords_crop_local</span> &middot; <span class="mono">coords_normalized</span><span class="ref-flag">与框架冲突,不推荐</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">Commit gate / 重试</div>
+        <div class="ref-cell ref-fields"><span class="mono">enable_crop_check</span> &middot; <span class="mono">crop_check_mode</span> &middot; <span class="mono">crop_check_reject_mode</span> &middot; <span class="mono">crop_retry_limit</span> &middot; <span class="mono">final_recrop_limit</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">最终点击与校验</div>
+        <div class="ref-cell ref-fields"><span class="mono">enable_final_candidate_detect</span> &middot; <span class="mono">enable_final_verify</span> &middot; <span class="mono">enable_final_recheck</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">提示措辞与推理</div>
+        <div class="ref-cell ref-fields"><span class="mono">iterative_prompt_layout</span> &middot; <span class="mono">reasoning_first</span><span class="ref-flag">免费轴,未测</span></div>
+      </div>
+      <div class="ref-row">
+        <div class="ref-cell ref-group">判分/兜底策略</div>
+        <div class="ref-cell ref-fields"><span class="mono">target_convention</span> &middot; <span class="mono">exhaustion_fallback</span> &middot; <span class="mono">allow_refuse</span></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>gui_harness/planning/screenspot_locator.py &middot; sspro_stack_zoom.yaml</span>
+    <span>2026-07</span>
+  </footer>
+
+</div>
+</body>
+</html>

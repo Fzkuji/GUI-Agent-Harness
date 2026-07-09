@@ -131,6 +131,24 @@ _REFUSE_ADDENDUM = """Refusal option (overrides "do not give up"):
   difficulty."""
 _REFUSE_JSON_ENUM = "crop|final|recrop|refuse"
 
+# Appended to crop-decision / final-click rules ONLY when coords_normalized=True.
+# Overrides the "displayed-crop pixel" coordinate convention with NORMALIZED
+# [0,1] fractions. Off by default → prompts byte-identical to legacy.
+# Qwen-family models are trained on [0,1000] normalized integer coordinates (not
+# [0,1] floats, not pixels). Matching that exact convention is worth ~+11pt in
+# single-shot; the point_2d array wrapper (see _NORM_COORD_CLICK) another ~+10.
+_NORM_COORD_CROP = (
+    "COORDINATE FORMAT OVERRIDE: express the bbox as NORMALIZED integers in [0,1000] "
+    "relative to the DISPLAYED crop image — x1,y1,x2,y2 each an int in [0,1000] "
+    "(0=left/top edge, 1000=right/bottom edge), NOT pixels. Example: [312, 420, 553, 604]."
+)
+_NORM_COORD_CLICK = (
+    "COORDINATE FORMAT OVERRIDE: give the click point as a \"point_2d\" array of two "
+    "NORMALIZED integers in [0,1000] relative to the DISPLAYED crop image (0=left/top "
+    "edge, 1000=right/bottom edge), NOT pixels. Add a \"point_2d\": [x, y] field to the "
+    "JSON, e.g. \"point_2d\": [470, 630]."
+)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # target_convention="element" prompt variants.
@@ -372,6 +390,7 @@ class ScreenSpotLocatorConfig:
     candidate_sort: str = "none"            # "none"=detector order; "relevance"=rank by match to target then confidence; "confidence"
     candidate_dedup_iou: float = 0.0        # >0 drops candidates overlapping a kept one above this IoU (removes OCR-vs-button / near-dup boxes); 0=off
     coords_crop_local: bool = False         # True=present everything in the displayed-crop pixel frame only (drop "current crop in original coords", the scale factor, and candidate original_center) so the model computes size/position from scratch on the new image; False=legacy (also expose original coords + scale)
+    coords_normalized: bool = False         # True=model emits crop bbox + final click coords as NORMALIZED [0,1] fractions of the displayed image (better for models trained on normalized coords, e.g. Qwen3-VL); False=absolute displayed-crop pixels (legacy, better for pixel-trained models e.g. GPT). Default off = prompts/behaviour byte-identical to legacy.
     iterative_max_area_pct: int = 0      # 0 = no per-round area cap (model decides zoom amount)
     iterative_padding_pct: int = 8
     iterative_min_width: int = 240
@@ -623,6 +642,7 @@ def _iterative_zoom_locate(
                 sort_mode=config.candidate_sort,
                 dedup_iou=config.candidate_dedup_iou,
                 crop_local=config.coords_crop_local,
+                normalized=config.coords_normalized,
             )
             if config.coords_crop_local:
                 # Crop-local frame: describe only the displayed image the model
@@ -661,6 +681,9 @@ coordinates:
                 _rules_full = _rules_full + "\n\n" + _REFUSE_ADDENDUM
                 _rules_body = _rules_body + "\n\n" + _REFUSE_ADDENDUM
             _act_enum = _REFUSE_JSON_ENUM if config.allow_refuse else "crop|final|recrop"
+            if config.coords_normalized:
+                _rules_full = _rules_full + "\n\n" + _NORM_COORD_CROP
+                _rules_body = _rules_body + "\n\n" + _NORM_COORD_CROP
             if config.iterative_prompt_layout == "legacy":
                 # Byte-for-byte origin/main: framing prose -> candidates -> Rules
                 # -> JSON, all in one text block, no cache prefix, no accumulation.
@@ -1252,6 +1275,7 @@ def _iterative_candidate_lines(
     sort_mode: str = "none",
     dedup_iou: float = 0.0,
     crop_local: bool = False,
+    normalized: bool = False,
 ) -> tuple[str, list[dict]]:
     """Build the candidate evidence block.
 
@@ -1309,10 +1333,20 @@ def _iterative_candidate_lines(
             int(round((ccy - y1) * display_scale)),
         ]
         label = cand.get("label") or cand.get("name") or "(unlabeled)"
-        line = (
-            f"{cand['id']}: {label} source={cand.get('source')} type={cand.get('type')} "
-            f"display_bbox={local_box} display_center={local_center}"
-        )
+        if normalized:
+            cw = max(1, x2 - x1); ch = max(1, y2 - y1)
+            nb = [int(round((cbox[0] - x1) / cw * 1000)), int(round((cbox[1] - y1) / ch * 1000)),
+                  int(round((cbox[2] - x1) / cw * 1000)), int(round((cbox[3] - y1) / ch * 1000))]
+            nc = [int(round((ccx - x1) / cw * 1000)), int(round((ccy - y1) / ch * 1000))]
+            line = (
+                f"{cand['id']}: {label} source={cand.get('source')} type={cand.get('type')} "
+                f"norm_bbox={nb} norm_center={nc}"
+            )
+        else:
+            line = (
+                f"{cand['id']}: {label} source={cand.get('source')} type={cand.get('type')} "
+                f"display_bbox={local_box} display_center={local_center}"
+            )
         if not crop_local:
             line += f" original_center=({ccx},{ccy})"
         lines.append(line)
@@ -1537,12 +1571,23 @@ def _iterative_next_box(
     if dx2 <= dx1 or dy2 <= dy1:
         return None
     x1, y1, x2, y2 = current_box
-    next_box = [
-        int(round(x1 + dx1 / display_scale)),
-        int(round(y1 + dy1 / display_scale)),
-        int(round(x1 + dx2 / display_scale)),
-        int(round(y1 + dy2 / display_scale)),
-    ]
+    if config.coords_normalized and max(dx1, dy1, dx2, dy2) <= 1000:
+        # NORMALIZED [0,1000] of the displayed crop map directly to the current
+        # crop box in original coords (display_scale is uniform).
+        cw, ch = (x2 - x1), (y2 - y1)
+        next_box = [
+            int(round(x1 + dx1 / 1000.0 * cw)),
+            int(round(y1 + dy1 / 1000.0 * ch)),
+            int(round(x1 + dx2 / 1000.0 * cw)),
+            int(round(y1 + dy2 / 1000.0 * ch)),
+        ]
+    else:
+        next_box = [
+            int(round(x1 + dx1 / display_scale)),
+            int(round(y1 + dy1 / display_scale)),
+            int(round(x1 + dx2 / display_scale)),
+            int(round(y1 + dy2 / display_scale)),
+        ]
     width = max(1, next_box[2] - next_box[0])
     height = max(1, next_box[3] - next_box[1])
     pad_x = int(round(width * config.iterative_padding_pct / 100.0))
@@ -1622,6 +1667,7 @@ def _iterative_zoom_final_click(
         sort_mode=config.candidate_sort,
         dedup_iou=config.candidate_dedup_iou,
         crop_local=config.coords_crop_local,
+        normalized=config.coords_normalized,
     )
     if config.coords_crop_local:
         disp_w = int(round((crop_box[2] - crop_box[0]) * display_scale))
@@ -1648,6 +1694,8 @@ Crop history:
 Detected OCR/component candidates in this final crop:
 {candidate_lines or "(none)"}"""
     _click_rules = _final_click_rules_for(config)
+    if config.coords_normalized:
+        _click_rules = _click_rules + "\n\n" + _NORM_COORD_CLICK
     if config.iterative_prompt_layout == "legacy":
         # origin/main: dynamic+history+candidates -> click-policy rules+JSON,
         # one text block, no cache prefix.
@@ -1698,11 +1746,25 @@ Detected OCR/component candidates in this final crop:
     cx = cy = None
     local_x = local_y = None
     try:
-        local_x = float(parsed.get("x", 0))
-        local_y = float(parsed.get("y", 0))
+        pt2d = parsed.get("point_2d")
+        if config.coords_normalized and isinstance(pt2d, (list, tuple)) and len(pt2d) >= 2:
+            local_x = float(pt2d[0]); local_y = float(pt2d[1])
+        else:
+            local_x = float(parsed.get("x", 0))
+            local_y = float(parsed.get("y", 0))
     except (TypeError, ValueError):
         local_x = local_y = None
     if (
+        config.coords_normalized
+        and local_x is not None
+        and local_y is not None
+        and 0 < local_x <= 1000
+        and 0 < local_y <= 1000
+    ):
+        # NORMALIZED [0,1000] of the displayed crop → original coords.
+        cx = int(round(x1 + local_x / 1000.0 * (x2 - x1)))
+        cy = int(round(y1 + local_y / 1000.0 * (y2 - y1)))
+    elif (
         local_x is not None
         and local_y is not None
         and local_x > 0
