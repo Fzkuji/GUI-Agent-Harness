@@ -1,7 +1,7 @@
 """Per-model GUI-grounding strategy registry for ScreenSpot-Pro.
 
 Each model gets a profile instead of one harness being assumed to fit every
-model. Confirmed by data in COORDINATE_FORMAT_FINDINGS.md:
+model. Confirmed by data in docs/COORDINATE_FORMAT_FINDINGS.md:
 
   - coord_format : which gui_harness.planning.coord_formats id this model's
                    native grounding was trained on. Wrong format costs 20+ pts.
@@ -73,7 +73,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "to confirm. Format ablation (baseline50, verified clean): abs 62% > "
             "xy1000/point2d 56% > frac01 50%. "
             "IMPORTANT SEPARATE CAVEAT (easy to re-confuse, see "
-            "COORDINATE_FORMAT_FINDINGS.md §9.5): the commonly-cited '87.9%' full-1581 GPT "
+            "docs/COORDINATE_FORMAT_FINDINGS.md §9.5): the commonly-cited '87.9%' full-1581 GPT "
             "number used configs/legacy_baseline.yaml (an OLDER, weaker config — fill scaling, "
             "no candidate_sort, 8 rounds) — NOT sspro_stack_zoom.yaml (this profile's config, "
             "also what M3/qwen's full-1581 harness runs used). '87.9% (same config) / 88.7%' "
@@ -184,7 +184,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "the real 'model-best-adapted single-shot' number for kimi, not just a small-sample "
             "estimate. pipeline vs harness still not paired-tested (see confirmed=False above). "
             "3-PROBE DIAGNOSTIC (specialized-head vs general-reasoning classification, see "
-            "COORDINATE_FORMAT_FINDINGS.md §5.6): Probe B (hints at native frac01, baseline50) "
+            "docs/COORDINATE_FORMAT_FINDINGS.md §5.6): Probe B (hints at native frac01, baseline50) "
             "= -23pt (60%->38%), MORE negative than qwen's -17pt — strong specialized-head "
             "signature. Probe C (same hints test at foreign/worst format abs_pixel) = only "
             "+3pt (21%->23%), essentially noise — does NOT show qwen's dramatic sign-reversal "
