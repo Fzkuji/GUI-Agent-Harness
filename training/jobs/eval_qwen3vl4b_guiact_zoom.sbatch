@@ -36,12 +36,16 @@ source /opt/anaconda3/etc/profile.d/conda.sh
 conda activate "${ENV_PREFIX}"
 
 # Start the OpenAI-compatible server (LoRA variant if LORA_DIR set).
+# --max-pixels matches the training-time image_max_pixels (1048576) so the
+# model sees the same resolution distribution it was tuned on.
 if [ -n "${LORA_DIR}" ] && [ -d "${LORA_DIR}" ]; then
   python "${TRAIN_DIR}/tools/serve_qwen_vl_lora_api.py" \
-    --model "${MODEL_DIR}" --lora "${LORA_DIR}" --port "${PORT}" &
+    --model "${MODEL_DIR}" --adapter "${LORA_DIR}" \
+    --max-pixels 1048576 --port "${PORT}" &
 else
   python "${TRAIN_DIR}/tools/serve_qwen_vl_api.py" \
-    --model "${MODEL_DIR}" --port "${PORT}" &
+    --model "${MODEL_DIR}" \
+    --max-pixels 1048576 --port "${PORT}" &
 fi
 SERVER_PID=$!
 trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
