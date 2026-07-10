@@ -1,18 +1,25 @@
 #!/bin/bash
 #SBATCH --job-name=setup_lf_q3vl
-#SBATCH --output=/home/zichuanfu2/GUI-Attention-Harness/training/logs/setup_lf_q3vl_%j.out
-#SBATCH --error=/home/zichuanfu2/GUI-Attention-Harness/training/logs/setup_lf_q3vl_%j.err
+#SBATCH --output=training/logs/setup_lf_q3vl_%j.out
+#SBATCH --error=training/logs/setup_lf_q3vl_%j.err
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
 
+# One-time environment setup. Submit from the REPO ROOT:
+#   mkdir -p training/logs
+#   git clone https://github.com/hiyouga/LLaMA-Factory training/LLaMA-Factory
+#   sbatch training/jobs/setup_llamafactory_qwen3vl.sbatch
+#
+# Machine-specific locations are env-overridable (MODEL_DIR, LF_DIR, ENV_PREFIX).
+
 set -euo pipefail
 
-ROOT=/home/zichuanfu2/GUI-Attention-Harness
+ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 TRAIN_DIR="${ROOT}/training"
-LF_DIR="${TRAIN_DIR}/LLaMA-Factory"
-ENV_PREFIX="${TRAIN_DIR}/envs/llamafactory-qwen3vl"
-MODEL_DIR=/home/zichuanfu2/models/Qwen3-VL-4B-Instruct
+LF_DIR="${LF_DIR:-${TRAIN_DIR}/LLaMA-Factory}"
+ENV_PREFIX="${ENV_PREFIX:-${TRAIN_DIR}/envs/llamafactory-qwen3vl}"
+MODEL_DIR="${MODEL_DIR:-${HOME}/models/Qwen3-VL-4B-Instruct}"
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/envs"
 
@@ -36,7 +43,7 @@ if [ ! -d "${LF_DIR}/.git" ]; then
 fi
 
 if [ ! -d "${MODEL_DIR}" ]; then
-  echo "Cannot find Qwen3-VL-4B-Instruct model dir: ${MODEL_DIR}"
+  echo "Cannot find model dir: ${MODEL_DIR}"
   exit 1
 fi
 
@@ -59,8 +66,9 @@ cd "${LF_DIR}"
 python -m pip install -e .
 python -m pip check
 
-python - <<'PY'
+MODEL_DIR="${MODEL_DIR}" python - <<'PY'
 import importlib
+import os
 from pathlib import Path
 
 packages = ["torch", "transformers", "datasets", "accelerate", "peft", "trl", "llamafactory"]
@@ -75,7 +83,7 @@ print(f"cuda_device_count {torch.cuda.device_count()}")
 
 from transformers import AutoConfig, AutoProcessor
 
-model_dir = Path("/home/zichuanfu2/models/Qwen3-VL-4B-Instruct")
+model_dir = Path(os.environ["MODEL_DIR"])
 config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
 print(f"model_type {getattr(config, 'model_type', None)}")

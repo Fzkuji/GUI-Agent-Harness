@@ -2,7 +2,11 @@
 
 Goal: SFT a Qwen3-VL so the iterative-zoom behaviour (crop → crop → final →
 click) lives **in the weights**, with no detector / OCR / candidate evidence at
-inference. The harness's role shifts from inference-time scaffold to
+inference.
+
+Base model: **Qwen3-VL-4B-Instruct** — on ScreenSpot Pro it single-shots
+~59.5%, beating 8B (54.6%) and even 32B, at less than half the train cost.
+Target: ~80% after SFT. The harness's role shifts from inference-time scaffold to
 **training-data format designer**: trajectories are synthesized directly from
 GUIAct ground-truth boxes — no teacher LLM runs, no manual clicking.
 
@@ -28,11 +32,11 @@ Three fixes, in order of suspected impact:
 
 ```
 training/
-├── configs/qwen3vl8b_guiact_zoom_lora.yaml   # LLaMA-Factory LoRA SFT config
+├── configs/qwen3vl4b_guiact_zoom_lora.yaml   # LLaMA-Factory LoRA SFT config
 ├── jobs/
-│   ├── setup_llamafactory_qwen3vl.sbatch     # one-time env setup (unchanged)
-│   ├── train_qwen3vl8b_guiact_zoom.sbatch    # prepare data + train
-│   └── eval_qwen3vl8b_guiact_zoom.sbatch     # serve + pure-model zoom eval
+│   ├── setup_llamafactory_qwen3vl.sbatch     # one-time env setup
+│   ├── train_qwen3vl4b_guiact_zoom.sbatch    # prepare data + train
+│   └── eval_qwen3vl4b_guiact_zoom.sbatch     # serve + pure-model zoom eval
 ├── tools/
 │   ├── prompts.py                    # training prompts ≡ harness inference prompts
 │   ├── prepare_guiact_zoom_sft.py    # GT box → full zoom trajectory (the core)
@@ -71,18 +75,32 @@ Key properties:
 
 ## Workflow (cluster)
 
+Everything is **relative to the repo root** — submit jobs from there. The only
+machine-specific locations (model weights, GUIAct data, LLaMA-Factory clone)
+are env-overridable variables with sensible defaults (`$HOME/models/...`,
+`$ROOT/gui_aima_like_training_data/...`, `training/LLaMA-Factory`); nothing
+absolute lives in git.
+
 ```bash
-# 0. once: env
-sbatch jobs/setup_llamafactory_qwen3vl.sbatch
+cd <repo-root>
+mkdir -p training/logs                        # once (Slurm log dir must pre-exist)
+
+# 0. once: clone framework + build env
+git clone https://github.com/hiyouga/LLaMA-Factory training/LLaMA-Factory
+sbatch training/jobs/setup_llamafactory_qwen3vl.sbatch
 
 # 1. prepare data + LoRA SFT (prepare runs inside the job)
-sbatch jobs/train_qwen3vl8b_guiact_zoom.sbatch
+sbatch training/jobs/train_qwen3vl4b_guiact_zoom.sbatch
 
 # 2. eval — pure-model zoom loop on held-out rows
-sbatch jobs/eval_qwen3vl8b_guiact_zoom.sbatch                      # LoRA, zoom
-EVAL_MODE=single sbatch jobs/eval_qwen3vl8b_guiact_zoom.sbatch     # LoRA, single-shot
-LORA_DIR="" sbatch jobs/eval_qwen3vl8b_guiact_zoom.sbatch          # base, zoom
-LORA_DIR="" EVAL_MODE=single sbatch jobs/eval_qwen3vl8b_guiact_zoom.sbatch
+sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch                      # LoRA, zoom
+EVAL_MODE=single sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch     # LoRA, single-shot
+LORA_DIR="" sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch          # base, zoom
+LORA_DIR="" EVAL_MODE=single sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch
+
+# non-default locations: override per submission, e.g.
+MODEL_DIR=/data/models/Qwen3-VL-4B-Instruct GUIAIMA=/data/guiact \
+  sbatch training/jobs/train_qwen3vl4b_guiact_zoom.sbatch
 ```
 
 ## The comparison that matters
@@ -94,9 +112,14 @@ LORA_DIR="" EVAL_MODE=single sbatch jobs/eval_qwen3vl8b_guiact_zoom.sbatch
 | **SFT, pure-model zoom loop** | did the scaffold distill into weights? |
 | SFT, single-shot | how much survives without even the loop |
 
-Success bar: SFT pure-model zoom ≥ base+harness (68.2% for Qwen3-VL-8B on the
+Success bar: SFT pure-model zoom ≥ base+harness (68.0% for Qwen3-VL-4B on the
 existing GUIAct-500). Everything above the base single-shot floor is distilled
 scaffold; anything ≥ the harness row means the method no longer needs its
-inference-time prompts. Next steps beyond SFT (candidate-evidence mixing,
-agentic RL, the three-way ablation) are in
+inference-time prompts.
+
+Caveat for the ~80% ScreenSpot-Pro target: GUIAct is web screenshots; SSPro is
+4K desktop pro apps. Expect partial transfer — if the SSPro gap persists after
+GUIAct SFT, mix in desktop/high-res grounding data (e.g. OS-Atlas desktop
+split) rather than more web data. Next steps beyond SFT (candidate-evidence
+mixing, agentic RL, the three-way ablation) are in
 `../benchmarks/screenspot_pro/docs/TRAINING_PLAN.md`.

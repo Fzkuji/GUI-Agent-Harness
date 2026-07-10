@@ -1,28 +1,35 @@
 #!/bin/bash
-#SBATCH --job-name=q3vl8b_zoom_eval
-#SBATCH --output=/home/zichuanfu2/GUI-Attention-Harness/training/logs/q3vl8b_zoom_eval_%j.out
-#SBATCH --error=/home/zichuanfu2/GUI-Attention-Harness/training/logs/q3vl8b_zoom_eval_%j.err
+#SBATCH --job-name=q3vl4b_zoom_eval
+#SBATCH --output=training/logs/q3vl4b_zoom_eval_%j.out
+#SBATCH --error=training/logs/q3vl4b_zoom_eval_%j.err
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=120G
 #SBATCH --time=08:00:00
 #SBATCH --gres=gpu:1
 
+# Submit from the REPO ROOT (mkdir -p training/logs once, see train job).
+# Variants:
+#   sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch                 # LoRA, zoom loop
+#   EVAL_MODE=single sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch
+#   LORA_DIR="" sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch     # base model
+#   LORA_DIR="" EVAL_MODE=single sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch
+
 set -euo pipefail
 
-# ── Edit these if the repo/data live elsewhere ─────────────────────────────
-ROOT=/home/zichuanfu2/GUI-Attention-Harness
-GUIAIMA=${ROOT}/gui_aima_like_training_data/datasets/gui-aima-data/extracted/gui-aima-data
-MODEL_DIR=/home/zichuanfu2/models/Qwen3-VL-8B-Instruct
-LORA_DIR=${ROOT}/training/outputs/qwen3vl8b_guiact_zoom_lora   # empty ("") = eval base model
-EVAL_MODE=${EVAL_MODE:-zoom}     # zoom | single
-EVAL_NUM=${EVAL_NUM:-0}          # 0 = all val rows
-# ───────────────────────────────────────────────────────────────────────────
-
+ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 TRAIN_DIR="${ROOT}/training"
-ENV_PREFIX="${TRAIN_DIR}/envs/llamafactory-qwen3vl"
-PORT=8000
+ENV_PREFIX="${ENV_PREFIX:-${TRAIN_DIR}/envs/llamafactory-qwen3vl}"
+MODEL_DIR="${MODEL_DIR:-${HOME}/models/Qwen3-VL-4B-Instruct}"
+GUIAIMA="${GUIAIMA:-${ROOT}/gui_aima_like_training_data/datasets/gui-aima-data/extracted/gui-aima-data}"
+LORA_DIR="${LORA_DIR-${TRAIN_DIR}/outputs/qwen3vl4b_guiact_zoom_lora}"  # set LORA_DIR="" for base
+EVAL_MODE="${EVAL_MODE:-zoom}"   # zoom | single
+EVAL_NUM="${EVAL_NUM:-0}"        # 0 = all val rows
+PORT="${PORT:-8000}"
+
+mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs"
 
 echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
+echo "root=${ROOT} lora_dir=${LORA_DIR:-<base>} mode=${EVAL_MODE}"
 nvidia-smi
 
 source /opt/anaconda3/etc/profile.d/conda.sh
@@ -49,7 +56,7 @@ done
 
 python "${TRAIN_DIR}/tools/eval_zoom_traj.py" \
   --api-base "http://127.0.0.1:${PORT}/v1" \
-  --model qwen3-vl-8b \
+  --model qwen3-vl-4b \
   --val-rows "${TRAIN_DIR}/data/guiact_zoom_sft/val_rows.json" \
   --image-dir "${GUIAIMA}/GUIAct/web_imgs" \
   --mode "${EVAL_MODE}" \
