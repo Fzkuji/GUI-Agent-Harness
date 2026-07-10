@@ -659,6 +659,55 @@
     也正是我们的方法应该优先投入的目标。
   </p>
 
+  <h2>设计级消融:三个设计各值几分(GPT-5.5)</h2>
+  <p>
+    方法由三个设计组成:<strong>①坐标注入</strong>(把检测到的文字/组件坐标写进 prompt)、
+    <strong>②自适应粗到细裁剪</strong>(模型自选下一个窗口,多轮收窄,错了重选)、
+    <strong>③视觉验证</strong>(把框/点画回图上复查)。在同一批 SSPro-300 上,
+    从全开配置每次整块抽掉一个设计:
+  </p>
+  <div class="bars" style="margin-bottom:18px;">
+    <div class="bar-row hl">
+      <span class="bl">full(①②③全开)</span>
+      <div class="bar-track"><div class="bar-fill best" style="width:88.7%"></div></div>
+      <span class="bv">88.7%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bl">−① 去坐标注入</span>
+      <div class="bar-track"><div class="bar-fill" style="width:87.7%"></div></div>
+      <span class="bv">87.7%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bl">−③ 去视觉验证</span>
+      <div class="bar-track"><div class="bar-fill" style="width:87.0%"></div></div>
+      <span class="bv">87.0%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bl">−② 去自适应裁剪</span>
+      <div class="bar-track"><div class="bar-fill" style="width:85.0%; background:var(--warn);"></div></div>
+      <span class="bv">85.0%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bl">single-locate(参考)</span>
+      <div class="bar-track"><div class="bar-fill" style="width:78.3%"></div></div>
+      <span class="bv">78.3%</span>
+    </div>
+  </div>
+  <p>
+    <strong>抽谁都掉分,②掉得最多(−3.7pt)。</strong>最有信息量的是①:单发场景下坐标提示
+    值 <span class="pill pos">+16pt</span>,但完整管线里抽掉它只 −1.0pt——<strong>②把①的作用
+    吸收了</strong>:zoom 把目标放大到看得清之后,模型靠自己的视觉推理就能定位,不再需要文字
+    坐标兜底。①与②是"补空间信息"的两条冗余路径。−②臂还揭示"剪一刀≠自适应":单轮裁剪
+    只能把 4K 全图切到中位 50% 面积(8 轮时最终框中位面积 1.3%),小目标依旧太小——放大的
+    收益必须靠"模型自选窗口+多轮收窄+错了重选"才吃得满。
+  </p>
+  <p style="font-size:13px;color:var(--ink-faint);">
+    * −②臂 300 题中 2 题为本机检测器确定性 CUDA OOM(单轮裁剪产出半屏 4K 图),按保守口径
+    计错;有效题口径 85.6%。首轮 76.3% 的假数(31 行瞬时 OOM)已按"报错重试"规矩清洗,
+    过程见研究日志 §9.7。成本:③每题 ~35s 买 1.7pt;抽掉①反而更慢(134s vs 114s)——
+    没有候选提示,模型要更多轮尝试才收敛。
+  </p>
+
   <h2>每个模型的结论</h2>
   <div class="verdict-grid">
     <div class="verdict-card">

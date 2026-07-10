@@ -55,6 +55,51 @@ already-specialized. Full analysis: `docs/GROUNDING_CAPABILITY_REPORT.html`
 
 ---
 
+## Design-level ablation (GPT-5.5, SSPro-300)
+
+The harness has three designs: **① coordinate priming** (annotate detected
+text/components with coordinates in the prompt), **② adaptive coarse-to-fine
+cropping** (the model picks the next crop over rounds, with retry/recrop), and
+**③ visual verification** (draw the crop/point back and re-check). Removing one
+design at a time from the full config (`sspro_stack_zoom.yaml`), same 300-sample
+stratified slice, thinking off:
+
+| Arm | Accuracy | Δ vs full | median s/sample | median zoom rounds |
+|-----|----------|-----------|-----------------|--------------------|
+| **full** (①②③) | **88.7%** (266/300) | — | 114s | 3 |
+| −① `abl_no_prime` | 87.7% (263/300) | −1.0pt | 134s | 3 |
+| −② `abl_no_adaptive` | 85.0% (255/300)* | **−3.7pt** | 81s | 1 |
+| −③ `abl_no_verify` | 87.0% (261/300) | −1.7pt | 79s | 3 |
+| single-locate (reference) | 78.3% (235/300) | −10.4pt | 25s | — |
+
+\* 2/300 samples counted wrong are deterministic local-GPU OOM (single-round
+crops of 4K screenshots too large for the local detector; retried at concurrency
+3→2→1). Valid-sample accuracy 255/298 = 85.6%. An earlier tally of this arm
+(76.3%) contained 31 transient OOM rows and was invalid — all were retried per
+the retry-errors-then-compare rule.
+
+**Reading (GPT-5.5 = general-reasoning type):**
+- Every design contributes — removing any one loses accuracy. ② adaptive
+  cropping is the largest single contributor (−3.7pt).
+- **② absorbs ①**: priming alone is worth +16pt in single-shot (58→74, format
+  ablation), but only −1.0pt inside the full pipeline — once zoom makes the
+  target legible, the model no longer needs textual coordinate hints. ① and ②
+  are two redundant routes to the same missing spatial information.
+- One crop is not enough: −② still crops once but only reaches ~50% of the
+  image (vs 1.3% median final crop area with 8 rounds), so small targets stay
+  small; its 85.0% sits between single-locate (78.3%) and full (88.7%).
+- Cost: ③ costs ~35s/sample (79→114s); removing ① makes runs *slower* (134s)
+  — without candidates the model needs more crop attempts.
+
+Config arms: `configs/abl_no_prime.yaml`, `configs/abl_no_adaptive.yaml`,
+`configs/abl_no_verify.yaml`; driver `runners/run_sspro_slice_arm.py
+--arm zoom --config <arm>.yaml`; tally `reporting/report_design_ablation.py`.
+Cross-model ablation matrix (M3 / qwen3.7-plus columns) is the planned next step
+— predicted: reasoning-type models lose accuracy on every −X arm, the
+specialized type barely moves.
+
+---
+
 ## Per-model results
 
 Each model has a *native* coordinate format; feeding the wrong format costs
@@ -162,6 +207,7 @@ benchmarks/screenspot_pro/
 │   ├── report_screenspot_versions.py
 │   ├── report_gui_grounding_datasets.py
 │   ├── report_ui_vision_slice.py
+│   ├── report_design_ablation.py
 │   ├── sync_full_final.py
 │   ├── finalize_full_results.py
 │   ├── count_completed_range.py
@@ -177,7 +223,8 @@ benchmarks/screenspot_pro/
 │   ├── generate_paper_figures.py
 │   └── render_zoom_example.py
 │
-├── configs/                       # harness pipeline configs (legacy_baseline / sspro_stack_zoom)
+├── configs/                       # harness pipeline configs (legacy_baseline / sspro_stack_zoom
+│                                  #   / abl_no_{prime,adaptive,verify} design-ablation arms)
 ├── results/<model>/               # tracked per-model result summaries
 ├── data*/                         # local benchmark data (gitignored)
 └── docs/                          # reports + research logs (below)

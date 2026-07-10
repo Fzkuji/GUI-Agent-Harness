@@ -26,7 +26,8 @@ OUT_BASE = REPO / "runs" / "sspro_stack"
 
 
 def run_annotation(arm: str, ann: str, indexes: str,
-                   provider: str, model: str, out_subdir: str) -> tuple[str, int, int]:
+                   provider: str, model: str, out_subdir: str,
+                   config: str = "sspro_stack_zoom.yaml") -> tuple[str, int, int]:
     stem = ann[:-5]
     out = OUT_BASE / out_subdir / f"{stem}.jsonl"
     work = OUT_BASE / out_subdir / "work" / stem
@@ -40,8 +41,8 @@ def run_annotation(arm: str, ann: str, indexes: str,
            "--download-timeout-s", "120", "--download-retries", "5",
            "--skip-existing"]
     if arm == "zoom":
-        cmd += ["--app-name", "screenspot_pro",
-                "--config", str(HERE / "configs" / "sspro_stack_zoom.yaml")]
+        cfg_path = config if Path(config).is_absolute() else str(HERE / "configs" / config)
+        cmd += ["--app-name", "screenspot_pro", "--config", cfg_path]
     else:
         cmd += ["--app-name", "sspro_single"]
     subprocess.run(cmd, cwd=REPO, text=True, encoding="utf-8", errors="replace",
@@ -85,6 +86,8 @@ def main() -> int:
     ap.add_argument("--provider", default="openai-codex")
     ap.add_argument("--model", default="gpt-5.5")
     ap.add_argument("--out-subdir", default="", help="输出子目录;默认=arm 名")
+    ap.add_argument("--config", default="sspro_stack_zoom.yaml",
+                    help="zoom 臂使用的 config(configs/ 下文件名或绝对路径)")
     args = ap.parse_args()
 
     if args.arm == "prefetch":
@@ -106,7 +109,7 @@ def main() -> int:
     tot_ok = tot_n = 0
     with ThreadPoolExecutor(max_workers=args.concurrency) as ex:
         futs = [ex.submit(run_annotation, args.arm, ann, idxs,
-                          args.provider, args.model, out_subdir)
+                          args.provider, args.model, out_subdir, args.config)
                 for ann, idxs in sorted(groups.items())]
         for fut in as_completed(futs):
             stem, ok, n = fut.result()

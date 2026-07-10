@@ -1,0 +1,56 @@
+# abl_no_adaptive.yaml — 设计级消融:抽掉「自适应粗到细裁剪」= 设计②
+#
+# 基线 = sspro_stack_zoom.yaml(三设计全开),退化成一次固定裁剪:
+#   iterative_rounds:      8 -> 1     (不再多轮由模型自选下一个窗口)
+#   enable_crop_retry:  true -> false (裁剪坏了也不重选)
+#   crop_retry_limit:      6 -> 0
+#   enable_final_recrop:true -> false (找不到目标也不换更大框重试)
+#   final_recrop_limit:    3 -> 0
+# 保留:坐标注入(①)、视觉验证(③)。用于测量自适应裁剪的边际贡献。
+
+locator_mode: iterative_zoom
+context_mode: single
+accumulate_images: false
+
+iterative_rounds: 1                     # ← 去② 单轮,不做多轮自适应收窄
+iterative_scale_mode: preserve
+iterative_prompt_layout: cache
+iterative_max_side: 0
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 0
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: every
+crop_check_reject_mode: widen
+enable_crop_retry: false                # ← 去② 不重选裁剪
+crop_retry_limit: 0
+enable_final_candidate_detect: true
+enable_final_recheck: true
+enable_final_verify: false
+enable_final_recrop: false              # ← 去② 不换更大框重试
+final_recrop_limit: 0
+enable_legacy_pipeline: false
+
+candidate_sort: relevance
+candidate_limit: 60
+candidate_dedup_iou: 0.0
+reasoning_first: false
+coords_crop_local: false
+
+target_convention: control
+exhaustion_fallback: keep_best
+
+runtime_timeout_s: 180
