@@ -26,6 +26,12 @@ GUIAIMA="${GUIAIMA:-${ROOT}/gui_aima_like_training_data/datasets/gui-aima-data/e
 CONFIG="${TRAIN_DIR}/configs/qwen3vl4b_guiact_zoom_lora.yaml"
 OUTPUT_DIR="${OUTPUT_DIR:-${TRAIN_DIR}/outputs/qwen3vl4b_guiact_zoom_lora}"
 
+# Scale knobs. GUIAct has ~42.5k rows -> ~170k samples; a full 2-epoch run
+# does NOT fit the cluster's 24h wall clock on one A100. Pilot small, then
+# scale: NUM_ROWS=2000 (~8k samples, 2 epochs, a few hours) -> 10000 -> more.
+NUM_ROWS="${NUM_ROWS:-2000}"     # 0 = all rows
+EPOCHS="${EPOCHS:-2.0}"
+
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs" "${TRAIN_DIR}/data"
 
 echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
@@ -49,13 +55,15 @@ python "${TRAIN_DIR}/tools/prepare_guiact_zoom_sft.py" \
   --image-dir "${GUIAIMA}/GUIAct/web_imgs" \
   --out-dir "${TRAIN_DIR}/data/guiact_zoom_sft" \
   --lf-data-dir "${LF_DIR}/data" \
-  --dataset-key guiact_zoom_sft
+  --dataset-key guiact_zoom_sft \
+  --num-samples "${NUM_ROWS}"
 
 echo "Starting LLaMA-Factory LoRA SFT..."
 cd "${LF_DIR}"
 llamafactory-cli train "${CONFIG}" \
   model_name_or_path="${MODEL_DIR}" \
   dataset_dir="${LF_DIR}/data" \
-  output_dir="${OUTPUT_DIR}"
+  output_dir="${OUTPUT_DIR}" \
+  num_train_epochs="${EPOCHS}"
 
 echo "finished_at=$(date -Is)"
