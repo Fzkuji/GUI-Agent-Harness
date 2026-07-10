@@ -78,6 +78,12 @@ crops of 4K screenshots too large for the local detector; retried at concurrency
 (76.3%) contained 31 transient OOM rows and was invalid — all were retried per
 the retry-errors-then-compare rule.
 
+Paired McNemar (same 300 samples): −② p=0.019 and full-vs-single p<0.0001 are
+significant; −① (p=0.63) and −③ (p=0.33) are individually within noise at
+n=300 — ①'s standalone effect is instead evidenced by the single-shot hint
+ablation (+16pt), and arm-level significance for ①③ is expected from the M3
+cross-model matrix (weaker base → larger margins).
+
 **Reading (GPT-5.5 = general-reasoning type):**
 - Every design contributes — removing any one loses accuracy. ② adaptive
   cropping is the largest single contributor (−3.7pt).
