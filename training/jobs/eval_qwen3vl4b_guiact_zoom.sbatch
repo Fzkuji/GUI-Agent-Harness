@@ -25,6 +25,13 @@ LORA_DIR="${LORA_DIR-${TRAIN_DIR}/outputs/qwen3vl4b_guiact_zoom_lora}"  # set LO
 EVAL_MODE="${EVAL_MODE:-zoom}"   # zoom | single
 EVAL_NUM="${EVAL_NUM:-0}"        # 0 = all val rows
 PORT="${PORT:-8000}"
+# Dataset knobs — default GUIAct val; for ScreenSpot-Pro pass e.g.:
+#   VAL_ROWS=training/data/sspro_val_rows.json \
+#   IMAGE_DIR=$HOME/data/ScreenSpot-Pro/images \
+#   EVAL_TAG=sspro sbatch training/jobs/eval_qwen3vl4b_guiact_zoom.sbatch
+VAL_ROWS="${VAL_ROWS:-${TRAIN_DIR}/data/guiact_zoom_sft/val_rows.json}"
+IMAGE_DIR="${IMAGE_DIR:-${GUIAIMA}/GUIAct/web_imgs}"
+EVAL_TAG="${EVAL_TAG:-guiact}"
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs"
 
@@ -67,10 +74,10 @@ done
 python "${TRAIN_DIR}/tools/eval_zoom_traj.py" \
   --api-base "http://127.0.0.1:${PORT}/v1" \
   --model qwen3-vl-4b \
-  --val-rows "${TRAIN_DIR}/data/guiact_zoom_sft/val_rows.json" \
-  --image-dir "${GUIAIMA}/GUIAct/web_imgs" \
+  --val-rows "${VAL_ROWS}" \
+  --image-dir "${IMAGE_DIR}" \
   --mode "${EVAL_MODE}" \
   --num "${EVAL_NUM}" \
-  --out "${TRAIN_DIR}/outputs/eval_${EVAL_MODE}_${SLURM_JOB_ID:-manual}.jsonl"
+  --out "${TRAIN_DIR}/outputs/eval_${EVAL_TAG}_${EVAL_MODE}_${SLURM_JOB_ID:-manual}.jsonl"
 
 echo "finished_at=$(date -Is)"
