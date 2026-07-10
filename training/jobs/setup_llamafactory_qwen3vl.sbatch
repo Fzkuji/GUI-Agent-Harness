@@ -21,6 +21,15 @@ LF_DIR="${LF_DIR:-${TRAIN_DIR}/LLaMA-Factory}"
 ENV_PREFIX="${ENV_PREFIX:-${TRAIN_DIR}/envs/llamafactory-qwen3vl}"
 MODEL_DIR="${MODEL_DIR:-${HOME}/models/Qwen3-VL-4B-Instruct}"
 
+# AML Server A (A100, driver CUDA 12.5) -> torch 2.6.0 + cu124 (default).
+# AML Server B (RTX 6000 Blackwell, sm_120) REQUIRES torch >= 2.7.0 + cu128:
+#   TORCH_VERSION=2.7.0 TORCHVISION_VERSION=0.22.0 TORCHAUDIO_VERSION=2.7.0 \
+#   TORCH_CUDA=cu128 sbatch training/jobs/setup_llamafactory_qwen3vl.sbatch
+TORCH_VERSION="${TORCH_VERSION:-2.6.0}"
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.21.0}"
+TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.6.0}"
+TORCH_CUDA="${TORCH_CUDA:-cu124}"
+
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/envs"
 
 echo "job_id=${SLURM_JOB_ID:-manual}"
@@ -30,12 +39,17 @@ echo "lf_dir=${LF_DIR}"
 echo "env_prefix=${ENV_PREFIX}"
 echo "model_dir=${MODEL_DIR}"
 
-if [ -f /opt/anaconda3/etc/profile.d/conda.sh ]; then
-  source /opt/anaconda3/etc/profile.d/conda.sh
-else
-  echo "Cannot find /opt/anaconda3/etc/profile.d/conda.sh"
+# Server A: /opt/anaconda3; Server B: preinstalled ~/miniconda (mandated).
+for CONDA_SH in /opt/anaconda3/etc/profile.d/conda.sh \
+                "${HOME}/miniconda/etc/profile.d/conda.sh" \
+                "${HOME}/miniconda3/etc/profile.d/conda.sh"; do
+  [ -f "${CONDA_SH}" ] && break
+done
+if [ ! -f "${CONDA_SH}" ]; then
+  echo "Cannot find conda.sh (tried /opt/anaconda3 and ~/miniconda[3])"
   exit 1
 fi
+source "${CONDA_SH}"
 
 if [ ! -d "${LF_DIR}/.git" ]; then
   echo "Cannot find LLaMA-Factory repo: ${LF_DIR}"
@@ -55,12 +69,11 @@ conda activate "${ENV_PREFIX}"
 
 python -m pip install --upgrade pip setuptools wheel
 
-# Server A uses A100 with driver CUDA 12.5; use cu124 wheels rather than newer cu128 wheels.
 python -m pip install \
-  torch==2.6.0 \
-  torchvision==0.21.0 \
-  torchaudio==2.6.0 \
-  --index-url https://download.pytorch.org/whl/cu124
+  "torch==${TORCH_VERSION}" \
+  "torchvision==${TORCHVISION_VERSION}" \
+  "torchaudio==${TORCHAUDIO_VERSION}" \
+  --index-url "https://download.pytorch.org/whl/${TORCH_CUDA}"
 
 cd "${LF_DIR}"
 python -m pip install -e .

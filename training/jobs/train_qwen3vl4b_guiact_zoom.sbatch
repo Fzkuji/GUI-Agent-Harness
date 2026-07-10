@@ -34,12 +34,13 @@ echo "model_dir=${MODEL_DIR}"
 echo "guiaima=${GUIAIMA}"
 nvidia-smi
 
-if [ -f /opt/anaconda3/etc/profile.d/conda.sh ]; then
-  source /opt/anaconda3/etc/profile.d/conda.sh
-else
-  echo "Cannot find /opt/anaconda3/etc/profile.d/conda.sh"
-  exit 1
-fi
+# Server A: /opt/anaconda3; Server B: preinstalled ~/miniconda (mandated).
+for CONDA_SH in /opt/anaconda3/etc/profile.d/conda.sh \
+                "${HOME}/miniconda/etc/profile.d/conda.sh" \
+                "${HOME}/miniconda3/etc/profile.d/conda.sh"; do
+  [ -f "${CONDA_SH}" ] && break
+done
+source "${CONDA_SH}"
 conda activate "${ENV_PREFIX}"
 
 echo "Preparing GUIAct full-trajectory zoom SFT data ([0,1000] normalized)..."

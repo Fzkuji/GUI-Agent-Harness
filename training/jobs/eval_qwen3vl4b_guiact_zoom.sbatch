@@ -32,7 +32,13 @@ echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
 echo "root=${ROOT} lora_dir=${LORA_DIR:-<base>} mode=${EVAL_MODE}"
 nvidia-smi
 
-source /opt/anaconda3/etc/profile.d/conda.sh
+# Server A: /opt/anaconda3; Server B: preinstalled ~/miniconda (mandated).
+for CONDA_SH in /opt/anaconda3/etc/profile.d/conda.sh \
+                "${HOME}/miniconda/etc/profile.d/conda.sh" \
+                "${HOME}/miniconda3/etc/profile.d/conda.sh"; do
+  [ -f "${CONDA_SH}" ] && break
+done
+source "${CONDA_SH}"
 conda activate "${ENV_PREFIX}"
 
 # Start the OpenAI-compatible server (LoRA variant if LORA_DIR set).
