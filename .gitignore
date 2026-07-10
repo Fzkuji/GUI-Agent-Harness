@@ -76,3 +76,9 @@ benchmarks/ui_vision_raw/
 benchmarks/ui_vision/data/
 # 本地 Claude 配置
 .claude/
+# 训练:只保留代码(tools/configs/jobs),生成物和框架不进 git
+training/data/
+training/outputs/
+training/logs/
+training/envs/
+training/LLaMA-Factory/

@@ -1,0 +1,57 @@
+# LLaMA-Factory LoRA SFT — Qwen3-VL-8B on GUIAct full-trajectory zoom data.
+#
+# vs the old first_crop_1k config, three deliberate changes:
+#   1. dataset: full trajectory (crop_r0 / crop_r1 / crop_final / click /
+#      recrop_neg), coordinates in Qwen3-VL-native [0,1000] of the displayed
+#      image — the old pixel-coordinate supervision fought the base model.
+#   2. image_max_pixels: 262144 (512x512) was too small for grounding — full
+#      screenshots got downscaled to ~512px before the ViT. 1048576 keeps
+#      ~1024px detail; rendered crops (short side 512-640) pass ~unchanged.
+#   3. rank 16 / 2 epochs: the data is ~4x richer per row; still cheap.
+#
+# Paths below assume the cluster layout (see jobs/*.sbatch); edit ROOT-relative
+# paths if the repo lives elsewhere.
+
+### model
+model_name_or_path: /home/zichuanfu2/models/Qwen3-VL-8B-Instruct
+image_max_pixels: 1048576
+video_max_pixels: 16384
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+### dataset
+dataset_dir: /home/zichuanfu2/GUI-Attention-Harness/training/LLaMA-Factory/data
+dataset: guiact_zoom_sft
+template: qwen3_vl_nothink
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 8
+dataloader_num_workers: 4
+
+### output
+output_dir: /home/zichuanfu2/GUI-Attention-Harness/training/outputs/qwen3vl8b_guiact_zoom_lora
+logging_steps: 10
+save_steps: 200
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 2.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+bf16: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
