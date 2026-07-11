@@ -32,6 +32,7 @@ PORT="${PORT:-8000}"
 VAL_ROWS="${VAL_ROWS:-${TRAIN_DIR}/data/guiact_zoom_sft/val_rows.json}"
 IMAGE_DIR="${IMAGE_DIR:-${GUIAIMA}/GUIAct/web_imgs}"
 EVAL_TAG="${EVAL_TAG:-guiact}"
+MAX_PIXELS="${MAX_PIXELS:-1048576}"   # must match the checkpoint's training image_max_pixels (v2: 2097152)
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs"
 
@@ -49,16 +50,16 @@ source "${CONDA_SH}"
 conda activate "${ENV_PREFIX}"
 
 # Start the OpenAI-compatible server (LoRA variant if LORA_DIR set).
-# --max-pixels matches the training-time image_max_pixels (1048576) so the
+# --max-pixels matches the checkpoint's training image_max_pixels so the
 # model sees the same resolution distribution it was tuned on.
 if [ -n "${LORA_DIR}" ] && [ -d "${LORA_DIR}" ]; then
   python "${TRAIN_DIR}/tools/serve_qwen_vl_lora_api.py" \
     --model "${MODEL_DIR}" --adapter "${LORA_DIR}" \
-    --max-pixels 1048576 --port "${PORT}" &
+    --max-pixels "${MAX_PIXELS}" --port "${PORT}" &
 else
   python "${TRAIN_DIR}/tools/serve_qwen_vl_api.py" \
     --model "${MODEL_DIR}" \
-    --max-pixels 1048576 --port "${PORT}" &
+    --max-pixels "${MAX_PIXELS}" --port "${PORT}" &
 fi
 SERVER_PID=$!
 trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
