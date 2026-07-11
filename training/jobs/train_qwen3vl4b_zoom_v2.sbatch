@@ -5,12 +5,15 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=200G
 #SBATCH --time=23:50:00
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 
 # v2 training: multi-source (GUIAct + Wave-UI + UGround), variable-depth
 # trajectories, plausible recrop negatives, 2M-px round-0 inputs.
 # Submit from the REPO ROOT (mkdir -p training/logs once).
-# Row budget: ~20k rows -> ~80k samples -> ~10.5k steps @ ~5.5s = ~16h + ~0.5h prep.
+# Dual-GPU DDP (cluster allows 2 cards/person; an empty machine assigns the
+# NVLink pair 0+1): ~67k samples -> ~8h. grad accum halved to 4 so the
+# effective batch stays 8, same as the v1 pilot.
+# SKIP_PREP=1 reuses training/data/zoom_sft_v2 from a previous run.
 
 set -euo pipefail
 
@@ -43,22 +46,27 @@ done
 source "${CONDA_SH}"
 conda activate "${ENV_PREFIX}"
 
-echo "Preparing v2 multi-source zoom SFT data..."
-python "${TRAIN_DIR}/tools/prepare_zoom_sft_v2.py" \
-  --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
-  --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
-  --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
-  --out-dir "${TRAIN_DIR}/data/zoom_sft_v2" \
-  --lf-data-dir "${LF_DIR}/data" \
-  --dataset-key zoom_sft_v2 \
-  --workers 10
+if [ "${SKIP_PREP:-0}" = "1" ] && [ -s "${LF_DIR}/data/zoom_sft_v2_train.json" ]; then
+  echo "SKIP_PREP=1 — reusing existing zoom_sft_v2 data."
+else
+  echo "Preparing v2 multi-source zoom SFT data..."
+  python "${TRAIN_DIR}/tools/prepare_zoom_sft_v2.py" \
+    --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
+    --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
+    --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
+    --out-dir "${TRAIN_DIR}/data/zoom_sft_v2" \
+    --lf-data-dir "${LF_DIR}/data" \
+    --dataset-key zoom_sft_v2 \
+    --workers 10
+fi
 
-echo "Starting LLaMA-Factory LoRA SFT (v2)..."
+echo "Starting LLaMA-Factory LoRA SFT (v2, dual-GPU DDP)..."
 cd "${LF_DIR}"
-llamafactory-cli train "${CONFIG}" \
+FORCE_TORCHRUN=1 llamafactory-cli train "${CONFIG}" \
   model_name_or_path="${MODEL_DIR}" \
   dataset_dir="${LF_DIR}/data" \
   output_dir="${OUTPUT_DIR}" \
-  num_train_epochs="${EPOCHS}"
+  num_train_epochs="${EPOCHS}" \
+  gradient_accumulation_steps=4
 
 echo "finished_at=$(date -Is)"
