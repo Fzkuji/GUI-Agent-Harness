@@ -19,14 +19,18 @@ Two evaluation pipelines are compared throughout:
 | **MiniMax-M3** | **47.4%** (1581) | 26.1% (1581, point2d) | **+21.3pt** | general-reasoning |
 | **kimi-k2.6** | — (not run) | **56.6%** (1581, frac01) | n/a | intermediate |
 | **qwen3.7-plus** | 62.9% (partial ~979) | **78–79%** (120 paired, point2d) | **−8pt** (single-shot wins) | specialized shortcut |
-| Claude Opus 4.7 | 79.0%* (338, quota-limited) | — | — | — |
+| **Claude Opus 4.7** | 79.0%* (338, quota-limited, old pipeline) | **31.6%** (1581, abs) | **~+47pt** (largest measured) | general-reasoning |
 | Claude Opus 4.8 | stratified-78 done | — | — | — |
 
 \* Caveats: GPT-5.5 87.9% used `configs/legacy_baseline.yaml` (full 1581); 88.7%
 used `configs/sspro_stack_zoom.yaml` (300-sample subset) — different config AND
 scale, not directly comparable (see `docs/COORDINATE_FORMAT_FINDINGS.md` §9.5).
 GPT clean single-shot is unverified; 62% is the format-ablation best (50 samples).
-Claude 4.7 full run hit quota exhaustion (1,243 infra failures, not model errors).
+Claude 4.7's 79.0% is the June-2026 old pipeline (quota exhaustion left 1,243
+infra failures; 338 valid) — direction is solid, config differs from zoom stack.
+Claude 4.7 single-shot is gated by the Anthropic API server-side downscale (long
+edge ≤1568px / ~1.15Mpx): legible half (scale≥0.45) scores 61.9%, illegible half
+2.2% — the 31.6% total is that mixture, not uniform weakness (see §9.8).
 
 ---
 
@@ -138,9 +142,21 @@ Each model has a *native* coordinate format; feeding the wrong format costs
 - Results: `runs/sspro_native/qwen3.7-plus/`, `runs/sspro_aliyun/qwen3.7-plus/` (harness).
 
 ### Claude Opus 4.7 / 4.8
-- 4.7 full run 79.0%* (338/1581, quota-limited, 1,243 WF); stratified-78 79.5%.
-- 4.8 stratified-78 done.
-- Results: `results/claude_opus_4_7/`, `results/claude_opus_4_8/`.
+- 4.7 harness (June 2026, old pipeline) 79.0%* (338/1581, quota-limited, 1,243 WF); stratified-78 79.5%.
+- 4.7 native single-shot (2026-07, full 1581, abs_pixel, no hints, thinking off): **31.6%**, 0 errors.
+- Format ablation (baseline50): abs 30% ≈ frac01 30% > xy1000 17% > point2d 13% —
+  pixel-native like GPT, but poor format compliance (answers raw pixels even when
+  asked for [0,1000] normalized; normalized scores are non-compliance, not ability).
+- Rescale hypothesis refuted: predictions are in the prompt-declared original pixel
+  space (rescaled-space scoring gives 0/47) — Claude compensates the API downscale.
+- Resolution is the binding constraint: API scale ≥0.6 → 78.8%; 0.45–0.6 → 58.9%;
+  <0.45 → ~2%. By group: Scientific 63.8% … OS (all-4K) 0.5%.
+- Harness gain ~+47pt — the largest of any model; the zoom crops stay under the API
+  downscale threshold, so the model sees native-resolution detail.
+- Infra: Anthropic rejects images >5MB (HTTP 400); the claude-code path in
+  `run_sspro_native.py` re-encodes oversized PNGs to JPEG (same resolution).
+- Results: `runs/sspro_native/claude-opus-4-7/`, `runs/sspro_baseline/claude47_*`,
+  `results/claude_opus_4_7/` (June harness), `results/claude_opus_4_8/`.
 
 ---
 

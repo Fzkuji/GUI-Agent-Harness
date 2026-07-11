@@ -84,11 +84,33 @@ def _make_aliyun_call(model: str, hires: bool):
     return call
 
 
+ANTHROPIC_MAX_IMG_BYTES = 4_500_000  # API hard limit 5MB/image (HTTP 400 above it)
+
+
+def _shrink_for_anthropic(img_path: Path) -> Path:
+    """Re-encode >4.5MB PNGs to JPEG (same resolution) so Anthropic accepts them.
+    3 baseline50 macos PNGs are 8.6-16MB and fail deterministically otherwise."""
+    if img_path.stat().st_size <= ANTHROPIC_MAX_IMG_BYTES:
+        return img_path
+    cache = img_path.parent.parent / "images_jpeg_cache"
+    cache.mkdir(exist_ok=True)
+    out = cache / (img_path.stem + ".jpg")
+    if not out.exists() or out.stat().st_size == 0:
+        im = Image.open(img_path).convert("RGB")
+        for quality in (92, 85, 75, 60):
+            im.save(out, "JPEG", quality=quality)
+            if out.stat().st_size <= ANTHROPIC_MAX_IMG_BYTES:
+                break
+    return out
+
+
 def _make_openprogram_call(provider: str, model: str):
     from gui_harness.openprogram_compat import create_runtime
     rt = create_runtime(provider=provider, model=model, max_retries=3)
 
     def call(prompt: str, img_path: Path) -> str:
+        if provider == "claude-code":
+            img_path = _shrink_for_anthropic(img_path)
         content = [{"type": "text", "text": prompt}, {"type": "image", "path": str(img_path)}]
         return rt.exec(content=content, timeout_s=150) or ""
 

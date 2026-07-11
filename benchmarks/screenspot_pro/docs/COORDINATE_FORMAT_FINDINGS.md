@@ -461,6 +461,64 @@ YOLO/OCR 检测器的 CUDA OOM(单轮裁剪产出半屏 4K 大图、并发 3 撑
 qwen 各臂几乎不动(已饱和,无可放大的推理)。这张对照表是"两种 grounding 能力"论点的
 消融级证据。
 
+## 9.8 Claude Opus 4.7:第五列,也是"分辨率瓶颈"最干净的案例(2026-07)
+
+接入方式:openprogram `claude-code` provider(领取本机 Claude Code 订阅 OAuth,
+`openprogram providers adopt claude_code`),直连 api.anthropic.com,thinking 默认 off。
+探针与全量同一调用路径(`Runtime.exec()`)。
+
+### 格式消融(baseline50,无提示,probe_claude_format.py)
+
+| 格式 | Claude 4.7 | 对照 |
+|---|---|---|
+| **abs_pixel** | **30%** | GPT 62%(同为像素派) |
+| frac01 | 30% | kimi 最优派 60% |
+| xy1000 | 17% | qwen 69% |
+| point2d_1000 | 13% | qwen 79% / M3 27% |
+
+关键现象:**格式服从性差**。point2d_1000/xy1000 条件下经常照答原始像素
+(point2d 下答 `[1304,1017]`,与 abs 条件一字不差)——归一化格式的低分是不服从,
+不是定位能力下降。Claude 与 GPT 同属像素派,但 GPT 会老实换算,4.7 不换。
+
+### 缩放空间假设:提出并被证伪(probe_claude_rescale.py)
+
+Anthropic API 会把长边 >1568px 或 >~1.15Mpx 的图**服务端缩小**(SSPro 的图全部超限,
+缩放系数 0.26~0.6)。假设"4.7 答的是缩放后图像的像素空间":同批 50 题 abs_pixel 双口径
+判分——按缩放空间还原 **0/47**,按原图空间 34%。**假设死刑**:4.7 能正确补偿服务端缩放,
+按 prompt 声明的原图尺寸作答。坐标映射没问题,问题在下面。
+
+### 全量单发(2026-07-12,1581/1581,abs_pixel+无提示,0 报错)
+
+**31.6%**(499 命中)。按 API 缩放系数劈开近乎二值:
+
+| API 缩放 | 准确率 |
+|---|---|
+| ≥0.6(~2.5K 图) | **78.8%**(93/118) |
+| 0.45~0.6 | **58.9%**(388/659) |
+| 0.3~0.45(4K 为主) | 1.8%(13/723) |
+| <0.3(超宽/5K+) | 6.2%(5/81) |
+
+看得清的一半(≥0.45,777 题)61.9%,看不清的一半 2.2%。分组:Scientific 63.8% >
+Creative 45.7% > Office 31.7% > CAD 27.2% > Dev 12.0% > **OS 0.5%**(OS 全是 4K)。
+**31.6% 不是均匀的弱,是"物理看不清"主导的混合分布**——图一旦可辨,4.7 接近 GPT 水平。
+
+### 对比 harness:全模型最大增益
+
+6 月老管线 harness 79.0%(338 有效题)/ stratified-78 79.5% ⇒ **harness 增益 ~+47pt**
+(GPT +10~30、M3 +21、qwen 为负)。机制正是本文档的核心论点:zoom 裁剪后的局部图不再
+触发 API 缩放,模型看到原生分辨率——4.7 是这个机制价值的最强证据。分类:**通用推理型**。
+
+### 基础设施发现
+
+- Anthropic 对 >5MB 的图直接 HTTP 400。SSPro 有一批 8.6~16MB 的 macos PNG,
+  确定性失败。修复:`run_sspro_native.py` 的 claude-code 通路对 >4.5MB 的 PNG
+  同分辨率转 JPEG(`images_jpeg_cache/`),全量 1581 题 0 报错。
+- ModelProfile 已登记(`model_profiles.py: claude-opus-4-7`)。
+  数据:`runs/sspro_native/claude-opus-4-7/`、`runs/sspro_baseline/claude47_*`。
+
+**下一步**:4.7 用当前 sspro_stack_zoom 在 300 切片跑 full 臂,验证"+47pt"在新管线、
+同题配对口径下的真实值(预期 ≥79%,可能接近 GPT)。
+
 ## 10. 复现
 
 **统一生产入口(保留在仓库)**:

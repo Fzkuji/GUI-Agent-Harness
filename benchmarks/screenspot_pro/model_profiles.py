@@ -254,6 +254,46 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "improve it, unlike qwen where the method correctly has nothing to add."
         ),
     ),
+    "claude-opus-4-7": ModelProfile(
+        provider="claude-code",
+        coord_format="abs_pixel",
+        pipeline="native_single_shot",
+        confirmed=False,  # format ablation done (below); native-vs-harness paired run pending
+        hires=False,
+        use_hints=False,
+        note=(
+            "FORMAT ABLATION (2026-07, baseline50, no-hints, probe_claude_format.py, "
+            "Runtime.exec via claude-code provider = Claude Code subscription OAuth, thinking "
+            "default off): abs_pixel 30% ~ frac01 30% > xy1000 17% > point2d_1000 13%. "
+            "Claude is PIXEL-NATIVE like GPT but with POOR format compliance: under "
+            "point2d_1000/xy1000 it frequently answers the SAME raw pixel coords as under "
+            "abs_pixel (e.g. [1304,1017] verbatim in both conditions) — normalized formats' "
+            "low scores are non-compliance, not worse grounding. "
+            "RESCALE HYPOTHESIS REFUTED (probe_claude_rescale.py, 47 scored): guessed Claude "
+            "answers in the Anthropic-API-downscaled image space (long edge 1568px / ~1.15Mpx "
+            "cap) — scoring predictions as downscaled-space coords gives 0/47 vs 34% as "
+            "original-space coords. Claude correctly compensates the server-side downscale and "
+            "answers in the prompt-declared original pixel space. "
+            "THE REAL BOTTLENECK IS RESOLUTION, split is dramatic: images with mild API "
+            "downscale (scale>=0.45, ~2.5K) 14/21=67% vs heavy downscale (scale<0.45, 4K/"
+            "ultrawide) 2/26=8%. Single-shot ~30% is 'physically cannot see', not weak "
+            "reasoning — on legible images Claude approaches GPT's level. This predicts the "
+            "LARGEST harness gain of any model (June-2026 old-pipeline iterative harness: "
+            "79.0% on 338 valid / 79.5% stratified-78 ≈ +45-50pt over single-shot; zoom crops "
+            "stay under the API downscale threshold so the model sees native resolution). "
+            "INFRA: Anthropic hard-rejects images >5MB (HTTP 400) — 3 baseline50 PNGs "
+            "(8.6-16MB macos screenshots) fail deterministically; run_sspro_native.py's "
+            "claude-code path re-encodes >4.5MB PNGs to JPEG before sending. "
+            "FULL-SCALE RESULT (2026-07-12, 1581/1581, abs_pixel+no-hints+thinking-off, "
+            "0 errors thanks to the JPEG shrink): 31.6% (499 hits). The resolution split is "
+            "near-binary at full scale: API scale>=0.6 78.8% (93/118), 0.45-0.6 58.9% "
+            "(388/659), 0.3-0.45 1.8% (13/723), <0.3 6.2% (5/81) — i.e. legible half "
+            "(scale>=0.45) 61.9% vs illegible half 2.2%. By group: Scientific 63.8% > "
+            "Creative 45.7% > Office 31.7% > CAD 27.2% > Dev 12.0% > OS 0.5% (OS is all-4K). "
+            "vs June-2026 old-pipeline harness 79.0% (338 valid) => harness gain ~+47pt, the "
+            "largest of any model measured (GPT +10-30, M3 +21, qwen negative)."
+        ),
+    ),
 }
 
 
