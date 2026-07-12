@@ -46,6 +46,7 @@ def main() -> None:
         x1, y1, x2, y2 = r["bbox"]
         rows.append({
             "source_index": i,
+            "source": "sspro",  # eval_zoom_traj keys the candidates cache by this
             "sample_id": r.get("id", f"{ann_file}:{idx}"),
             "image": r["img_filename"],
             "instruction": r["instruction"],
