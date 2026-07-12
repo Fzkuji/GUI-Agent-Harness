@@ -185,6 +185,7 @@ def crop_dynamic_block(
     total_rounds: int,
     stage_idx: int,
     history_lines: str = "(none)",
+    candidates_block: str = "(none)",
 ) -> str:
     """Per-round dynamic context, mirroring _iterative_zoom_locate's layout."""
     return f"""Task: {task}
@@ -206,7 +207,7 @@ Rejected crop attempts from this same current crop:
 
 Detected OCR/component candidates inside this crop, shown in displayed-crop
 coordinates:
-(none)
+{candidates_block}
 
 {CROP_JSON_TAIL}"""
 
@@ -219,6 +220,7 @@ def click_dynamic_block(
     img_h: int,
     crop_box: list[int],
     display_scale: float,
+    candidates_block: str = "(none)",
 ) -> str:
     """Final-click dynamic context (upscaled final crop)."""
     return f"""Task: {task}
@@ -229,6 +231,6 @@ This displayed crop is scaled by {display_scale:.4f} from original pixels.
 
 Detected OCR/component candidates inside this crop, shown in displayed-crop
 coordinates:
-(none)
+{candidates_block}
 
 {CLICK_JSON_TAIL}"""
