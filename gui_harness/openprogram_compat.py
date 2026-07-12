@@ -53,8 +53,163 @@ def _default_max_retries() -> int:
         return 5
 
 
+_ANTHROPIC_MAX_IMG_BYTES = 4_500_000  # API hard limit 5MB/image (HTTP 400 above it)
+# Claude Code's Read tool downscales to 2000px long edge and tells the model
+# "[Image: original WxH, displayed at wxh. Multiply coordinates by k ...]".
+# Claude's grounding is calibrated to exactly this protocol (computer-use
+# training): raw 4K via the API scores 30% on SSPro-baseline50 single-shot,
+# this protocol 44-48%, the real CLI channel 68%. Opt out per-process with
+# GUI_HARNESS_CLAUDE_CC_PROTOCOL=0.
+_CC_MAX_SIDE = 2000
+
+
+def _cc_protocol_enabled() -> bool:
+    return os.environ.get("GUI_HARNESS_CLAUDE_CC_PROTOCOL", "1") != "0"
+
+
+def _prepare_image_for_anthropic(path: str) -> tuple[str, str]:
+    """Return (send_path, metadata_line) per the Claude Code image protocol.
+
+    - >2000px long edge: downscale to 2000 (LANCZOS) and return the CC
+      metadata line so the model grounds in the displayed space and maps
+      back with the explicit factor. Answers stay in ORIGINAL pixel space.
+    - >4.5MB after that (or with protocol off): same-resolution JPEG
+      re-encode — Anthropic hard-rejects >5MB images (HTTP 400).
+    """
+    from PIL import Image
+
+    meta_line = ""
+    try:
+        size_ok = os.path.getsize(path) <= _ANTHROPIC_MAX_IMG_BYTES
+    except OSError:
+        return path, meta_line
+
+    if _cc_protocol_enabled():
+        im = Image.open(path)
+        W, H = im.size
+        if max(W, H) > _CC_MAX_SIDE:
+            k = max(W, H) / _CC_MAX_SIDE
+            w, h = round(W / k), round(H / k)
+            cache_dir = os.path.join(os.path.dirname(path), "_anthropic_cc2000_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            out = os.path.join(
+                cache_dir, os.path.splitext(os.path.basename(path))[0] + ".png")
+            if not os.path.exists(out) or os.path.getsize(out) == 0:
+                im.resize((w, h), Image.LANCZOS).save(out, "PNG")
+            meta_line = (f"[Image: original {W}x{H}, displayed at {w}x{h}. "
+                         f"Multiply coordinates by {k:.2f} to map to original image.]")
+            path = out
+            try:
+                size_ok = os.path.getsize(path) <= _ANTHROPIC_MAX_IMG_BYTES
+            except OSError:
+                return path, meta_line
+
+    if size_ok:
+        return path, meta_line
+    cache_dir = os.path.join(os.path.dirname(path), "_anthropic_jpeg_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    out = os.path.join(
+        cache_dir, os.path.splitext(os.path.basename(path))[0] + ".jpg")
+    if not os.path.exists(out) or os.path.getsize(out) == 0:
+        im = Image.open(path).convert("RGB")
+        for quality in (92, 85, 75, 60):
+            im.save(out, "JPEG", quality=quality)
+            if os.path.getsize(out) <= _ANTHROPIC_MAX_IMG_BYTES:
+                break
+    return out, meta_line
+
+
+def _wrap_exec_for_anthropic_images(runtime) -> None:
+    """Route every image content block through the Claude image protocol.
+
+    One choke point instead of patching each of the ~10 call sites in
+    gui_harness.planning that send {"type": "image", "path": ...} blocks.
+    Oversized images are downscaled per the CC protocol and the metadata
+    line rides along as a text block right before the image.
+    """
+    original_exec = runtime.exec
+
+    def exec_with_shrink(*args, **kwargs):
+        content = kwargs.get("content")
+        if content is None and args:
+            content, args = args[0], args[1:]
+        if isinstance(content, list):
+            new_content = []
+            for block in content:
+                if (isinstance(block, dict) and block.get("type") == "image"
+                        and block.get("path")):
+                    send_path, meta_line = _prepare_image_for_anthropic(block["path"])
+                    if meta_line:
+                        new_content.append({"type": "text", "text": meta_line})
+                    new_content.append({**block, "path": send_path})
+                else:
+                    new_content.append(block)
+            content = new_content
+        if content is not None:
+            kwargs["content"] = content
+        return original_exec(*args, **kwargs)
+
+    runtime.exec = exec_with_shrink
+
+
+_CLAUDE_CLI_EXE = os.environ.get(
+    "GUI_HARNESS_CLAUDE_CLI_EXE", os.path.expanduser("~/.local/bin/claude.exe"))
+
+
+class _ClaudeCliRuntime:
+    """Runtime adapter that shells out to the Claude Code CLI per exec.
+
+    This IS the channel Claude's grounding is calibrated to (computer-use
+    training environment): the CLI's Read tool downscales >2000px images and
+    annotates '[Image: original WxH, displayed at wxh. Multiply by k]', the
+    image enters as a tool result, and the CC system prompt applies. SSPro
+    baseline50 single-shot: 68% here vs 30% raw direct API. Stateless: one
+    fresh CLI session per exec, like Runtime.exec with context_mode single.
+    """
+
+    def __init__(self, model: str, max_retries: int = 3):
+        self.model = model
+        self.max_retries = max(1, int(max_retries))
+        self.thinking_level = "off"  # CLI owns its own thinking; kept for API parity
+
+    def exec(self, content=None, timeout_s: float | None = None, **_kw) -> str:
+        import subprocess
+
+        parts = []
+        for block in content or []:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type", "text")
+            if btype == "text" and block.get("text"):
+                parts.append(str(block["text"]))
+            elif btype == "image" and block.get("path"):
+                parts.append(
+                    f"Read the image file at {os.path.abspath(block['path'])} now.")
+        prompt = "\n\n".join(parts)
+        deadline = (timeout_s or 300) + 120  # CLI startup + tool-loop overhead
+        last_err = None
+        for _attempt in range(self.max_retries):
+            try:
+                p = subprocess.run(
+                    [_CLAUDE_CLI_EXE, "-p", prompt, "--model", self.model,
+                     "--allowedTools", "Read"],
+                    capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=deadline, stdin=subprocess.DEVNULL)
+                if p.returncode == 0 and (p.stdout or "").strip():
+                    return p.stdout.strip()
+                last_err = RuntimeError(
+                    f"claude-cli rc={p.returncode}: {(p.stderr or '')[:200]}")
+            except subprocess.TimeoutExpired as exc:
+                last_err = exc
+        raise last_err
+
+
 def create_runtime(provider: str | None = None, model: str | None = None, **kwargs):
     """Create an OpenProgram runtime without binding to one provider module path."""
+    if provider == "claude-cli":
+        return _ClaudeCliRuntime(
+            model or "claude-opus-4-7",
+            max_retries=kwargs.get("max_retries", _default_max_retries()))
     create = _load_create_runtime()
     if model:
         kwargs["model"] = model
@@ -66,6 +221,8 @@ def create_runtime(provider: str | None = None, model: str | None = None, **kwar
     if hasattr(runtime, "max_retries"):
         runtime.max_retries = max(1, int(kwargs["max_retries"]))
     _disable_default_openprogram_tools(runtime)
+    if provider == "claude-code":
+        _wrap_exec_for_anthropic_images(runtime)
     return runtime
 
 

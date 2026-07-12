@@ -1,0 +1,58 @@
+# sspro_stack_zoom.yaml — SSPro 全栈实验的 zoom 臂配置。
+#
+# = best.yaml(已固化的最优开关:只开 sort,8 轮,每轮 commit gate)
+#   + 两项 UI-Vision 战役中验证过的改进:
+#     - exhaustion_fallback: keep_best(验证耗尽返回最深 crop 中心而非 None)
+#     - final_recrop_limit: 3(封病态尾巴,SSPro 回放损失上界 0.06pt)
+#   target_convention 保持默认 control(SSPro 标注的是可点击控件)。
+#
+# 跑法:
+#   python run_screenspot_pro.py --config benchmarks/screenspot_pro/configs/sspro_stack_zoom.yaml \
+#     --app-name screenspot_pro ...
+
+locator_mode: iterative_zoom
+context_mode: single
+accumulate_images: false
+
+iterative_rounds: 8
+iterative_scale_mode: preserve
+iterative_prompt_layout: cache
+iterative_max_side: 1568
+iterative_max_scale: 5
+iterative_min_short_side: 512
+iterative_min_scale: 1.0
+iterative_final_max_side: 1568
+iterative_final_max_scale: 8
+iterative_final_min_short_side: 640
+iterative_final_min_scale: 1.0
+iterative_max_area_pct: 0
+iterative_padding_pct: 8
+iterative_min_width: 240
+iterative_min_height: 80
+iterative_final_candidates: 80
+iterative_stage1_min_area_pct: 20
+iterative_stage2_min_area_pct: 8
+
+enable_staged_crop: true
+enable_crop_check: true
+crop_check_mode: every
+crop_check_reject_mode: widen
+enable_crop_retry: true
+crop_retry_limit: 6
+enable_final_candidate_detect: true
+enable_final_recheck: true
+enable_final_verify: false
+enable_final_recrop: true
+final_recrop_limit: 3
+enable_legacy_pipeline: false
+
+candidate_sort: relevance
+candidate_limit: 60
+candidate_dedup_iou: 0.0
+reasoning_first: false
+coords_crop_local: false
+
+target_convention: control
+exhaustion_fallback: keep_best
+
+runtime_timeout_s: 180

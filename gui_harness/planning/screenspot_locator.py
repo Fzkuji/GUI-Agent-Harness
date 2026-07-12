@@ -655,7 +655,7 @@ def _iterative_zoom_locate(
                 frame_lines = (
                     f"Original screenshot size: {img_w}x{img_h}\n"
                     f"Current crop in original coordinates: {crop_box}\n"
-                    f"This displayed crop is scaled by {display_scale:.4f} from original pixels."
+                    + _display_scale_line(crop_box, display_scale)
                 )
             dynamic_head = f"""Task: {task}
 Target: {target}
@@ -813,6 +813,15 @@ coordinates:
                 current_box = fallback_box
                 break
 
+            if display_scale < 1.0:
+                # Downscaled display (CC-protocol path): Claude answers in
+                # ORIGINAL pixel coordinates regardless of instructions (its
+                # trained habit — forcing displayed-space answers scores 14%
+                # vs 44% on the single-shot probe). _iterative_next_box wants
+                # displayed-space, so normalize when the bbox exceeds the
+                # displayed dims. Never triggers at scale 1.0 (GPT runs).
+                parsed["bbox"] = _normalize_bbox_to_display(
+                    parsed.get("bbox"), crop_box, display_scale)
             next_box = _iterative_next_box(
                 parsed.get("bbox"),
                 crop_box,
@@ -989,6 +998,50 @@ coordinates:
 
 def _box_area(box: list[int]) -> int:
     return max(0, int(box[2]) - int(box[0])) * max(0, int(box[3]) - int(box[1]))
+
+
+def _normalize_bbox_to_display(bbox, crop_box: list[int], display_scale: float):
+    """Map a model bbox to displayed-crop space when it came back in original coords.
+
+    Heuristic: coordinates that exceed the displayed dimensions (with 2% slack)
+    must be original-image absolute pixels — convert (subtract crop offset,
+    multiply by display_scale). Otherwise pass through unchanged.
+    """
+    if not isinstance(bbox, list) or len(bbox) != 4:
+        return bbox
+    try:
+        vals = [float(v) for v in bbox]
+    except (TypeError, ValueError):
+        return bbox
+    x1, y1, x2, y2 = crop_box
+    disp_w = (x2 - x1) * display_scale
+    disp_h = (y2 - y1) * display_scale
+    if max(vals[0], vals[2]) <= disp_w * 1.02 and max(vals[1], vals[3]) <= disp_h * 1.02:
+        return bbox
+    return [
+        (vals[0] - x1) * display_scale,
+        (vals[1] - y1) * display_scale,
+        (vals[2] - x1) * display_scale,
+        (vals[3] - y1) * display_scale,
+    ]
+
+
+def _display_scale_line(crop_box: list[int], display_scale: float) -> str:
+    """Describe the displayed crop's relation to original pixels.
+
+    Downscaled displays use Claude Code's exact metadata phrasing — Claude's
+    grounding is calibrated to it (computer-use training; SSPro single-shot:
+    raw-4K 30% vs this protocol 44-48%). Scale >= 1 keeps the legacy wording
+    byte-for-byte so existing GPT runs (always scale 1.0) are unaffected.
+    """
+    if display_scale < 1.0:
+        cw, ch = crop_box[2] - crop_box[0], crop_box[3] - crop_box[1]
+        w = int(round(cw * display_scale))
+        h = int(round(ch * display_scale))
+        k = 1.0 / display_scale
+        return (f"[Image: original {cw}x{ch}, displayed at {w}x{h}. "
+                f"Multiply coordinates by {k:.2f} to map to original image.]")
+    return f"This displayed crop is scaled by {display_scale:.4f} from original pixels."
 
 
 def _iterative_stage_guidance(round_idx: int, config: ScreenSpotLocatorConfig) -> str:
@@ -1469,7 +1522,7 @@ def _run_crop_check(
     )
 
     guidance_idx = round_idx if stage_idx is None else stage_idx
-    if config.coords_crop_local:
+    if config.coords_crop_local:  # (gate frame below; helper shared with crop prompt)
         disp_w = int(round((crop_box[2] - crop_box[0]) * display_scale))
         disp_h = int(round((crop_box[3] - crop_box[1]) * display_scale))
         gate_frame = (

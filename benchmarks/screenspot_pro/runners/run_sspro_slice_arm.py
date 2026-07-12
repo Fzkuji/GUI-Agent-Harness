@@ -21,7 +21,8 @@ HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parents[1]
 PY = sys.executable
 
-MANIFEST = json.loads((HERE / "runs/sspro_slice/slice_manifest.json").read_text(encoding="utf-8"))
+DEFAULT_MANIFEST = HERE / "runs/sspro_slice/slice_manifest.json"
+MANIFEST = json.loads(DEFAULT_MANIFEST.read_text(encoding="utf-8"))
 OUT_BASE = REPO / "runs" / "sspro_stack"
 
 
@@ -88,7 +89,17 @@ def main() -> int:
     ap.add_argument("--out-subdir", default="", help="输出子目录;默认=arm 名")
     ap.add_argument("--config", default="sspro_stack_zoom.yaml",
                     help="zoom 臂使用的 config(configs/ 下文件名或绝对路径)")
+    ap.add_argument("--manifest", default="",
+                    help="切片清单 json;默认 runs/sspro_slice/slice_manifest.json,"
+                         "传其它文件可跑全量等任意样本集")
     args = ap.parse_args()
+
+    global MANIFEST
+    if args.manifest:
+        mpath = Path(args.manifest)
+        if not mpath.is_absolute():
+            mpath = HERE / args.manifest
+        MANIFEST = json.loads(mpath.read_text(encoding="utf-8"))
 
     if args.arm == "prefetch":
         return prefetch()

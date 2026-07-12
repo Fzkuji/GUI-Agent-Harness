@@ -19,7 +19,7 @@ Two evaluation pipelines are compared throughout:
 | **MiniMax-M3** | **47.4%** (1581) | 26.1% (1581, point2d) | **+21.3pt** | general-reasoning |
 | **kimi-k2.6** | — (not run) | **56.6%** (1581, frac01) | n/a | intermediate |
 | **qwen3.7-plus** | 62.9% (partial ~979) | **78–79%** (120 paired, point2d) | **−8pt** (single-shot wins) | specialized shortcut |
-| **Claude Opus 4.7** | 79.0%* (338, quota-limited, old pipeline) | **31.6%** (1581, abs) | **~+47pt** (largest measured) | general-reasoning |
+| **Claude Opus 4.7** | 79.0%* (338, old pipeline) · 7/10 hard-slice (new, CC-protocol) | **57.4%** (1581, abs, CC-protocol) · 31.6% raw-API | large positive | general-reasoning |
 | Claude Opus 4.8 | stratified-78 done | — | — | — |
 
 \* Caveats: GPT-5.5 87.9% used `configs/legacy_baseline.yaml` (full 1581); 88.7%
@@ -142,21 +142,31 @@ Each model has a *native* coordinate format; feeding the wrong format costs
 - Results: `runs/sspro_native/qwen3.7-plus/`, `runs/sspro_aliyun/qwen3.7-plus/` (harness).
 
 ### Claude Opus 4.7 / 4.8
-- 4.7 harness (June 2026, old pipeline) 79.0%* (338/1581, quota-limited, 1,243 WF); stratified-78 79.5%.
-- 4.7 native single-shot (2026-07, full 1581, abs_pixel, no hints, thinking off): **31.6%**, 0 errors.
-- Format ablation (baseline50): abs 30% ≈ frac01 30% > xy1000 17% > point2d 13% —
-  pixel-native like GPT, but poor format compliance (answers raw pixels even when
-  asked for [0,1000] normalized; normalized scores are non-compliance, not ability).
-- Rescale hypothesis refuted: predictions are in the prompt-declared original pixel
-  space (rescaled-space scoring gives 0/47) — Claude compensates the API downscale.
-- Resolution is the binding constraint: API scale ≥0.6 → 78.8%; 0.45–0.6 → 58.9%;
-  <0.45 → ~2%. By group: Scientific 63.8% … OS (all-4K) 0.5%.
-- Harness gain ~+47pt — the largest of any model; the zoom crops stay under the API
-  downscale threshold, so the model sees native-resolution detail.
-- Infra: Anthropic rejects images >5MB (HTTP 400); the claude-code path in
-  `run_sspro_native.py` re-encodes oversized PNGs to JPEG (same resolution).
-- Results: `runs/sspro_native/claude-opus-4-7/`, `runs/sspro_baseline/claude47_*`,
-  `results/claude_opus_4_7/` (June harness), `results/claude_opus_4_8/`.
+- **Native single-shot (2026-07-12, full 1581, abs_pixel, CC image protocol): 57.4%**,
+  0 errors. Raw direct-API feeding scores 31.6% on the same samples — the feeding
+  protocol alone is worth **+25.8pt** (see FINDINGS §9.9). Claude Code's own CLI
+  channel scores 68% on baseline50 (its full native environment; system prompt +
+  tool-result image presentation account for the last ~20pt, not replicable via
+  bare API).
+- **The CC image protocol** (what Claude is calibrated to): downscale >2000px images
+  to 2000 long edge + annotate `[Image: original WxH, displayed at wxh. Multiply
+  coordinates by k to map to original image.]`. Implemented at the claude-code
+  provider chokepoint in `gui_harness/openprogram_compat.py`; a `claude-cli`
+  provider (shells out to claude.exe) is also available for full-native runs.
+- Harness (new pipeline + CC protocol, `sspro_stack_zoom_claude2000.yaml`): hard-10
+  android_studio slice 7/10 @ 30s/sample median (raw-API config: 3/10 @ 550s;
+  official CLI channel: 6/10 @ 211s — replication matches the real thing).
+- Format ablation (baseline50, raw API): abs 30% ≈ frac01 30% > xy1000 17% >
+  point2d 13% — pixel-native like GPT, poor format compliance (answers raw pixels
+  even under normalized-format prompts; forcing displayed-space answers scores 14%).
+- June-2026 "79.0%" (338 valid, old pipeline via Meridian→Claude Code SDK) is now
+  fully explained: that channel WAS the CC protocol. The old pipeline itself
+  replayed through today's direct API scores 0/10 on the hard slice.
+- Thinking: high ≈ off (28% vs 30%) — flat, like GPT.
+- Results: `runs/sspro_native/claude-opus-4-7/` (57.4%),
+  `claude-opus-4-7_rawapi/` (31.6% archive), `runs/sspro_baseline/claude47_*`,
+  `runs/claude47_ab10*.jsonl` (harness A/B chain), `results/claude_opus_4_7/`
+  (June legacy), `results/claude_opus_4_8/`.
 
 ---
 

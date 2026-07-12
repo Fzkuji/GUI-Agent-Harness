@@ -519,6 +519,87 @@ Creative 45.7% > Office 31.7% > CAD 27.2% > Dev 12.0% > **OS 0.5%**(OS 全是 4K
 **下一步**:4.7 用当前 sspro_stack_zoom 在 300 切片跑 full 臂,验证"+47pt"在新管线、
 同题配对口径下的真实值(预期 ≥79%,可能接近 GPT)。
 
+## 9.9 Claude 通道之谜侦破:喂图协议一项值 +26pt(2026-07-12)
+
+§9.8 的 31.6% 上修为 **57.4%**。本节记录侦破过程——它同时解释了"6月79% vs 新管线30%"
+的全部差距,并把修复固化进了仓库。
+
+### 谜面
+
+4.7 用新 harness(sspro_stack_zoom,GPT 88.7% 同配置)跑 android_studio 头 10 题只有
+3/10(6月老跑分同组 78.8%),且错题全是"8轮×7次裁剪提案全被验证器拒绝、始终停在整张
+4K 图上"的死锁模式,最终输出与单发盲猜一字不差。
+
+### 排除清单(每项都有同题对照实验)
+
+配置/多余参数 ❌(GPT 原版配置);相对坐标 ❌(一直是绝对像素);1568 显示对齐 ❌
+(10/10 逐题零变化);轮内验证门过严 ❌(关门同分 3/10,只是快 15 倍);thinking ❌
+(单发 high 28% ≈ off 30%);模型版本 ❌(CLI 通道验证确为 opus-4-7);
+6月管线本身 ❌(git worktree 检出 6月6日代码+原参数走直连 = **0/10**,7题弃答——
+老管线在同等通道下更差)。
+
+### 谜底:传输通道
+
+6月的 claude-code provider 走 **Meridian 代理 → Claude Code SDK**,不是直连 API。
+把 claude.exe 当通道重测单发(baseline50,abs_pixel,同 prompt):
+
+| 通道 | 单发 |
+|---|---|
+| 直连 API,原图直塞 | 30% |
+| 直连 + CC 元数据协议(复刻) | 44% |
+| 直连 + CC 协议 + [1m] | 48% |
+| 直连 + 要求答小图坐标 | 14%(反效果:Claude 死守"答原始像素"的习惯) |
+| **Claude Code CLI 通道** | **68%** |
+
+**Claude Code 的图片管线设计(行为测绘 + 二进制字符串确认)**:Read 工具读图时长边
+>2000 就等比缩到 2000(sharp,fit:inside,只缩不放),并注入一行
+`[Image: original WxH, displayed at wxh. Multiply coordinates by k to map to original
+image.]`;≤2000 原样直传无注记;图以工具结果身份进入对话——与 computer-use 训练分布
+严格一致。剩余 ~20pt(48→68)在系统提示词/工具结果呈现里,裸 API 复刻不到。
+
+### 修复(全部入库,GPT 路径字节不变)
+
+1. `openprogram_compat`:claude-code 直连包装层实现 CC 协议(>2000 缩图 + 注记行随图,
+   >4.5MB JPEG 兜底);新增 `claude-cli` provider(exec→claude.exe,原装通道)。
+2. `screenspot_locator`:缩小显示场景的尺寸声明改用 CC 原话(`_display_scale_line`,
+   scale≥1 时字节不变);新增 `_normalize_bbox_to_display`(Claude 在缩小图上答原图
+   坐标的习惯自动归一,scale=1 永不触发)。
+3. 发现并绕过 `iterative_min_scale: 1.0` 静默否决 max_side 缩小的陷阱
+   (`sspro_stack_zoom_claude2000.yaml`:max_side 2000 + min_scale 0.3 + 免验证门)。
+4. YAML 陷阱记录:`crop_check_mode: off` 裸写会解析成布尔 False,必须写 `"off"`。
+
+### 验证(同样 10 道最难 4K 题)
+
+| 跑法 | 结果 | 中位耗时 |
+|---|---|---|
+| 单发(任意通道) | 0/10 | — |
+| 6月管线复现+直连 | 0/10 | — |
+| 新管线+直连原图 | 3/10 | 550s |
+| **新管线+CC协议(复刻)** | **7/10** | **30s** |
+| 新管线+CLI原装通道 | 6/10 | 211s |
+
+复刻版与原装 harness 一致率 9/10(唯一分歧复刻对、原装错)——**harness 场景下复刻
+足以替代原装**(zoom 接走了重活,单发差的 20pt 不再重要),且快 7 倍。
+
+### 单发全量重跑(复刻协议,1581/1581,0 报错)
+
+**57.4%**(907 命中)vs 裸直连 31.6% = **喂图协议一项 +25.8pt**。原重缩放盲区
+(scale<0.45,804题)2.2%→**47.5%**;OS 组 0.5%→**50.0%**;CAD 仍最低(32.6%,
+目标物理小)。旧 31.6% 数据归档在 `runs/sspro_native/claude-opus-4-7_rawapi/`,
+作为"通道错配"证据保留。
+
+### 论文级结论
+
+**"测模型的 grounding"永远是在测"模型×喂图环境"这个组合**:qwen 离开 point2d_1000
+掉 60pt、kimi 离开 frac01 掉 40pt、Claude 离开 CC 喂图协议掉 26pt(单发全量口径)。
+第四个模型、第三种"母语"维度(坐标格式之外,图片入口协议也是母语的一部分)。
+6月的 79% 不是玄学,是当年不自觉地用了 Claude 的母语通道。
+
+探针:`probe_claude_thinking.py` / `probe_claude_cli.py` / `probe_claude_ccstyle.py`
+(+_disp/_1m 变体) / `probe_claude_meridian.py`(Meridian 新版 Windows 500,弃用);
+数据:`runs/sspro_baseline/claude47_*.jsonl`、`runs/claude47_ab10*.jsonl`、
+`runs/june_replica10*.jsonl`。
+
 ## 10. 复现
 
 **统一生产入口(保留在仓库)**:
