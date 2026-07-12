@@ -25,7 +25,7 @@ N_UGROUND="${N_UGROUND:-4000}"
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/data/candidates_cache"
 
 echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
-nvidia-smi | head -12
+nvidia-smi --query-gpu=index,name,memory.used --format=csv,noheader
 
 cd "${ROOT}"
 python3 "${TRAIN_DIR}/tools/precompute_candidates.py" \
