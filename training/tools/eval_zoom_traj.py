@@ -204,8 +204,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api-base", default="http://127.0.0.1:8000/v1")
     ap.add_argument("--model", default="qwen3-vl-8b")
-    ap.add_argument("--val-rows", required=True, help="val_rows.json from prepare_guiact_zoom_sft.py")
-    ap.add_argument("--image-dir", required=True)
+    ap.add_argument("--val-rows", required=True, help="val_rows.json from prepare_guiact_zoom_sft.py / prepare_zoom_sft_v2.py")
+    ap.add_argument("--image-dir", default="", help="image root; v2 val rows carry a per-row image_dir which takes precedence")
     ap.add_argument("--mode", choices=["zoom", "single"], default="zoom")
     ap.add_argument("--num", type=int, default=0, help="0 = all")
     ap.add_argument("--max-rounds", type=int, default=4)
@@ -220,7 +220,7 @@ def main() -> None:
     correct = wrong = failed = 0
     with out_path.open("w", encoding="utf-8") as fh:
         for i, row in enumerate(rows):
-            img_path = Path(args.image_dir) / row["image"]
+            img_path = Path(row.get("image_dir") or args.image_dir) / row["image"]
             rec: dict[str, Any] = {
                 "source_index": row["source_index"],
                 "instruction": row["instruction"],
