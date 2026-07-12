@@ -305,7 +305,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "iterative_min_scale:1.0 silently vetoes max_side shrink — + crop_check off, "
             "quote \"off\" in YAML!) scores 7/10 on the hard android_studio slice @30s/"
             "sample vs 3/10 @550s raw and 6/10 @211s via the official CLI channel — "
-            "replication matches the real thing at 7x speed. June-2026 79.0% fully "
+            "replication matches the real thing at 7x speed. HARNESS 300-SLICE OFFICIAL (2026-07-13, claude2000 config, GPT-paired samples): 82.3% (247/300, 0 errors, median 27s/3 rounds) — harness gain +24.9pt over 57.4% single-shot; paired vs GPT 88.7%: both-correct 241/GPT-only 25/Claude-only 6/both-wrong 28, oracle union 90.7%. June-2026 79.0% fully "
             "explained: Meridian->Claude Code SDK channel WAS the CC protocol."
         ),
     ),

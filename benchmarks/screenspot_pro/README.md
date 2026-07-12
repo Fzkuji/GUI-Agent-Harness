@@ -19,7 +19,7 @@ Two evaluation pipelines are compared throughout:
 | **MiniMax-M3** | **47.4%** (1581) | 26.1% (1581, point2d) | **+21.3pt** | general-reasoning |
 | **kimi-k2.6** | — (not run) | **56.6%** (1581, frac01) | n/a | intermediate |
 | **qwen3.7-plus** | 62.9% (partial ~979) | **78–79%** (120 paired, point2d) | **−8pt** (single-shot wins) | specialized shortcut |
-| **Claude Opus 4.7** | 79.0%* (338, old pipeline) · 7/10 hard-slice (new, CC-protocol) | **57.4%** (1581, abs, CC-protocol) · 31.6% raw-API | large positive | general-reasoning |
+| **Claude Opus 4.7** | **82.3%** (300, zoom+CC-protocol) · 79.0%* (338, old pipeline) | **57.4%** (1581, abs, CC-protocol) · 31.6% raw-API | **+24.9pt** | general-reasoning |
 | Claude Opus 4.8 | stratified-78 done | — | — | — |
 
 \* Caveats: GPT-5.5 87.9% used `configs/legacy_baseline.yaml` (full 1581); 88.7%
@@ -142,6 +142,15 @@ Each model has a *native* coordinate format; feeding the wrong format costs
 - Results: `runs/sspro_native/qwen3.7-plus/`, `runs/sspro_aliyun/qwen3.7-plus/` (harness).
 
 ### Claude Opus 4.7 / 4.8
+- **Harness (2026-07-13, 300-slice, `sspro_stack_zoom_claude2000.yaml` = zoom stack +
+  CC image protocol + crop-check off): 82.3%** (247/300), 0 errors, median 27s/sample
+  (3 zoom rounds) — beats the June legacy 79.0% on a reproducible, current-pipeline
+  setup. Harness gain over CC-protocol single-shot: **+24.9pt**. By group: Office
+  95.5% > Scientific 83.7% > Creative 83.1% > OS 80.6% > CAD 77.6% > Dev 75.4%.
+- **Paired vs GPT-5.5 (88.7%, same 300 samples)**: both-correct 241, GPT-only 25,
+  Claude-only 6, both-wrong 28 → oracle-union **90.7%**. The two models' weak spots
+  differ (GPT worst at CAD, Claude worst at Dev) — cross-model arbitration headroom
+  is real (+2pt over GPT alone).
 - **Native single-shot (2026-07-12, full 1581, abs_pixel, CC image protocol): 57.4%**,
   0 errors. Raw direct-API feeding scores 31.6% on the same samples — the feeding
   protocol alone is worth **+25.8pt** (see FINDINGS §9.9). Claude Code's own CLI
