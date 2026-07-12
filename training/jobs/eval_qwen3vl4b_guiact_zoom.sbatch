@@ -32,7 +32,8 @@ PORT="${PORT:-8000}"
 VAL_ROWS="${VAL_ROWS:-${TRAIN_DIR}/data/guiact_zoom_sft/val_rows.json}"
 IMAGE_DIR="${IMAGE_DIR:-${GUIAIMA}/GUIAct/web_imgs}"
 EVAL_TAG="${EVAL_TAG:-guiact}"
-MAX_PIXELS="${MAX_PIXELS:-1048576}"   # must match the checkpoint's training image_max_pixels (v2: 2097152)
+MAX_PIXELS="${MAX_PIXELS:-1048576}"   # must match the checkpoint's training image_max_pixels (v2/v3: 2097152)
+EVAL_CANDS="${EVAL_CANDS:-}"          # candidates_cache dir -> inject detector/OCR evidence (v3 harness-style eval)
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs"
 
@@ -78,6 +79,7 @@ python "${TRAIN_DIR}/tools/eval_zoom_traj.py" \
   --val-rows "${VAL_ROWS}" \
   --image-dir "${IMAGE_DIR}" \
   --mode "${EVAL_MODE}" \
+  --candidates-dir "${EVAL_CANDS}" \
   --num "${EVAL_NUM}" \
   --out "${TRAIN_DIR}/outputs/eval_${EVAL_TAG}_${EVAL_MODE}_${SLURM_JOB_ID:-manual}.jsonl"
 

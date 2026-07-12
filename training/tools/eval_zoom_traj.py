@@ -36,6 +36,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import prompts  # noqa: E402
+import evidence  # noqa: E402
 
 TOTAL_ROUNDS = 8
 
@@ -119,11 +120,19 @@ def render_display(img: Image.Image, crop: list[float],
 # ═══════════════════════════════════════════
 
 def run_zoom(api_base: str, model: str, img: Image.Image,
-             instruction: str, max_rounds: int) -> dict[str, Any]:
+             instruction: str, max_rounds: int,
+             cands: Optional[list] = None) -> dict[str, Any]:
     img_w, img_h = img.size
     crop: list[float] = [0, 0, img_w, img_h]
     history: list[str] = []
     trace: list[dict[str, Any]] = []
+
+    def ev_block(box: list[float]) -> str:
+        if not cands:
+            return "(none)"
+        return evidence.candidate_lines(
+            cands, [int(v) for v in box], display_scale=1.0,
+            limit=60, target=instruction, sort_mode="relevance") or "(none)"
 
     for round_idx in range(max_rounds):
         disp, scale = render_display(img, crop, 512, 5.0)
@@ -133,6 +142,7 @@ def run_zoom(api_base: str, model: str, img: Image.Image,
             round_idx=round_idx, total_rounds=TOTAL_ROUNDS,
             stage_idx=min(round_idx, 2),
             history_lines="\n".join(history) or "(none)",
+            candidates_block=ev_block(crop),
         )
         parsed = parse_json_reply(
             chat(api_base, model, f"{prompts.CROP_RULES_NORM}\n\n{dyn}", disp))
@@ -160,7 +170,8 @@ def run_zoom(api_base: str, model: str, img: Image.Image,
     disp, scale = render_display(img, crop, 640, 8.0)
     dyn = prompts.click_dynamic_block(
         task=instruction, target=instruction, img_w=img_w, img_h=img_h,
-        crop_box=[int(v) for v in crop], display_scale=scale)
+        crop_box=[int(v) for v in crop], display_scale=scale,
+        candidates_block=ev_block(crop))
     parsed = parse_json_reply(
         chat(api_base, model, f"{prompts.CLICK_RULES_NORM}\n\n{dyn}", disp))
     trace.append({"stage": "click", "crop": crop, "reply": parsed})
@@ -207,6 +218,8 @@ def main() -> None:
     ap.add_argument("--val-rows", required=True, help="val_rows.json from prepare_guiact_zoom_sft.py / prepare_zoom_sft_v2.py")
     ap.add_argument("--image-dir", default="", help="image root; v2 val rows carry a per-row image_dir which takes precedence")
     ap.add_argument("--mode", choices=["zoom", "single"], default="zoom")
+    ap.add_argument("--candidates-dir", default="",
+                    help="precompute_candidates.py cache; injects detector/OCR evidence per round (v3 harness-style eval)")
     ap.add_argument("--num", type=int, default=0, help="0 = all")
     ap.add_argument("--max-rounds", type=int, default=4)
     ap.add_argument("--out", default="", help="results JSONL (default: eval_<mode>_<ts>.jsonl)")
@@ -216,6 +229,16 @@ def main() -> None:
     if args.num > 0:
         rows = rows[: args.num]
     out_path = Path(args.out or f"eval_{args.mode}_{time.strftime('%Y%m%d_%H%M%S')}.jsonl")
+
+    cand_caches: dict[str, dict] = {}
+    if args.candidates_dir:
+        cdir = Path(args.candidates_dir).expanduser()
+        for src in {r.get("source", "") for r in rows}:
+            p = cdir / f"{src}_candidates.json"
+            if src and p.exists():
+                cand_caches[src] = json.loads(p.read_text(encoding="utf-8"))
+        print(f"evidence caches loaded: { {k: len(v) for k, v in cand_caches.items()} }",
+              file=sys.stderr)
 
     correct = wrong = failed = 0
     with out_path.open("w", encoding="utf-8") as fh:
@@ -234,8 +257,10 @@ def main() -> None:
                         row["gt_bbox_norm"][0] * img.width, row["gt_bbox_norm"][1] * img.height,
                         row["gt_bbox_norm"][2] * img.width, row["gt_bbox_norm"][3] * img.height,
                     ]
+                    row_cands = cand_caches.get(row.get("source", ""), {}).get(row["image"]) or None
                     result = (run_zoom(args.api_base, args.model, img,
-                                       row["instruction"], args.max_rounds)
+                                       row["instruction"], args.max_rounds,
+                                       cands=row_cands)
                               if args.mode == "zoom"
                               else run_single(args.api_base, args.model, img,
                                               row["instruction"]))
