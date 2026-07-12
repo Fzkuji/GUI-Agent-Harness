@@ -62,12 +62,16 @@ fi
 
 echo "Starting LLaMA-Factory LoRA SFT (v3, dual-GPU DDP)..."
 cd "${LF_DIR}"
+# cutoff_len 8192 (not the config's 4096): the evidence block adds up to
+# ~1.5k tokens; at 4096 the trailing <image> token gets truncated away and
+# transformers dies with "Image features and image tokens do not match".
 FORCE_TORCHRUN=1 llamafactory-cli train "${CONFIG}" \
   model_name_or_path="${MODEL_DIR}" \
   dataset=zoom_sft_v3 \
   dataset_dir="${LF_DIR}/data" \
   output_dir="${OUTPUT_DIR}" \
   num_train_epochs="${EPOCHS}" \
-  gradient_accumulation_steps=4
+  gradient_accumulation_steps=4 \
+  cutoff_len=8192
 
 echo "finished_at=$(date -Is)"
