@@ -28,7 +28,8 @@ OUT_BASE = REPO / "runs" / "sspro_stack"
 
 def run_annotation(arm: str, ann: str, indexes: str,
                    provider: str, model: str, out_subdir: str,
-                   config: str = "sspro_stack_zoom.yaml") -> tuple[str, int, int]:
+                   config: str = "sspro_stack_zoom.yaml",
+                   data_dir: str = "") -> tuple[str, int, int]:
     stem = ann[:-5]
     out = OUT_BASE / out_subdir / f"{stem}.jsonl"
     work = OUT_BASE / out_subdir / "work" / stem
@@ -41,6 +42,8 @@ def run_annotation(arm: str, ann: str, indexes: str,
            "--exec-timeout-s", "300",
            "--download-timeout-s", "120", "--download-retries", "5",
            "--skip-existing"]
+    if data_dir:
+        cmd += ["--data-dir", data_dir]
     if arm == "zoom":
         cfg_path = config if Path(config).is_absolute() else str(HERE / "configs" / config)
         cmd += ["--app-name", "screenspot_pro", "--config", cfg_path]
@@ -92,6 +95,8 @@ def main() -> int:
     ap.add_argument("--manifest", default="",
                     help="切片清单 json;默认 runs/sspro_slice/slice_manifest.json,"
                          "传其它文件可跑全量等任意样本集")
+    ap.add_argument("--data-dir", default="",
+                    help="传给 run_screenspot_pro 的 --data-dir(绝对路径可用集群本地数据)")
     args = ap.parse_args()
 
     global MANIFEST
@@ -120,7 +125,8 @@ def main() -> int:
     tot_ok = tot_n = 0
     with ThreadPoolExecutor(max_workers=args.concurrency) as ex:
         futs = [ex.submit(run_annotation, args.arm, ann, idxs,
-                          args.provider, args.model, out_subdir, args.config)
+                          args.provider, args.model, out_subdir, args.config,
+                          args.data_dir)
                 for ann, idxs in sorted(groups.items())]
         for fut in as_completed(futs):
             stem, ok, n = fut.result()

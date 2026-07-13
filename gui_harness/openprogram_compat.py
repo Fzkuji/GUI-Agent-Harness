@@ -204,8 +204,80 @@ class _ClaudeCliRuntime:
         raise last_err
 
 
+class _LocalOpenAIRuntime:
+    """Runtime adapter for any OpenAI-compatible /chat/completions endpoint.
+
+    Built for local checkpoint servers (training/tools/serve_qwen_vl_*_api.py)
+    so the FULL harness pipeline (commit gate, staged crops, detector
+    candidates) can drive a fine-tuned model. Endpoint comes from
+    GUI_HARNESS_LOCAL_API_BASE (default http://127.0.0.1:8000/v1). Stateless:
+    one single-turn request per exec, like context_mode single.
+    """
+
+    def __init__(self, model: str, max_retries: int = 3):
+        self.model = model
+        self.max_retries = max(1, int(max_retries))
+        self.thinking_level = "off"  # kept for API parity
+        self.base_url = os.environ.get(
+            "GUI_HARNESS_LOCAL_API_BASE", "http://127.0.0.1:8000/v1").rstrip("/")
+
+    @staticmethod
+    def _image_to_data_url(path: str) -> str:
+        import base64
+        import io
+
+        from PIL import Image
+
+        with Image.open(path) as im:
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=92)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    def exec(self, content=None, timeout_s: float | None = None, **_kw) -> str:
+        import time
+
+        import requests
+
+        blocks = []
+        for block in content or []:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type", "text")
+            if btype == "text" and block.get("text"):
+                blocks.append({"type": "text", "text": str(block["text"])})
+            elif btype == "image" and block.get("path"):
+                blocks.append({"type": "image_url", "image_url": {
+                    "url": self._image_to_data_url(block["path"])}})
+        payload = {
+            "model": self.model,
+            "max_tokens": 512,
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": blocks}],
+        }
+        deadline = (timeout_s or 180) + 60  # generation + server-side image resize
+        last_err: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                resp = requests.post(f"{self.base_url}/chat/completions",
+                                     json=payload, timeout=deadline)
+                resp.raise_for_status()
+                text = resp.json()["choices"][0]["message"]["content"]
+                if (text or "").strip():
+                    return text
+                last_err = RuntimeError("local-openai: empty completion")
+            except Exception as exc:  # noqa: BLE001 - retry any transport failure
+                last_err = exc
+            time.sleep(min(10, 2 ** attempt))
+        record_runtime_error(last_err, phase=infer_phase_from_stack(), content=content)
+        raise last_err
+
+
 def create_runtime(provider: str | None = None, model: str | None = None, **kwargs):
     """Create an OpenProgram runtime without binding to one provider module path."""
+    if provider == "local-openai":
+        return _LocalOpenAIRuntime(
+            model or "qwen3-vl-4b",
+            max_retries=kwargs.get("max_retries", _default_max_retries()))
     if provider == "claude-cli":
         return _ClaudeCliRuntime(
             model or "claude-opus-4-7",
