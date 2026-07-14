@@ -32,6 +32,8 @@ FINAL_FRAC="${FINAL_FRAC:-0.5}"
 RECROP_FRAC="${RECROP_FRAC:-0.25}"
 DATASET_KEY="${DATASET_KEY:-zoom_sft_v3}"
 EPOCHS="${EPOCHS:-1.0}"
+MAX_STEPS="${MAX_STEPS:-0}"           # >0: stop at this step (staged training, checkpoint-and-gate)
+RESUME_FROM="${RESUME_FROM:-}"        # checkpoint dir to resume from (staged continuation)
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs" "${TRAIN_DIR}/data"
 
@@ -67,7 +69,11 @@ else
 fi
 
 echo "Starting LLaMA-Factory LoRA SFT (v3, dual-GPU DDP)..."
+echo "max_steps=${MAX_STEPS} resume_from=${RESUME_FROM:-<fresh>}"
 cd "${LF_DIR}"
+EXTRA_ARGS=()
+[ "${MAX_STEPS}" != "0" ] && EXTRA_ARGS+=("max_steps=${MAX_STEPS}")
+[ -n "${RESUME_FROM}" ] && EXTRA_ARGS+=("resume_from_checkpoint=${RESUME_FROM}")
 # cutoff_len 8192 (not the config's 4096): the evidence block adds up to
 # ~1.5k tokens; at 4096 the trailing <image> token gets truncated away and
 # transformers dies with "Image features and image tokens do not match".
@@ -78,6 +84,7 @@ FORCE_TORCHRUN=1 llamafactory-cli train "${CONFIG}" \
   output_dir="${OUTPUT_DIR}" \
   num_train_epochs="${EPOCHS}" \
   gradient_accumulation_steps=4 \
-  cutoff_len=8192
+  cutoff_len=8192 \
+  "${EXTRA_ARGS[@]}"
 
 echo "finished_at=$(date -Is)"
