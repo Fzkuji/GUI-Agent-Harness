@@ -35,6 +35,7 @@ CAND_DIR="${CAND_DIR:-${TRAIN_DIR}/data/candidates_cache}"
 N_GUIACT="${N_GUIACT:-8000}"
 N_WAVEUI="${N_WAVEUI:-8000}"
 N_UGROUND="${N_UGROUND:-4000}"
+N_OSATLAS="${N_OSATLAS:-0}"   # OS-Atlas desktop_domain (linux+macos merged); 0=skip
 EVIDENCE_FRAC="${EVIDENCE_FRAC:-0.5}"
 FINAL_FRAC="${FINAL_FRAC:-0.5}"
 RECROP_FRAC="${RECROP_FRAC:-0.25}"
@@ -66,10 +67,15 @@ if [ "${SKIP_PREP:-0}" = "1" ] && [ -s "${LF_DIR}/data/${DATASET_KEY}_train.json
   echo "SKIP_PREP=1 — reusing existing ${DATASET_KEY} data."
 else
   echo "Preparing v3 data (trajectories + real candidate evidence)..."
+  EXTRA_SOURCES=()
+  if [ "${N_OSATLAS}" != "0" ]; then
+    EXTRA_SOURCES+=(--source "osatlas:${GUIAIMA}/osatlas_desktop_bbox.json:${GUIAIMA}/OSAtlas-Desktop/all_images:${N_OSATLAS}")
+  fi
   python "${TRAIN_DIR}/tools/prepare_zoom_sft_v2.py" \
     --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
     --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
     --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
+    "${EXTRA_SOURCES[@]}" \
     --out-dir "${TRAIN_DIR}/data/${DATASET_KEY}" \
     --lf-data-dir "${LF_DIR}/data" \
     --dataset-key "${DATASET_KEY}" \

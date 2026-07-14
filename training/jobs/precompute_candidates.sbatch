@@ -21,6 +21,7 @@ GUIAIMA="${GUIAIMA:-${ROOT}/gui_aima_like_training_data/datasets/gui-aima-data/e
 N_GUIACT="${N_GUIACT:-8000}"
 N_WAVEUI="${N_WAVEUI:-8000}"
 N_UGROUND="${N_UGROUND:-4000}"
+N_OSATLAS="${N_OSATLAS:-0}"   # OS-Atlas desktop_domain (linux+macos merged); 0=skip
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/data/candidates_cache"
 
@@ -28,10 +29,15 @@ echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
 nvidia-smi --query-gpu=index,name,memory.used --format=csv,noheader
 
 cd "${ROOT}"
+EXTRA_SOURCES=()
+if [ "${N_OSATLAS}" != "0" ]; then
+  EXTRA_SOURCES+=(--source "osatlas:${GUIAIMA}/osatlas_desktop_bbox.json:${GUIAIMA}/OSAtlas-Desktop/all_images:${N_OSATLAS}")
+fi
 python3 "${TRAIN_DIR}/tools/precompute_candidates.py" \
   --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
   --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
   --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
+  "${EXTRA_SOURCES[@]}" \
   --out-dir "${TRAIN_DIR}/data/candidates_cache"
 
 echo "finished_at=$(date -Is)"
