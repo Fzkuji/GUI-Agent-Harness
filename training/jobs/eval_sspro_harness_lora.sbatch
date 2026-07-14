@@ -27,6 +27,7 @@ TRAIN_DIR="${ROOT}/training"
 ENV_PREFIX="${ENV_PREFIX:-${TRAIN_DIR}/envs/llamafactory-qwen3vl}"
 MODEL_DIR="${MODEL_DIR:-${HOME}/models/Qwen3-VL-4B-Instruct}"
 LORA_DIR="${LORA_DIR-${TRAIN_DIR}/outputs/qwen3vl4b_zoom_v3full_lora}"  # ""=base
+case "${LORA_DIR}" in ""|/*) ;; *) LORA_DIR="${ROOT}/${LORA_DIR}" ;; esac  # defense-in-depth: force absolute
 SSPRO_DATA="${SSPRO_DATA:-${HOME}/data/ScreenSpot-Pro}"
 NUM="${NUM:-300}"
 CONCURRENCY="${CONCURRENCY:-3}"

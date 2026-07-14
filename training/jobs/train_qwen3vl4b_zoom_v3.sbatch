@@ -22,6 +22,14 @@ MODEL_DIR="${MODEL_DIR:-${HOME}/models/Qwen3-VL-4B-Instruct}"
 GUIAIMA="${GUIAIMA:-${ROOT}/gui_aima_like_training_data/datasets/gui-aima-data/extracted/gui-aima-data}"
 CONFIG="${TRAIN_DIR}/configs/qwen3vl4b_zoom_v2_lora.yaml"   # same hparams; dataset overridden below
 OUTPUT_DIR="${OUTPUT_DIR:-${TRAIN_DIR}/outputs/qwen3vl4b_zoom_v3_lora}"
+# Force absolute: the script cd's into LF_DIR before invoking llamafactory-cli,
+# so a caller-supplied relative OUTPUT_DIR (e.g. OUTPUT_DIR=training/outputs/x)
+# silently resolves under LF_DIR instead of ROOT, nesting output two levels
+# deep (training/LLaMA-Factory/training/outputs/x) — bit us once already.
+case "${OUTPUT_DIR}" in
+  /*) ;;
+  *) OUTPUT_DIR="${ROOT}/${OUTPUT_DIR}" ;;
+esac
 CAND_DIR="${CAND_DIR:-${TRAIN_DIR}/data/candidates_cache}"
 
 N_GUIACT="${N_GUIACT:-8000}"
@@ -34,6 +42,10 @@ DATASET_KEY="${DATASET_KEY:-zoom_sft_v3}"
 EPOCHS="${EPOCHS:-1.0}"
 MAX_STEPS="${MAX_STEPS:-0}"           # >0: stop at this step (staged training, checkpoint-and-gate)
 RESUME_FROM="${RESUME_FROM:-}"        # checkpoint dir to resume from (staged continuation)
+case "${RESUME_FROM}" in
+  ""|/*) ;;
+  *) RESUME_FROM="${ROOT}/${RESUME_FROM}" ;;
+esac
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs" "${TRAIN_DIR}/data"
 
