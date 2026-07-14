@@ -85,15 +85,23 @@ def main() -> int:
                 {"type": "text", "text": _PROMPT.format(w=w, h=h, instr=s["instruction"])},
                 {"type": "image", "path": str(img)},
             ]
-            parsed = parse_json(rt.exec(content=content, timeout_s=180))
+            parsed = parse_json(rt.exec(content=content, timeout_s=240))
             x, y = int(parsed["x"]), int(parsed["y"])
             rec["prediction_px"] = [x, y]
             rec["correctness"] = "correct" if (gt[0] <= x <= gt[2] and gt[1] <= y <= gt[3]) else "wrong"
         except Exception as exc:
-            reraise_if_fatal(exc)
+            # A single-sample stream timeout must NOT crash the shard (codex
+            # streams hang on some 4K images). Record it and continue; only
+            # auth/quota/transport LLMErrors are fatal and re-raised.
+            is_timeout = ("Timeout" in exc.__class__.__name__
+                          or "timeout" in str(exc).lower()
+                          or "StreamTotalTimeout" in str(exc))
+            if not is_timeout:
+                reraise_if_fatal(exc)
             rec["prediction_px"] = None
             rec["correctness"] = "wrong"
-            rec["error"] = {"type": exc.__class__.__name__, "message": str(exc)[:200]}
+            rec["error"] = {"type": exc.__class__.__name__,
+                            "message": str(exc)[:200], "timeout": is_timeout}
         rec["elapsed_s"] = round(time.time() - t0, 1)
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         f.flush()
