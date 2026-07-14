@@ -28,12 +28,16 @@ N_GUIACT="${N_GUIACT:-8000}"
 N_WAVEUI="${N_WAVEUI:-8000}"
 N_UGROUND="${N_UGROUND:-4000}"
 EVIDENCE_FRAC="${EVIDENCE_FRAC:-0.5}"
+FINAL_FRAC="${FINAL_FRAC:-0.5}"
+RECROP_FRAC="${RECROP_FRAC:-0.25}"
+DATASET_KEY="${DATASET_KEY:-zoom_sft_v3}"
 EPOCHS="${EPOCHS:-1.0}"
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs" "${TRAIN_DIR}/data"
 
 echo "job_id=${SLURM_JOB_ID:-manual} host=$(hostname) started_at=$(date -Is)"
 echo "rows: guiact=${N_GUIACT} waveui=${N_WAVEUI} uground=${N_UGROUND} evidence_frac=${EVIDENCE_FRAC}"
+echo "final_frac=${FINAL_FRAC} recrop_frac=${RECROP_FRAC} dataset_key=${DATASET_KEY}"
 nvidia-smi
 
 for CONDA_SH in /opt/anaconda3/etc/profile.d/conda.sh \
@@ -44,19 +48,21 @@ done
 source "${CONDA_SH}"
 conda activate "${ENV_PREFIX}"
 
-if [ "${SKIP_PREP:-0}" = "1" ] && [ -s "${LF_DIR}/data/zoom_sft_v3_train.json" ]; then
-  echo "SKIP_PREP=1 — reusing existing zoom_sft_v3 data."
+if [ "${SKIP_PREP:-0}" = "1" ] && [ -s "${LF_DIR}/data/${DATASET_KEY}_train.json" ]; then
+  echo "SKIP_PREP=1 — reusing existing ${DATASET_KEY} data."
 else
   echo "Preparing v3 data (trajectories + real candidate evidence)..."
   python "${TRAIN_DIR}/tools/prepare_zoom_sft_v2.py" \
     --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
     --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
     --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
-    --out-dir "${TRAIN_DIR}/data/zoom_sft_v3" \
+    --out-dir "${TRAIN_DIR}/data/${DATASET_KEY}" \
     --lf-data-dir "${LF_DIR}/data" \
-    --dataset-key zoom_sft_v3 \
+    --dataset-key "${DATASET_KEY}" \
     --candidates-dir "${CAND_DIR}" \
     --evidence-frac "${EVIDENCE_FRAC}" \
+    --final-frac "${FINAL_FRAC}" \
+    --recrop-frac "${RECROP_FRAC}" \
     --workers 10
 fi
 
@@ -67,7 +73,7 @@ cd "${LF_DIR}"
 # transformers dies with "Image features and image tokens do not match".
 FORCE_TORCHRUN=1 llamafactory-cli train "${CONFIG}" \
   model_name_or_path="${MODEL_DIR}" \
-  dataset=zoom_sft_v3 \
+  dataset="${DATASET_KEY}" \
   dataset_dir="${LF_DIR}/data" \
   output_dir="${OUTPUT_DIR}" \
   num_train_epochs="${EPOCHS}" \
