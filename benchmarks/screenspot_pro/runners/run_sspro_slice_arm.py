@@ -22,7 +22,7 @@ REPO = HERE.parents[1]
 PY = sys.executable
 
 DEFAULT_MANIFEST = HERE / "runs/sspro_slice/slice_manifest.json"
-MANIFEST = json.loads(DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+MANIFEST: dict = {}  # loaded lazily in main() — --manifest may override the default, which need not exist
 OUT_BASE = REPO / "runs" / "sspro_stack"
 
 
@@ -100,11 +100,10 @@ def main() -> int:
     args = ap.parse_args()
 
     global MANIFEST
-    if args.manifest:
-        mpath = Path(args.manifest)
-        if not mpath.is_absolute():
-            mpath = HERE / args.manifest
-        MANIFEST = json.loads(mpath.read_text(encoding="utf-8"))
+    mpath = Path(args.manifest) if args.manifest else DEFAULT_MANIFEST
+    if not mpath.is_absolute():
+        mpath = HERE / mpath
+    MANIFEST = json.loads(mpath.read_text(encoding="utf-8"))
 
     if args.arm == "prefetch":
         return prefetch()
