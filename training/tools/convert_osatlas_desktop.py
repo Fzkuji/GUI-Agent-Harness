@@ -28,6 +28,14 @@ def convert(src: Path, platform: str) -> list[dict]:
         img = row.get("img_filename")
         if not img:
             continue
+        # Skip pre-cropped quadrant images (e.g. "..._sub0.png", quarter-size
+        # of the real screenshot): our zoom trajectory synthesis assumes every
+        # source image IS the full round-0 screen, so mixing in already-cropped
+        # sub-images teaches an inconsistent "what does round 0 look like"
+        # signal — confirmed root cause of a checkpoint-1500 regression
+        # (60-63% -> ~53% on SSPro300).
+        if "_sub" in Path(img).stem:
+            continue
         for el in row.get("elements", []):
             instr = (el.get("instruction") or "").strip()
             bbox = el.get("bbox")
