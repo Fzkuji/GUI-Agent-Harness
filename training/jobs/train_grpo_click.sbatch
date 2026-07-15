@@ -27,6 +27,7 @@ PER_DEVICE_BATCH="${PER_DEVICE_BATCH:-4}"
 GRAD_ACCUM="${GRAD_ACCUM:-2}"
 LR="${LR:-1e-6}"
 BETA="${BETA:-0.02}"
+MAX_COMPLETION_LENGTH="${MAX_COMPLETION_LENGTH:-192}"
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs"
 echo "job_id=${SLURM_JOB_ID:-manual} started_at=$(date -Is)"
@@ -51,6 +52,7 @@ python3 "${TRAIN_DIR}/tools/train_grpo_click.py" \
   --per-device-batch "${PER_DEVICE_BATCH}" \
   --grad-accum "${GRAD_ACCUM}" \
   --lr "${LR}" \
-  --beta "${BETA}"
+  --beta "${BETA}" \
+  --max-completion-length "${MAX_COMPLETION_LENGTH}"
 
 echo "finished_at=$(date -Is)"
