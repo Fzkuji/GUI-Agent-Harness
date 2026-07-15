@@ -59,42 +59,51 @@ already-specialized. Full analysis: `docs/GROUNDING_CAPABILITY_REPORT.html`
 
 ---
 
-## Design-level ablation — cross-model (GPT-5.5 & MiniMax-M3, SSPro-300)
+## Design-level ablation — cross-model (GPT-5.5, Claude 4.7, MiniMax-M3, SSPro-300)
 
 The harness has three designs: **① coordinate priming** (annotate detected
 text/components with coordinates in the prompt), **② adaptive coarse-to-fine
 cropping** (the model picks the next crop over rounds, with retry/recrop), and
 **③ visual verification** (draw the crop/point back and re-check). Removing one
-design at a time from the full config (`sspro_stack_zoom.yaml`), same 300-sample
-stratified slice, thinking off.
+design at a time, same 300-sample stratified slice, thinking off. Claude arms
+use the CC-protocol config (`sspro_stack_zoom_claude2000_*`); GPT/M3 use
+`sspro_stack_zoom` (abs pixel). All paired on their per-model common set.
 
-**Cross-model matrix — every design's contribution is amplified on the weaker
-base.** M3 is paired on its 290-sample common set (10 platform-refusal /
-content-filter rows excluded from all arms); GPT on the full 300.
+| Arm | GPT-5.5 | Δ | Claude 4.7 | Δ | MiniMax-M3 | Δ |
+|-----|---------|---|-----------|---|------------|---|
+| single-shot (0 crop) | 74.8% | — | 57.4% | — | 26.4% | — |
+| −crop `single-locate` | 78.3% | — | **41.0%** | — | 32.0% | — |
+| −② `abl_no_adaptive` | 85.0%\* | −3.7 | 73.0% | −9.3 | 25.5% | **−22.1** |
+| −③ `abl_no_verify` | 87.0% | −1.7 | **84.3%** | **+2.0** | 42.8% | −4.8 |
+| −① `abl_no_prime` | 87.7% | −1.0 | 80.3% | −2.0 | 40.3% | −7.2 |
+| **full** (①②③) | **88.7%** | — | **82.3%** | — | **47.6%** | — |
 
-| Arm | GPT-5.5 | Δ | MiniMax-M3 | Δ |
-|-----|---------|---|------------|---|
-| **full** (①②③) | **88.7%** | — | **47.6%** | — |
-| −① `abl_no_prime` | 87.7% | −1.0 | 40.3% | **−7.2** |
-| −② `abl_no_adaptive` | 85.0%\* | **−3.7** | 25.5% | **−22.1** |
-| −③ `abl_no_verify` | 87.0% | −1.7 | 42.8% | **−4.8** |
-| single-locate (ref) | 78.3% | −10.4 | — | — |
+Three findings the cross-model view exposes:
 
-**The M3 column is the strongest evidence for the paper's thesis.** Every
-design's contribution is 3–6× larger on the weak base: priming −1.0 (GPT) vs
-−7.2 (M3), adaptive crop −3.7 vs **−22.1**, verify −1.7 vs −4.8. Removing
-adaptive cropping collapses M3 to **25.5%** — essentially its single-shot level
-(26.4%), proving iterative cropping *is* the engine lifting M3 from 26% to 47%;
-take it out and it falls back to raw single-shot. GPT is strong enough that one
-big crop still localizes (−3.7 only). The **ordering is identical** across models
-(② > ① > ③), so relative design importance is model-invariant — the weak base
-just magnifies each margin. Gain from a training-free scaffold tracks base
-strength, not model size. (M3 harness uses abs-pixel coords, *not* normalized:
-the crop shrinks the image enough that abs — M3's worst single-shot format — works,
-while normalized coords net-hurt inside the pipeline; see §format notes.)
+1. **Every design's contribution scales inversely with base strength.** Priming
+   −1.0 (GPT) / −2.0 (Claude) / −7.2 (M3); adaptive crop −3.7 / −9.3 / **−22.1**.
+   Removing adaptive crop collapses M3 to 25.5% ≈ its single-shot level (26.4%) —
+   iterative cropping *is* the engine lifting M3 26→47%. Ordering ② > ① is
+   model-invariant; the weak base just magnifies each margin. **Gain from a
+   training-free scaffold tracks base strength, not model size.**
 
-Per-arm timing/rounds (GPT): full 114s/3 · −① 134s/3 · −② 81s/1 · −③ 79s/3 ·
-single-locate 25s.
+2. **③ verify is not a universal positive — it *hurts* Claude (+2.0 when
+   removed).** Claude is capped at 2000px by the CC protocol, so even the
+   re-check image is blurry; its visual verification is unreliable and
+   over-rejects correct points. Same mechanism as its crop-check gate
+   dead-locking on 4K (full config already ships `crop_check_mode: off`).
+   Design value depends on the model's input channel, not just its reasoning.
+
+3. **−crop hurts Claude uniquely (57.4→41.0).** single-locate injects OCR/YOLO
+   candidate hints — helpful for GPT (+3.5) and M3 (+5.6, its OCR route to text
+   targets) but harmful for Claude (−16.4). Like qwen: a strong native grounder
+   is *distracted* by external candidate evidence. Pairs with finding #2 — Claude
+   is strong enough that both "aids" (candidates, verification) become net drags.
+
+(M3 harness uses abs-pixel coords, *not* normalized: crop shrinks the image
+enough that abs — M3's worst single-shot format — works, while normalized coords
+net-hurt inside the pipeline. Per-arm timing/rounds, GPT: full 114s/3 · −① 134s/3
+· −② 81s/1 · −③ 79s/3 · single-locate 25s.)
 
 \* 2/300 samples counted wrong are deterministic local-GPU OOM (single-round
 crops of 4K screenshots too large for the local detector; retried at concurrency
