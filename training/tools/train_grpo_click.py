@@ -20,35 +20,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# trl's GRPOTrainer import chain eagerly pulls in optional integrations
-# (mergekit, llm_blender, weave) that a full `pip install trl[all]` would
-# have; llm_blender is broken against our transformers version, but it's
-# properly gated behind is_llm_blender_available() — force that False so the
-# (unused) broken import path is skipped instead of raised.
-import trl.import_utils as _trl_iu  # noqa: E402
-_trl_iu.is_llm_blender_available = lambda: False
-
 import torch  # noqa: E402
 from datasets import Dataset, Image as DsImage  # noqa: E402
 from peft import LoraConfig  # noqa: E402
 from trl import GRPOConfig, GRPOTrainer  # noqa: E402
 from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor  # noqa: E402
-
-# trl 0.24.0 predates Qwen3-VL's processor output naming: internal call sites
-# forward a field named "mm_token_type_ids" into a method whose parameter is
-# "token_type_ids" (no mm_ prefix), which raises TypeError before any
-# training step runs. Not critical for a single-image task (pixel_values +
-# image_grid_thw already disambiguate image tokens), so just drop it rather
-# than upgrading trl cluster-wide (LLaMA-Factory pins trl<=0.24.0).
-_orig_logps = GRPOTrainer._get_per_token_logps_and_entropies
-
-
-def _logps_drop_mm_token_type_ids(self, *args, **kwargs):
-    kwargs.pop("mm_token_type_ids", None)
-    return _orig_logps(self, *args, **kwargs)
-
-
-GRPOTrainer._get_per_token_logps_and_entropies = _logps_drop_mm_token_type_ids
 
 from grpo_reward import click_bbox_reward  # noqa: E402
 
