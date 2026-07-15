@@ -92,6 +92,21 @@ def main() -> None:
         target_modules="all-linear", task_type="CAUSAL_LM",
     )
 
+    # Known trl+VLM GRPO bug (huggingface/trl#3847): unconstrained sampling
+    # can emit a vision/image special token as part of ordinary completion
+    # text (no real image data behind it), desyncing the image-token count
+    # get_rope_index() expects from image_grid_thw and crashing with a
+    # position_ids shape mismatch. Ban those token ids from generation.
+    vision_special_tokens = [
+        "<|vision_start|>", "<|vision_end|>", "<|vision_pad|>",
+        "<|image_pad|>", "<|video_pad|>",
+    ]
+    vision_special_ids = sorted({
+        tid for tid in processor.tokenizer.convert_tokens_to_ids(vision_special_tokens)
+        if isinstance(tid, int) and tid >= 0
+    })
+    print(f"suppressing vision special tokens during generation: {vision_special_ids}", flush=True)
+
     config = GRPOConfig(
         output_dir=args.output_dir,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -109,6 +124,7 @@ def main() -> None:
         logging_steps=1,
         report_to=[],
         temperature=1.0,
+        generation_kwargs={"suppress_tokens": vision_special_ids},
     )
 
     trainer = GRPOTrainer(
