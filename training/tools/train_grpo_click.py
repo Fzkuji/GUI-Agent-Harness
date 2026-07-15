@@ -26,14 +26,14 @@ from peft import LoraConfig  # noqa: E402
 from trl import GRPOConfig, GRPOTrainer  # noqa: E402
 from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor  # noqa: E402
 
-from grpo_reward import click_bbox_reward  # noqa: E402
+from grpo_reward import click_bbox_reward, harness_stage_reward  # noqa: E402
 
 
 def build_dataset(data_path: str) -> Dataset:
     rows = json.loads(Path(data_path).read_text(encoding="utf-8"))
     examples = []
     for r in rows:
-        examples.append({
+        ex = {
             "prompt": [{
                 "role": "user",
                 "content": [
@@ -43,7 +43,10 @@ def build_dataset(data_path: str) -> Dataset:
             }],
             "image": r["image"],
             "gt_bbox_norm1000": r["gt_bbox_norm1000"],
-        })
+        }
+        if "task" in r:  # harness-stage rows carry their stage for the reward fn
+            ex["task"] = r["task"]
+        examples.append(ex)
     ds = Dataset.from_list(examples)
     return ds.cast_column("image", DsImage())
 
@@ -66,6 +69,8 @@ def main() -> None:
     ap.add_argument("--max-completion-length", type=int, default=128)
     ap.add_argument("--max-pixels", type=int, default=2097152)
     ap.add_argument("--save-steps", type=int, default=50)
+    ap.add_argument("--reward", choices=["click", "harness"], default="click",
+                    help="click = bare point-in-box; harness = stage-aware (crop containment / click)")
     args = ap.parse_args()
 
     print(f"loading dataset from {args.data} ...", flush=True)
@@ -129,7 +134,7 @@ def main() -> None:
 
     trainer = GRPOTrainer(
         model=model,
-        reward_funcs=[click_bbox_reward],
+        reward_funcs=[harness_stage_reward if args.reward == "harness" else click_bbox_reward],
         args=config,
         train_dataset=ds,
         processing_class=processor,
