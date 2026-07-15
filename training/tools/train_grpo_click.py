@@ -28,10 +28,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import trl.import_utils as _trl_iu  # noqa: E402
 _trl_iu.is_llm_blender_available = lambda: False
 
+import torch  # noqa: E402
 from datasets import Dataset, Image as DsImage  # noqa: E402
 from peft import LoraConfig  # noqa: E402
 from trl import GRPOConfig, GRPOTrainer  # noqa: E402
-from transformers import AutoProcessor  # noqa: E402
+from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor  # noqa: E402
 
 from grpo_reward import click_bbox_reward  # noqa: E402
 
@@ -84,6 +85,16 @@ def main() -> None:
     if processor.tokenizer.pad_token is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
 
+    print(f"loading model from {args.model} ...", flush=True)
+    model = AutoModelForImageTextToText.from_pretrained(
+        args.model, dtype=torch.bfloat16, trust_remote_code=True)
+    # trl's GRPOTrainer.__init__ does model.warnings_issued["estimate_tokens"] = True
+    # unconditionally; some VLM classes (Qwen3VLForConditionalGeneration here)
+    # never initialize this HF-internal dict, so the attribute lookup falls
+    # through the whole nn.Module chain and raises. Pre-seed it.
+    if not hasattr(model, "warnings_issued"):
+        model.warnings_issued = {}
+
     peft_config = LoraConfig(
         r=args.lora_rank, lora_alpha=args.lora_alpha,
         target_modules="all-linear", task_type="CAUSAL_LM",
@@ -110,7 +121,7 @@ def main() -> None:
     )
 
     trainer = GRPOTrainer(
-        model=args.model,
+        model=model,
         reward_funcs=[click_bbox_reward],
         args=config,
         train_dataset=ds,
