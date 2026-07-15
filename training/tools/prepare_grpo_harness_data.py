@@ -43,7 +43,7 @@ from prepare_zoom_sft_v2 import depth_for_target, synth_containing_box, parse_so
 
 def build_rows(row: dict[str, Any], index: int, source_name: str,
                image_dir: Path, crops_dir: Path, seed: int,
-               cands: list, rng_task: str) -> list[dict[str, Any]]:
+               cands: list, rng_task: str, min_depth: int = 0) -> list[dict[str, Any]]:
     rng = random.Random(seed * 1_000_003 + index)
     instruction, bbox_norm = get_instruction_and_bbox(row)
     image_path = image_dir / row["image"]
@@ -57,6 +57,8 @@ def build_rows(row: dict[str, Any], index: int, source_name: str,
                  bbox_norm[2] * img_w, bbox_norm[3] * img_h]
         area_frac = max((gt_px[2] - gt_px[0]) * (gt_px[3] - gt_px[1]), 1.0) / (img_w * img_h)
         depth = depth_for_target(area_frac)
+        if depth < min_depth:
+            return []  # easy target (large on screen) — no GRPO signal, skip
         full_box = [0, 0, img_w, img_h]
         sid = f"{source_name}_ghar_{index:06d}"
 
@@ -117,6 +119,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=20260712)
     ap.add_argument("--crop-frac", type=float, default=0.5,
                     help="fraction of rows becoming crop-stage tasks (rest click)")
+    ap.add_argument("--min-depth", type=int, default=0,
+                    help="skip rows whose target needs fewer crop rounds (2 = only targets <0.5%% of screen)")
     args = ap.parse_args()
 
     crops_dir = Path(args.crops_dir)
@@ -140,7 +144,8 @@ def main() -> None:
                 continue
             task = "crop" if master.random() < args.crop_frac else "click"
             try:
-                rs = build_rows(row, i, name, img_dir, crops_dir, args.seed, cands, task)
+                rs = build_rows(row, i, name, img_dir, crops_dir, args.seed, cands, task,
+                                min_depth=args.min_depth)
             except Exception:
                 rs = []
             if not rs:
