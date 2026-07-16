@@ -47,6 +47,11 @@ case "${RESUME_FROM}" in
   ""|/*) ;;
   *) RESUME_FROM="${ROOT}/${RESUME_FROM}" ;;
 esac
+ADAPTER_INIT="${ADAPTER_INIT:-}"      # existing LoRA adapter to initialize from (curriculum: new data, warm weights)
+case "${ADAPTER_INIT}" in
+  ""|/*) ;;
+  *) ADAPTER_INIT="${ROOT}/${ADAPTER_INIT}" ;;
+esac
 
 mkdir -p "${TRAIN_DIR}/logs" "${TRAIN_DIR}/outputs" "${TRAIN_DIR}/data"
 
@@ -67,15 +72,20 @@ if [ "${SKIP_PREP:-0}" = "1" ] && [ -s "${LF_DIR}/data/${DATASET_KEY}_train.json
   echo "SKIP_PREP=1 — reusing existing ${DATASET_KEY} data."
 else
   echo "Preparing v3 data (trajectories + real candidate evidence)..."
-  EXTRA_SOURCES=()
-  if [ "${N_OSATLAS}" != "0" ]; then
-    EXTRA_SOURCES+=(--source "osatlas:${GUIAIMA}/osatlas_desktop_bbox.json:${GUIAIMA}/OSAtlas-Desktop/all_images:${N_OSATLAS}")
+  SOURCES=()
+  if [ -n "${CUSTOM_SOURCES:-}" ]; then
+    # CUSTOM_SOURCES: space-separated name:json:imgdir:n specs — replaces the standard mix entirely
+    for SPEC in ${CUSTOM_SOURCES}; do SOURCES+=(--source "${SPEC}"); done
+  else
+    SOURCES+=(--source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}")
+    SOURCES+=(--source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}")
+    SOURCES+=(--source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}")
+    if [ "${N_OSATLAS}" != "0" ]; then
+      SOURCES+=(--source "osatlas:${GUIAIMA}/osatlas_desktop_bbox.json:${GUIAIMA}/OSAtlas-Desktop/all_images:${N_OSATLAS}")
+    fi
   fi
   python "${TRAIN_DIR}/tools/prepare_zoom_sft_v2.py" \
-    --source "guiact:${GUIAIMA}/guiact_bbox.json:${GUIAIMA}/GUIAct/web_imgs:${N_GUIACT}" \
-    --source "waveui:${GUIAIMA}/wave_ui_bbox.json:${GUIAIMA}/Wave-UI/images_fixed:${N_WAVEUI}" \
-    --source "uground:${GUIAIMA}/uground_bbox_single_60k.json:${GUIAIMA}/Uground/images:${N_UGROUND}" \
-    "${EXTRA_SOURCES[@]}" \
+    "${SOURCES[@]}" \
     --out-dir "${TRAIN_DIR}/data/${DATASET_KEY}" \
     --lf-data-dir "${LF_DIR}/data" \
     --dataset-key "${DATASET_KEY}" \
@@ -92,6 +102,7 @@ cd "${LF_DIR}"
 EXTRA_ARGS=()
 [ "${MAX_STEPS}" != "0" ] && EXTRA_ARGS+=("max_steps=${MAX_STEPS}")
 [ -n "${RESUME_FROM}" ] && EXTRA_ARGS+=("resume_from_checkpoint=${RESUME_FROM}")
+[ -n "${ADAPTER_INIT}" ] && EXTRA_ARGS+=("adapter_name_or_path=${ADAPTER_INIT}")
 # cutoff_len 8192 (not the config's 4096): the evidence block adds up to
 # ~1.5k tokens; at 4096 the trailing <image> token gets truncated away and
 # transformers dies with "Image features and image tokens do not match".
