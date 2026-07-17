@@ -1,0 +1,282 @@
+{
+  "expected": 1581,
+  "completed": 1581,
+  "correct": 1301,
+  "wrong": 280,
+  "accuracy_completed": 0.8228969006957622,
+  "text": {
+    "completed": 977,
+    "correct": 885,
+    "accuracy": 0.9058341862845445
+  },
+  "icon": {
+    "completed": 604,
+    "correct": 416,
+    "accuracy": 0.6887417218543046
+  },
+  "provider": "claude-code",
+  "model": "claude-opus-4-7",
+  "config": "sspro_stack_zoom_claude2000.yaml",
+  "pipeline": "iterative_zoom (CC-protocol 2000px, 8 rounds)",
+  "junk_lines_skipped": 44,
+  "breakdown": [
+    {
+      "subset": "CAD",
+      "code": "CAD",
+      "completed": 261,
+      "correct": 212,
+      "accuracy_completed": 0.8122605363984674,
+      "text": {
+        "completed": 197,
+        "correct": 168
+      },
+      "icon": {
+        "completed": 64,
+        "correct": 44
+      },
+      "apps": [
+        {
+          "annotation": "vivado_windows.json",
+          "name": "Vivado",
+          "completed": 80,
+          "correct": 67
+        },
+        {
+          "annotation": "solidworks_windows.json",
+          "name": "SolidWorks",
+          "completed": 77,
+          "correct": 63
+        },
+        {
+          "annotation": "inventor_windows.json",
+          "name": "Inventor",
+          "completed": 70,
+          "correct": 58
+        },
+        {
+          "annotation": "autocad_windows.json",
+          "name": "AutoCAD",
+          "completed": 34,
+          "correct": 24
+        }
+      ]
+    },
+    {
+      "subset": "Development",
+      "code": "Dev",
+      "completed": 299,
+      "correct": 245,
+      "accuracy_completed": 0.8193979933110368,
+      "text": {
+        "completed": 154,
+        "correct": 145
+      },
+      "icon": {
+        "completed": 145,
+        "correct": 100
+      },
+      "apps": [
+        {
+          "annotation": "android_studio_macos.json",
+          "name": "Android Studio",
+          "completed": 80,
+          "correct": 67
+        },
+        {
+          "annotation": "pycharm_macos.json",
+          "name": "PyCharm",
+          "completed": 78,
+          "correct": 62
+        },
+        {
+          "annotation": "vscode_macos.json",
+          "name": "VS Code",
+          "completed": 55,
+          "correct": 51
+        },
+        {
+          "annotation": "quartus_windows.json",
+          "name": "Quartus",
+          "completed": 45,
+          "correct": 29
+        },
+        {
+          "annotation": "vmware_macos.json",
+          "name": "VMware",
+          "completed": 41,
+          "correct": 36
+        }
+      ]
+    },
+    {
+      "subset": "Creative",
+      "code": "Creative",
+      "completed": 341,
+      "correct": 277,
+      "accuracy_completed": 0.8123167155425219,
+      "text": {
+        "completed": 198,
+        "correct": 178
+      },
+      "icon": {
+        "completed": 143,
+        "correct": 99
+      },
+      "apps": [
+        {
+          "annotation": "blender_windows.json",
+          "name": "Blender",
+          "completed": 71,
+          "correct": 59
+        },
+        {
+          "annotation": "fruitloops_windows.json",
+          "name": "FL Studio",
+          "completed": 57,
+          "correct": 37
+        },
+        {
+          "annotation": "premiere_windows.json",
+          "name": "Premiere",
+          "completed": 52,
+          "correct": 44
+        },
+        {
+          "annotation": "photoshop_windows.json",
+          "name": "Photoshop",
+          "completed": 51,
+          "correct": 47
+        },
+        {
+          "annotation": "davinci_macos.json",
+          "name": "DaVinci Resolve",
+          "completed": 44,
+          "correct": 32
+        },
+        {
+          "annotation": "unreal_engine_windows.json",
+          "name": "Unreal Engine",
+          "completed": 35,
+          "correct": 32
+        },
+        {
+          "annotation": "illustrator_windows.json",
+          "name": "Illustrator",
+          "completed": 31,
+          "correct": 26
+        }
+      ]
+    },
+    {
+      "subset": "Scientific",
+      "code": "Scientific",
+      "completed": 254,
+      "correct": 199,
+      "accuracy_completed": 0.7834645669291339,
+      "text": {
+        "completed": 144,
+        "correct": 131
+      },
+      "icon": {
+        "completed": 110,
+        "correct": 68
+      },
+      "apps": [
+        {
+          "annotation": "matlab_macos.json",
+          "name": "MATLAB",
+          "completed": 93,
+          "correct": 84
+        },
+        {
+          "annotation": "origin_windows.json",
+          "name": "Origin",
+          "completed": 62,
+          "correct": 26
+        },
+        {
+          "annotation": "eviews_windows.json",
+          "name": "EViews",
+          "completed": 50,
+          "correct": 47
+        },
+        {
+          "annotation": "stata_windows.json",
+          "name": "Stata",
+          "completed": 49,
+          "correct": 42
+        }
+      ]
+    },
+    {
+      "subset": "Office",
+      "code": "Office",
+      "completed": 230,
+      "correct": 216,
+      "accuracy_completed": 0.9391304347826087,
+      "text": {
+        "completed": 177,
+        "correct": 169
+      },
+      "icon": {
+        "completed": 53,
+        "correct": 47
+      },
+      "apps": [
+        {
+          "annotation": "word_macos.json",
+          "name": "Word",
+          "completed": 84,
+          "correct": 79
+        },
+        {
+          "annotation": "powerpoint_windows.json",
+          "name": "PowerPoint",
+          "completed": 82,
+          "correct": 78
+        },
+        {
+          "annotation": "excel_macos.json",
+          "name": "Excel",
+          "completed": 64,
+          "correct": 59
+        }
+      ]
+    },
+    {
+      "subset": "Operating Systems",
+      "code": "OS",
+      "completed": 196,
+      "correct": 152,
+      "accuracy_completed": 0.7755102040816326,
+      "text": {
+        "completed": 107,
+        "correct": 94
+      },
+      "icon": {
+        "completed": 89,
+        "correct": 58
+      },
+      "apps": [
+        {
+          "annotation": "windows_common_windows.json",
+          "name": "Windows",
+          "completed": 81,
+          "correct": 52
+        },
+        {
+          "annotation": "macos_common_macos.json",
+          "name": "macOS",
+          "completed": 65,
+          "correct": 57
+        },
+        {
+          "annotation": "linux_common_linux.json",
+          "name": "Linux",
+          "completed": 50,
+          "correct": 43
+        }
+      ]
+    }
+  ]
+}

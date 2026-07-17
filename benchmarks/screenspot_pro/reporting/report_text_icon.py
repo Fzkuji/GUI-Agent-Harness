@@ -64,7 +64,7 @@ def pct(c, n):
 RESULTS = [
     ("GPT-5.5 · harness", 1581, ["benchmarks/screenspot_pro/results/gpt_5_5/results.jsonl"]),
     ("GPT-5.5 · single-shot", 1581, ["runs/sspro_singleshot/results_s*.jsonl", "runs/sspro_singleshot/results.jsonl"]),
-    ("Claude 4.7 · harness", 300, ["runs/sspro_stack/claude47_zoom300/*.jsonl"]),
+    ("Claude 4.7 · harness", 1581, ["benchmarks/screenspot_pro/results/claude_opus_4_7/results.jsonl"]),
     ("Claude 4.7 · single-shot", 1581, ["runs/sspro_native/claude-opus-4-7/results.jsonl"]),
     ("MiniMax-M3 · harness", 1581, ["runs/sspro_stack/m3_zoom/*.jsonl"]),
     ("MiniMax-M3 · single-shot", 1581, ["runs/sspro_native/MiniMax-M3/results.jsonl"]),
@@ -121,11 +121,11 @@ def main():
         "most balanced (icon 77.8); M3 has the widest gap by far (harness text 66.8 vs "
         "icon **15.9**, +50.9) — M3 can localize text but is nearly blind to icons.\n"
         "- **Harness lifts icons much more than text**, because zoom is what makes a "
-        "small icon legible: e.g. Claude icon 38.9 (single) → 68.4 (harness), +29.5; "
+        "small icon legible: e.g. Claude icon 38.9 (single) → 68.9 (harness), +30.0; "
         "GPT icon 63.4 → 77.8. But M3's icon barely moves (9.4 → 15.9): magnification "
         "alone can't fix a model that doesn't visually parse icons — its ceiling is low.\n"
         "- **Claude single-shot icon is only 38.9%** — the CC-protocol 2000px downscale "
-        "blurs small icons; harness zoom recovers most of it (→68.4). This is the same "
+        "blurs small icons; harness zoom recovers most of it (→68.9). This is the same "
         "resolution-bottleneck story as the ablation's −adaptive column.\n"
         "- Caveat: per-subset text/icon cells have small n (e.g. OS ~25 each); the "
         "overall Text/Icon columns are the robust numbers.\n")

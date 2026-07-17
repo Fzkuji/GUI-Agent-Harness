@@ -19,7 +19,7 @@ Two evaluation pipelines are compared throughout:
 | **MiniMax-M3** | **47.4%** (1581) | 26.4% (1581, point2d) | **+21.0pt** | general-reasoning |
 | **kimi-k2.6** | — (not run) | **56.6%** (1581, frac01) | n/a | intermediate |
 | **qwen3.7-plus** | 62.9% (partial ~979) | **78–79%** (120 paired, point2d) | **−8pt** (single-shot wins) | specialized shortcut |
-| **Claude Opus 4.7** | **82.3%** (300, zoom+CC-protocol) · 79.0%* (338, old pipeline) | **57.4%** (1581, abs, CC-protocol) · 31.6% raw-API | **+24.9pt** | general-reasoning |
+| **Claude Opus 4.7** | **82.3%** (1581, zoom+CC-protocol) · 79.0%* (338, old pipeline) | **57.4%** (1581, abs, CC-protocol) · 31.6% raw-API | **+24.9pt** | general-reasoning |
 | Claude Opus 4.8 | stratified-78 done | — | — | — |
 
 \* Caveats: GPT-5.5 87.9% used `configs/legacy_baseline.yaml` (full 1581); 88.7%
