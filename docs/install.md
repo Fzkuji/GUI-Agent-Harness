@@ -4,7 +4,7 @@ The GUI agent is an **OpenProgram program** — it runs *inside* an OpenProgram
 host, not on its own. So the order is always:
 
 1. **Install OpenProgram** (the host). See
-   [OpenProgram/docs/install.md](../../../../../docs/install.md).
+   [OpenProgram installation guide](https://github.com/Fzkuji/OpenProgram/blob/main/docs/install/install.md).
 2. **Install this harness into it.** It lands in
    `openprogram/functions/agentics/GUI-Agent-Harness/` and is **auto-registered**
    — `gui_agent` then shows up in the web UI and function list automatically.
