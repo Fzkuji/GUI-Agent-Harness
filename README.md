@@ -41,7 +41,7 @@
 - **[2026-06-05]** 🏆 **ScreenSpot Pro 87.9%** — GPT-5.5, 1,581 samples across 23 apps. [Results →](benchmarks/screenspot_pro/results/gpt_5_5/)
 - **[2026-06-02]** 🏆 **ScreenSpot v2 96.78%** — GPT-5.5, 1,272 samples. [Results →](benchmarks/screenspot_v2/)
 - **[2026-04-18]** 📦 **OpenProgram** — Renamed from Agentic Programming. [GitHub](https://github.com/Fzkuji/OpenProgram)
-- **[2026-04-14]** 🏆 **OSWorld Multi-Apps 79.8%** — 72.6/91 evaluated. [Results →](benchmarks/osworld/multi_apps.md)
+- **[2026-04-14]** 🏆 **OSWorld Multi-Apps 79.8%** — 72.6/91 evaluated. [Results →](benchmarks/osworld/)
 - **[2026-04-07]** 🤖 **Agent-native architecture** — Unified GUI perception + agent actions under single decision loop.
 - **[2026-03-30]** 📐 **ImageContext** — Scale-independent coordinate system, fixes crop bugs.
 - **[2026-03-29]** 🎬 **v0.3 — Unified Actions** — `gui_action.py` single entry point, auto platform detection.

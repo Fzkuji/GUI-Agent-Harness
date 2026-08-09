@@ -36,7 +36,7 @@
 
 ## 最新动态
 
-- **[2026-04-14]** 🏆 **OSWorld Multi-Apps 79.8%** — 91个任务中得分72.6。4阶段步骤循环 + CLI session持久化 + PRESERVE FORMAT工作习惯。[详细结果 →](../benchmarks/osworld/multi_apps.md)
+- **[2026-04-14]** 🏆 **OSWorld Multi-Apps 79.8%** — 91个任务中得分72.6。4阶段步骤循环 + CLI session持久化 + PRESERVE FORMAT工作习惯。[详细结果 →](../benchmarks/osworld/)
 - **[2026-04-18]** 📦 **OpenProgram** — Agentic Programming 从概念落地为产品：仓库/包/CLI 统一改名为 [OpenProgram](https://github.com/Fzkuji/OpenProgram)。Agentic Programming 保留为范式/哲学名称；OpenProgram 是可发布的框架。Harness 的 import 已迁到 `from openprogram import ...`。
 - **[2026-04-07]** 🤖 **Agent原生架构** — 基于 [Agentic Programming](https://github.com/Fzkuji/OpenProgram) 范式重建执行核心，将GUI感知与自由形式的agent动作统一到单一决策循环中。
 - **[2026-03-29]** 🎬 **v0.3 — 统一动作与跨平台GUI** — 平台后端自动选择。
@@ -79,7 +79,7 @@ LLM不需要了解GUI自动化的工作原理——它只需调用工具。
 | 通过（得分 = 1.0） | 63 |
 | 部分通过（0 < 得分 < 1.0） | 11 |
 
-完整结果：[benchmarks/osworld/multi_apps.md](../benchmarks/osworld/multi_apps.md)
+完整结果：[benchmarks/osworld/](../benchmarks/osworld/)
 
 ## 快速开始
 
