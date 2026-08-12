@@ -6,6 +6,8 @@ Session mode: summarize={"depth": 0, "siblings": 0}
 
 from __future__ import annotations
 
+from openprogram.agentic_programming import llm
+
 from gui_harness.utils import parse_json
 
 from gui_harness.openprogram_compat import agentic_function
@@ -13,19 +15,15 @@ from gui_harness.perception import screenshot, ocr, detector
 from gui_harness.action.input import get_frontmost_app
 
 try:
-    from openprogram.webui._pause_stop import check_cancelled as _check_cancelled
+    from openprogram.agent.run_control import check_cancelled as _check_cancelled
 except Exception:  # standalone gui_harness usage — no webui layer
     def _check_cancelled() -> None:  # type: ignore[no-redef]
         return None
 
 
 @agentic_function(render_range={"callers": 0})
-def observe(task: str, app_name: str = None, runtime=None) -> dict:
+def observe(task: str, app_name: str = None) -> dict:
     """Observe the current screen — classify the app's page/state and locate the task target."""
-    if runtime is None:
-        raise ValueError("observe() requires a runtime argument")
-    rt = runtime
-
     if not app_name:
         app_name = get_frontmost_app()
 
@@ -81,7 +79,7 @@ Reply with ONLY this JSON object, no other text:
   "screenshot_path": "..."
 }}"""
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])

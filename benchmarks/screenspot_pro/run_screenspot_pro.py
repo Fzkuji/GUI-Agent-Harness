@@ -28,6 +28,7 @@ from typing import Optional
 import cv2
 import numpy as np
 from PIL import Image
+from openprogram.agentic_programming import agentic_function, llm
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -331,6 +332,7 @@ def crop_bounds(width: int, height: int, point: list[int], crop_size: int) -> tu
     return x1, y1, x2, y2
 
 
+@agentic_function(render_range={"callers": 0})
 def refine_zoom_point(
     img_path: Path,
     instruction: str,
@@ -392,7 +394,7 @@ Important:
 Reply with ONLY this JSON object:
 {{"reasoning": "one short sentence", "x": 0, "y": 0, "confidence": 0.0}}"""
 
-    reply = runtime.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": str(crop_path)},
     ])

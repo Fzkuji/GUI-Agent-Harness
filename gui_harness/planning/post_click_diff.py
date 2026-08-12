@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageChops, ImageStat
+from openprogram.agentic_programming import llm
 
 from gui_harness.perception import ocr, screenshot
 from gui_harness.utils import parse_json
@@ -120,7 +121,6 @@ def verify_after_click(
     target: str,
     before: dict,
     after: dict,
-    runtime,
     click_location: Optional[dict] = None,
     expected_effect: str = "",
     out_dir: Optional[str] = None,
@@ -144,9 +144,6 @@ def verify_after_click(
         "rule_reason": rule_reason,
         "evidence": evidence,
     }
-    if runtime is None:
-        return result
-
     changed_crop = _crop_changed_area(after["img_path"], evidence, out_dir=out_dir)
     context = f"""Task: {task}
 Action: {action}
@@ -173,7 +170,7 @@ Reply with ONLY JSON:
     ]
     if changed_crop:
         content.append({"type": "image", "path": changed_crop})
-    reply = runtime.exec(content=content)
+    reply = llm(content)
     try:
         judged = parse_json(reply)
     except Exception:

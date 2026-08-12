@@ -25,6 +25,8 @@ import time
 import traceback
 from typing import Optional
 
+from openprogram.agentic_programming import llm
+
 from gui_harness.openprogram_compat import agentic_function, build_action_catalog
 
 from gui_harness.utils import parse_json
@@ -396,7 +398,6 @@ def _observe(app_name: str) -> dict:
         "img_path": {"description": "Path to current screenshot (after previous action)"},
         "component_info": {"description": "Formatted string of detected UI components"},
         "feedback": {"description": "Dict from previous step: goal, action, target, success, error"},
-        "runtime": {"hidden": True},
     },
 )
 def verify_step(
@@ -404,12 +405,8 @@ def verify_step(
     img_path: str,
     component_info: str,
     feedback: dict,
-    runtime=None,
 ) -> dict:
     """Evaluate whether the previous action achieved its goal."""
-    if runtime is None:
-        raise ValueError("verify_step() requires a runtime argument")
-
     feedback_text = f"Previous step goal: {feedback.get('goal', 'unknown')}\n"
     feedback_text += f"Action taken: {feedback.get('action', 'unknown')}"
     if feedback.get("target"):
@@ -458,7 +455,7 @@ def verify_step(
         '"ready_to_done": false}'
     )
 
-    reply = runtime.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])
@@ -496,7 +493,6 @@ def verify_step(
         "verification_summary": {"description": "What happened in the previous step (or empty)"},
         "transitions_info": {"description": "Known transitions from current UI state (or empty)"},
         "action_catalog": {"description": "Available actions and their parameter schemas"},
-        "runtime": {"hidden": True},
     },
 )
 def plan_next_action(
@@ -506,13 +502,9 @@ def plan_next_action(
     verification_summary: str,
     transitions_info: str,
     action_catalog: str,
-    runtime=None,
     allow_general: bool = False,
 ) -> dict:
     """Decide the next action to take toward completing the task."""
-    if runtime is None:
-        raise ValueError("plan_next_action() requires a runtime argument")
-
     parts = [f"<task>{task}</task>"]
     if verification_summary:
         parts.append(f"\n<previous_result>\n{verification_summary}\n</previous_result>")
@@ -589,7 +581,7 @@ def plan_next_action(
                 return {"call": "done", "goal": "task complete", "reasoning": (r or "")[:200]}
             return None
 
-    reply = runtime.exec(content=base_content)
+    reply = llm(base_content)
     plan = _parse(reply)
     call = (plan or {}).get("call") or (plan or {}).get("action")
 
@@ -604,9 +596,7 @@ def plan_next_action(
             f"one action from this list: {sorted(valid)}. "
             "Reply again with the same JSON format."
         )
-        reply = runtime.exec(
-            content=base_content + [{"type": "text", "text": retry_msg}]
-        )
+        reply = llm(base_content + [{"type": "text", "text": retry_msg}])
         plan = _parse(reply)
         call = (plan or {}).get("call") or (plan or {}).get("action")
 
@@ -675,7 +665,7 @@ def _dispatch(plan: dict, img_path: str, app_name: str, task: str, runtime, allo
             result = func(**args)
         elif allow_general:
             sub_task = plan.get("sub_task", plan.get("task", plan.get("target", str(plan)[:200])))
-            result = general_action(sub_task=sub_task, task_context=f"<task>{task}</task>", runtime=runtime)
+            result = general_action(sub_task=sub_task, task_context=f"<task>{task}</task>")
         else:
             result = {
                 "success": False,
@@ -752,7 +742,6 @@ def gui_step(
             img_path=obs["img_path"],
             component_info=obs["component_info"],
             feedback=feedback,
-            runtime=runtime,
         )
 
         # Record state transition: previous state → current state
@@ -794,7 +783,6 @@ def gui_step(
         verification_summary=verification_summary,
         transitions_info=obs["transitions_info"],
         action_catalog=catalog,
-        runtime=runtime,
         allow_general=allow_general,
     )
 
@@ -896,11 +884,8 @@ def build_step_feedback(result: dict) -> dict:
 # ═══════════════════════════════════════════
 
 @agentic_function(render_range={"callers": 0})
-def conclusion(task: str, completed: bool, steps_taken: int, runtime=None) -> dict:
+def conclusion(task: str, completed: bool, steps_taken: int) -> dict:
     """Summarize what was accomplished during the GUI task."""
-    if runtime is None:
-        raise ValueError("conclusion() requires a runtime argument")
-
     img_path = _screenshot.take()
 
     status = "COMPLETED" if completed else f"INCOMPLETE (used all {steps_taken} steps)"
@@ -947,7 +932,7 @@ def conclusion(task: str, completed: bool, steps_taken: int, runtime=None) -> di
         '"issues": "any problems encountered, or null"}'
     )
 
-    reply = runtime.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])

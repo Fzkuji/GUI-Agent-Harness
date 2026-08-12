@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+from openprogram.agentic_programming import agentic_function, llm
+
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO))
@@ -34,6 +36,11 @@ Image size: width={w}, height={h} pixels. Coordinates must be integers with
 Instruction: {instr}
 
 Reply with ONLY JSON: {{"x": <int>, "y": <int>}}"""
+
+
+@agentic_function(render_range={"callers": 0})
+def _call_llm(content: list[dict], runtime) -> str | dict:
+    return llm(content, timeout_s=240)
 
 
 def main() -> int:
@@ -85,7 +92,7 @@ def main() -> int:
                 {"type": "text", "text": _PROMPT.format(w=w, h=h, instr=s["instruction"])},
                 {"type": "image", "path": str(img)},
             ]
-            parsed = parse_json(rt.exec(content=content, timeout_s=240))
+            parsed = parse_json(_call_llm(content, rt))
             x, y = int(parsed["x"]), int(parsed["y"])
             rec["prediction_px"] = [x, y]
             rec["correctness"] = "correct" if (gt[0] <= x <= gt[2] and gt[1] <= y <= gt[3]) else "wrong"

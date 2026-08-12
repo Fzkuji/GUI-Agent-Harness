@@ -67,31 +67,22 @@ def gui_agent(
     runtime=None,
     allow_general: bool = False,
 ) -> dict:
-    """Autonomous GUI agent. Execute a GUI task by looping observe -> verify -> plan -> action.
+    """Drive the desktop GUI to complete a task.
 
-    Takes a task description, then autonomously:
-    1. Observes the screen (screenshot + component detection + state identification)
-    2. Verifies the previous action's result (if any)
-    3. Plans the next action (with known transitions as shortcuts)
-    4. Executes it
-    5. Builds explicit feedback for the next iteration
-    6. Repeats until the task is complete or max_steps is reached
+    Loops observe -> verify -> plan -> act on the real screen until the
+    task is done or max_steps is reached. Use it for work that can only
+    be done through a graphical application; anything reachable from a
+    shell or a file is cheaper and more reliable without it.
 
-    Each step passes structured feedback to the next, so the agent tracks
-    progress explicitly without relying solely on LLM context memory.
-
-    The runtime's working directory must be configured before calling this
-    function (webui sets it via exec_rt.set_workdir(); CLI uses --work-dir).
-    Any relative paths codex writes land there.
+    The runtime's working directory must be configured before calling —
+    relative paths resolve against it.
 
     Args:
-        task: What to do, in natural language.
-        max_steps: Maximum number of actions (default: 15).
-        app_name: App name for component memory (default: "desktop").
-        runtime: LLM runtime instance.
+        task: what to do, in natural language.
+        max_steps: maximum number of actions (default: 15).
+        app_name: app name for component memory (default: "desktop").
 
-    Returns:
-        dict with: task, success, steps_taken, total_time, history
+    Returns a dict with task, success, steps_taken, total_time, history.
     """
     if runtime is None:
         raise ValueError("gui_agent() requires a runtime argument")
@@ -181,7 +172,6 @@ def gui_agent(
             task=task,
             completed=completed,
             steps_taken=len(history),
-            runtime=runtime,
         )
         print(f"  [conclusion] {summary.get('summary', '')[:300]}", file=sys.stderr)
     except Exception as e:

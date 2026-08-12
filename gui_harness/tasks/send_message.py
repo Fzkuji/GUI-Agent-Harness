@@ -44,7 +44,7 @@ def send_message(app_name: str, recipient: str, message: str,
 
     # 1. Observe
     obs = observe(task=f"Find conversation with {recipient} in {app_name}",
-                  app_name=app_name, runtime=rt)
+                  app_name=app_name)
 
     # 2. Navigate if needed
     if not obs.get("target_visible"):
@@ -64,7 +64,6 @@ def send_message(app_name: str, recipient: str, message: str,
     # 5. Verify
     result = verify(
         expected=f'Message "{message[:30]}..." appears in the conversation',
-        runtime=rt,
     )
 
     return {

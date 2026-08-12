@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from openprogram.agentic_programming import agentic_function, llm
+
 from gui_harness.utils import parse_json
 from gui_harness.error_monitor import reraise_if_fatal
 
@@ -36,6 +38,7 @@ Output ONLY JSON:
 - Reserve p_infeasible >= 0.7 for cases you are quite sure are impossible."""
 
 
+@agentic_function(render_range={"callers": 0})
 def judge_infeasible(instruction: str, img_path: str, runtime, timeout_s: int = 120) -> dict:
     """返回 {'p_infeasible': float, 'verdict': str, 'reasoning': str, 'error': optional}。
     失败时 p_infeasible=0.0(放行),保证拒绝层从不因自身报错而误伤可定位任务。"""
@@ -44,10 +47,10 @@ def judge_infeasible(instruction: str, img_path: str, runtime, timeout_s: int = 
         {"type": "image", "path": img_path},
     ]
     try:
-        kwargs = {"content": content}
+        kwargs = {}
         if timeout_s > 0:
             kwargs["timeout_s"] = timeout_s
-        parsed = parse_json(runtime.exec(**kwargs))
+        parsed = parse_json(llm(content, **kwargs))
     except Exception as exc:
         reraise_if_fatal(exc)
         return {"p_infeasible": 0.0, "verdict": "feasible",

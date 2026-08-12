@@ -39,14 +39,14 @@ def read_messages(app_name: str, contact: str = None,
     # Navigate if contact specified
     if contact:
         obs = observe(task=f"Find conversation with {contact} in {app_name}",
-                      app_name=app_name, runtime=rt)
+                      app_name=app_name)
         if not obs.get("target_visible"):
             navigate(target_state=f"conversation_{contact}",
                      app_name=app_name, runtime=rt)
 
     # Read content
     obs = observe(task=f"Read all visible messages in the current chat of {app_name}",
-                  app_name=app_name, runtime=rt)
+                  app_name=app_name)
 
     return {
         "app_name": app_name,

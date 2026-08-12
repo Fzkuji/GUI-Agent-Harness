@@ -6,6 +6,8 @@ Session mode: summarize={"depth": 0, "siblings": 0}
 
 from __future__ import annotations
 
+from openprogram.agentic_programming import llm
+
 from gui_harness.utils import parse_json
 
 from gui_harness.openprogram_compat import agentic_function
@@ -13,12 +15,8 @@ from gui_harness.perception import screenshot, ocr
 
 
 @agentic_function(render_range={"callers": 0})
-def verify(expected: str, runtime=None) -> dict:
+def verify(expected: str) -> dict:
     """Verify whether the previous action produced the expected result."""
-    if runtime is None:
-        raise ValueError("verify() requires a runtime argument")
-    rt = runtime
-
     img_path = screenshot.take()
     ocr_results = ocr.detect_text(img_path)
     ocr_lines = "\n".join(
@@ -43,7 +41,7 @@ Reply with ONLY this JSON object, no other text:
   "screenshot_path": "..."
 }}"""
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])

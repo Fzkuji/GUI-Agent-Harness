@@ -35,6 +35,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(HERE))
 
 from PIL import Image
+from openprogram.agentic_programming import agentic_function, llm
 
 from gui_harness.planning import coord_formats
 from model_profiles import get_profile
@@ -108,11 +109,12 @@ def _make_openprogram_call(provider: str, model: str):
     from gui_harness.openprogram_compat import create_runtime
     rt = create_runtime(provider=provider, model=model, max_retries=3)
 
-    def call(prompt: str, img_path: Path) -> str:
+    @agentic_function(render_range={"callers": 0})
+    def call(prompt: str, img_path: Path, runtime=rt) -> str:
         if provider == "claude-code":
             img_path = _shrink_for_anthropic(img_path)
         content = [{"type": "text", "text": prompt}, {"type": "image", "path": str(img_path)}]
-        return rt.exec(content=content, timeout_s=150) or ""
+        return llm(content, timeout_s=150) or ""
 
     return call
 

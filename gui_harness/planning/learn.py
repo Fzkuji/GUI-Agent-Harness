@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
+from openprogram.agentic_programming import llm
 
 from gui_harness.openprogram_compat import agentic_function
 
@@ -35,6 +36,7 @@ def has_base_memory(app_name: str) -> bool:
     return bool(meta.get("base_memory_learned_at"))
 
 
+@agentic_function(render_range={"callers": 0})
 def learn_app_components(
     app_name: str,
     img_path: str | None = None,
@@ -114,7 +116,7 @@ def learn_app_components(
     # Accumulate across all screens
     totals = {"saved": 0, "skipped": 0, "detect": 0.0, "label": 0.0, "save": 0.0}
     for state_name, shot in screens:
-        r = _learn_one_screen(app_name, shot, runtime, batch_size)
+        r = _learn_one_screen(app_name, shot, batch_size)
         print(
             f"  [learn/{state_name}] saved={r['saved']} skipped={r['skipped']} "
             f"(detect={r['t_detect']:.1f}s label={r['t_label']:.1f}s)",
@@ -151,7 +153,6 @@ def learn_app_components(
 def _learn_one_screen(
     app_name: str,
     img_path: str | None,
-    runtime,
     batch_size: int,
 ) -> dict:
     """Label and save components from a single screenshot. Returns per-call counts."""
@@ -182,7 +183,6 @@ def _learn_one_screen(
             icons=batch_icons,
             annotated_path=annotated_path,
             offset=batch_start,
-            runtime=runtime,
         )
         labels.update(batch_labels)
     t_label = time.time() - t1
@@ -273,13 +273,8 @@ def _batch_label(
     icons: list[dict],
     annotated_path: str,
     offset: int = 0,
-    runtime=None,
 ) -> dict:
     """Label every UI component in a numbered screenshot."""
-    if runtime is None:
-        raise ValueError("This function requires a runtime argument")
-    rt = runtime
-
     # Build component list text
     comp_lines = []
     for i, icon in enumerate(icons):
@@ -307,7 +302,7 @@ elements.
 Reply with ONLY a JSON object mapping each number to its name:
 {{"0": "search_bar", "1": "skip", "2": "close_button"}}"""
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": data},
         {"type": "image", "path": annotated_path},
     ])

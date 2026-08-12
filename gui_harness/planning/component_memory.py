@@ -31,6 +31,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from openprogram.agentic_programming import llm
 
 from gui_harness.openprogram_compat import agentic_function
 
@@ -493,14 +494,9 @@ def find_target_in_known(
     img_path: str,
     img_w: int,
     img_h: int,
-    runtime=None,
 ) -> dict:
     """Locate a target element from candidates or direct screenshot grounding."""
     from gui_harness.utils import parse_json
-
-    if runtime is None:
-        raise ValueError("find_target_in_known() requires a runtime argument")
-    rt = runtime
 
     comp_lines = "\n".join(
         f"  [{c['name']}] at ({c['cx']}, {c['cy']}) conf={c.get('confidence', 0):.2f}"
@@ -558,7 +554,7 @@ Reply with ONLY this JSON object:
   "grounding_type": "listed_entry or direct_pixel",
   "confidence": 0.0}}"""
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])
@@ -645,14 +641,9 @@ def label_single_component(
     component_crop_path: str,
     component_index: int,
     component_bbox: dict,
-    runtime=None,
 ) -> dict:
     """Identify a single UI component from its cropped screenshot."""
     from gui_harness.utils import parse_json
-
-    if runtime is None:
-        raise ValueError("label_single_component() requires a runtime argument")
-    rt = runtime
 
     context = f"""Task: {task}
 Target element: {target}
@@ -668,7 +659,7 @@ Reply with ONLY this JSON object:
 {{"label": "descriptive_name or skip", "is_target": true,
   "reasoning": "what this component appears to be"}}"""
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": component_crop_path},
     ])
@@ -686,7 +677,6 @@ def label_unknown_components(
     known_names: set[str],
     img_path: str,
     app_name: str,
-    runtime=None,
 ) -> Optional[dict]:
     """Phase 4: Label unknown components one by one until target is found.
 
@@ -770,7 +760,6 @@ def label_unknown_components(
                 "w": w,
                 "h": h,
             },
-            runtime=runtime,
         )
 
         label = result.get("label", "skip")
@@ -848,6 +837,7 @@ def _active_localization_confident(location: Optional[dict]) -> bool:
 # Main entry point: locate_target
 # ═══════════════════════════════════════════
 
+@agentic_function(render_range={"callers": 0})
 def locate_target(
     task: str,
     target: str,
@@ -967,7 +957,6 @@ def locate_target(
             img_h=detection["img_h"],
             candidates=base_active_candidates,
             proposed=located,
-            runtime=runtime,
             work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
         ) or located
         located["timing"] = _timing
@@ -1003,7 +992,6 @@ def locate_target(
             img_h=detection["img_h"],
             candidates=active_candidates,
             proposed=located,
-            runtime=runtime,
             work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
         ) or located
         located["timing"] = _timing
@@ -1035,7 +1023,6 @@ def locate_target(
             img_path=img_path,
             img_w=detection["img_w"],
             img_h=detection["img_h"],
-            runtime=runtime,
         )
         _timing["phase3_llm"] = round(time.time() - t0, 2)
         print(f"  [locate] Phase 3: found={result.get('found', False)} ({_timing['phase3_llm']}s)", file=sys.stderr)
@@ -1058,7 +1045,6 @@ def locate_target(
                 img_h=detection["img_h"],
                 candidates=active_candidates,
                 proposed=located,
-                runtime=runtime,
                 work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
             ) or located
             located["timing"] = _timing
@@ -1083,7 +1069,6 @@ def locate_target(
         known_names=known_names,
         img_path=img_path,
         app_name=app_name,
-        runtime=runtime,
     )
     _timing["phase4_label"] = round(time.time() - t0, 2)
     print(f"  [locate] Phase 4: found={'yes' if found else 'no'} ({_timing['phase4_label']}s)", file=sys.stderr)
@@ -1100,7 +1085,6 @@ def locate_target(
             img_h=detection["img_h"],
             candidates=active_candidates,
             proposed=found,
-            runtime=runtime,
             work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
         ) or found
         found["timing"] = _timing
@@ -1115,7 +1099,6 @@ def locate_target(
             img_h=detection["img_h"],
             candidates=active_candidates,
             proposed=phase3_direct_pixel_fallback,
-            runtime=runtime,
             work_dir=os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR"),
         ) or phase3_direct_pixel_fallback
         phase3_direct_pixel_fallback["timing"] = _timing
@@ -1249,14 +1232,9 @@ def select_transition(
     task: str,
     current_state: str,
     available_transitions: list[dict],
-    runtime=None,
 ) -> dict:
     """Select the best known transition from the current state for the task."""
     from gui_harness.utils import parse_json
-
-    if runtime is None:
-        raise ValueError("select_transition() requires a runtime argument")
-    rt = runtime
 
     trans_lines = "\n".join(
         f"  [{i}] {t['action']}:{t['target']} → state {t['to_state']} (used {t['use_count']}x)"
@@ -1276,7 +1254,7 @@ it; if none are relevant, return selected=false.
 Reply with ONLY this JSON object:
 {{"selected": true, "index": 0, "reasoning": "why this transition"}}"""
 
-    reply = rt.exec(content=[{"type": "text", "text": context}])
+    reply = llm([{"type": "text", "text": context}])
 
     try:
         return parse_json(reply)

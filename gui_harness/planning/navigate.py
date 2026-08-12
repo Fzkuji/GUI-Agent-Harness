@@ -85,7 +85,7 @@ def navigate(target_state: str, app_name: str,
         # No known path — try one LLM-guided attempt
         act(action="click", target=f"element that leads to {target_state}",
             app_name=app_name, runtime=rt)
-        vr = verify(expected=f"App is now in state: {target_state}", runtime=rt)
+        vr = verify(expected=f"App is now in state: {target_state}")
         return {
             "start_state": start_state, "target_state": target_state,
             "path": [start_state], "steps_taken": 1,
@@ -109,7 +109,7 @@ def navigate(target_state: str, app_name: str,
         act(action="click", target=click_target, app_name=app_name, runtime=rt)
         steps += 1
 
-        vr = verify(expected=f"Navigated to: {next_state}", runtime=rt)
+        vr = verify(expected=f"Navigated to: {next_state}")
         if vr.get("verified"):
             current_state = next_state
         traversed.append(current_state)

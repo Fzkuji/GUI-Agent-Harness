@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageDraw
+from openprogram.agentic_programming import agentic_function, llm
 
 from gui_harness.error_monitor import reraise_if_fatal
 from gui_harness.planning import active_localization as active
@@ -348,11 +349,9 @@ def _env_choice(name: str, default: str, choices: set[str]) -> str:
     return value if value in choices else default
 
 
-def _runtime_exec(runtime, config: "ScreenSpotLocatorConfig", **kwargs):
+def _call_llm(config: "ScreenSpotLocatorConfig", prompt):
     timeout_s = config.runtime_timeout_s
-    if timeout_s > 0:
-        kwargs.setdefault("timeout_s", timeout_s)
-    return runtime.exec(**kwargs)
+    return llm(prompt, timeout_s=timeout_s if timeout_s > 0 else None)
 
 
 @dataclass(frozen=True)
@@ -543,6 +542,7 @@ class ScreenSpotLocatorConfig:
         )
 
 
+@agentic_function(render_range={"callers": 0})
 def screenspot_locate(
     task: str,
     target: str,
@@ -555,26 +555,23 @@ def screenspot_locate(
     config: Optional[ScreenSpotLocatorConfig] = None,
 ) -> Optional[dict]:
     """Locate one ScreenSpot-Pro click target using a fixed benchmark flow."""
-    if runtime is None:
-        return None
-
     config = config or ScreenSpotLocatorConfig.from_env()
     out_dir = work_dir or os.environ.get("GUI_HARNESS_ACTIVE_LOC_DIR") or tempfile.gettempdir()
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
     if config.locator_mode == "iterative_zoom":
-        located = _iterative_zoom_locate(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
+        located = _iterative_zoom_locate(task, target, img_path, img_w, img_h, out_dir, config, candidates)
         if located:
             return located
         if not config.enable_legacy_pipeline:
             return None
 
-    located = _verified_crop_refine(task, target, img_path, img_w, img_h, runtime, out_dir, config, candidates)
+    located = _verified_crop_refine(task, target, img_path, img_w, img_h, out_dir, config, candidates)
     if located:
         return located
 
     if config.candidate_first:
-        located = _candidate_first_select(task, target, img_path, candidates, runtime, out_dir, config)
+        located = _candidate_first_select(task, target, img_path, candidates, out_dir, config)
         if located:
             return located
 
@@ -588,7 +585,6 @@ def screenspot_locate(
         img_w=img_w,
         img_h=img_h,
         candidates=candidates,
-        runtime=runtime,
         out_dir=out_dir,
         config=config,
     )
@@ -600,14 +596,10 @@ def _iterative_zoom_locate(
     img_path: str,
     img_w: int,
     img_h: int,
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
     candidates: list[dict],
 ) -> Optional[dict]:
-    if runtime is None:
-        return None
-
     current_box = [0, 0, img_w, img_h]
     history: list[dict] = []
     stop_refining = False
@@ -724,7 +716,7 @@ coordinates:
                     {"type": "image", "path": crop_path},
                 ]
             try:
-                reply = _runtime_exec(runtime, config, content=content)
+                reply = _call_llm(config, content)
                 parsed = parse_json(reply)
             except Exception as exc:
                 reraise_if_fatal(exc)
@@ -863,7 +855,6 @@ coordinates:
                     target,
                     img_w,
                     img_h,
-                    runtime,
                     crop_path,
                     crop_box,
                     display_scale,
@@ -940,7 +931,6 @@ coordinates:
             final_box,
             img_w,
             img_h,
-            runtime,
             out_dir,
             config,
             candidates,
@@ -1490,7 +1480,6 @@ def _run_crop_check(
     target: str,
     img_w: int,
     img_h: int,
-    runtime,
     crop_path: str,
     crop_box: list[int],
     display_scale: float,
@@ -1578,7 +1567,7 @@ confidence={proposal.get('confidence', '')}"""
             {"type": "image", "path": overlay_path},
         ]
     try:
-        parsed = parse_json(_runtime_exec(runtime, config, content=gate_content))
+        parsed = parse_json(_call_llm(config, gate_content))
     except Exception as exc:
         reraise_if_fatal(exc)
         return {
@@ -1686,7 +1675,6 @@ def _iterative_zoom_final_click(
     crop_box: list[int],
     img_w: int,
     img_h: int,
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
     candidates: list[dict],
@@ -1770,7 +1758,7 @@ Detected OCR/component candidates in this final crop:
             {"type": "image", "path": crop_path},
         ]
     try:
-        reply = _runtime_exec(runtime, config, content=final_content)
+        reply = _call_llm(config, final_content)
         parsed = parse_json(reply)
     except Exception as exc:
         reraise_if_fatal(exc)
@@ -1843,7 +1831,6 @@ Detected OCR/component candidates in this final crop:
             target,
             img_w,
             img_h,
-            runtime,
             config,
             history,
             {
@@ -1901,7 +1888,7 @@ Detected OCR/component candidates in this final crop:
         },
     }
     if config.enable_final_verify:
-        verifier = active.verify_candidate(task, target, img_path, result, runtime, out_dir=out_dir)
+        verifier = active.verify_candidate(task, target, img_path, result, out_dir=out_dir)
         result["pre_click_verifier"] = verifier
     print(
         f"  [screenspot_zoom] final click ({cx},{cy}) crop={crop_box} scale={display_scale:.2f}",
@@ -1915,7 +1902,6 @@ def _iterative_zoom_review_click(
     target: str,
     img_w: int,
     img_h: int,
-    runtime,
     config: ScreenSpotLocatorConfig,
     history: list[dict],
     final_entry: dict,
@@ -2005,7 +1991,7 @@ If replacing, return x/y in the DISPLAYED CROP coordinates of the chosen source
     for item in review_crops:
         content.append({"type": "image", "path": item["crop_path"]})
     try:
-        parsed = parse_json(_runtime_exec(runtime, config, content=content))
+        parsed = parse_json(_call_llm(config, content))
     except Exception as exc:
         reraise_if_fatal(exc)
         print(
@@ -2092,7 +2078,6 @@ def _candidate_first_select(
     target: str,
     img_path: str,
     candidates: list[dict],
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
 ) -> Optional[dict]:
@@ -2100,12 +2085,12 @@ def _candidate_first_select(
     pool = list(candidates)
     attempts = min(3, max(1, config.active_rounds + 1))
     for attempt in range(attempts):
-        selected = active.rerank_candidates(task, target, img_path, pool, runtime)
+        selected = active.rerank_candidates(task, target, img_path, pool)
         if not selected:
             return None
         selected["source"] = "screenspot_candidate_first"
         selected["grounding_type"] = "candidate_first_rerank"
-        verifier = active.verify_candidate(task, target, img_path, selected, runtime, out_dir=out_dir)
+        verifier = active.verify_candidate(task, target, img_path, selected, out_dir=out_dir)
         selected["pre_click_verifier"] = verifier
         verdict = str(verifier.get("is_target", "")).lower()
         print(
@@ -2128,7 +2113,6 @@ def _verified_crop_refine(
     img_path: str,
     img_w: int,
     img_h: int,
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
     candidates: list[dict],
@@ -2139,14 +2123,13 @@ def _verified_crop_refine(
         img_path,
         img_w,
         img_h,
-        runtime,
         max_regions=config.region_limit,
         candidates=candidates,
     )
     rejected_regions: list[tuple[dict, dict]] = []
     rejected_clicks: list[tuple[dict, dict, str]] = []
     for region in regions:
-        verifier = active.verify_region_crop(task, target, img_path, region, runtime, out_dir)
+        verifier = active.verify_region_crop(task, target, img_path, region, out_dir)
         verdict = str(verifier.get("contains_target", "")).lower()
         print(
             f"  [screenspot_locate] region {region.get('name')} {region.get('bbox')} "
@@ -2164,7 +2147,6 @@ def _verified_crop_refine(
             img_path,
             region,
             verifier,
-            runtime,
             out_dir,
             candidates,
         )
@@ -2177,7 +2159,6 @@ def _verified_crop_refine(
         task,
         target,
         img_path,
-        runtime,
         out_dir,
         config,
         candidates,
@@ -2196,16 +2177,15 @@ def _refine_and_verify_region(
     img_path: str,
     region: dict,
     crop_verifier: dict,
-    runtime,
     out_dir: str,
     candidates: list[dict],
 ) -> Optional[dict]:
-    selected = active.refine_click_in_region(task, target, img_path, region, runtime, out_dir, candidates=candidates)
+    selected = active.refine_click_in_region(task, target, img_path, region, out_dir, candidates=candidates)
     if not selected:
         return None
     selected["crop_region_verifier"] = crop_verifier
 
-    final_verifier = active.verify_candidate(task, target, img_path, selected, runtime, out_dir=out_dir)
+    final_verifier = active.verify_candidate(task, target, img_path, selected, out_dir=out_dir)
     selected["pre_click_verifier"] = final_verifier
     final_verdict = str(final_verifier.get("is_target", "")).lower()
     print(
@@ -2220,7 +2200,6 @@ def _try_relaxed_crop_regions(
     task: str,
     target: str,
     img_path: str,
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
     candidates: list[dict],
@@ -2243,7 +2222,6 @@ def _try_relaxed_crop_regions(
             img_path,
             region,
             verifier,
-            runtime,
             out_dir,
             candidates,
         )
@@ -2349,7 +2327,6 @@ def _active_controller_fallback(
     img_w: int,
     img_h: int,
     candidates: list[dict],
-    runtime,
     out_dir: str,
     config: ScreenSpotLocatorConfig,
 ) -> Optional[dict]:
@@ -2401,7 +2378,7 @@ Reply with ONLY JSON:
             content.append({"type": "text", "text": f"Crop image: {name}"})
             content.append({"type": "image", "path": path})
 
-        reply = _runtime_exec(runtime, config, content=content)
+        reply = _call_llm(config, content)
         try:
             decision = parse_json(reply)
         except Exception:
@@ -2423,14 +2400,14 @@ Reply with ONLY JSON:
                 continue
 
             selected["reasoning"] = decision.get("reasoning", "")
-            verifier = active.verify_candidate(task, target, img_path, selected, runtime, out_dir=out_dir)
+            verifier = active.verify_candidate(task, target, img_path, selected, out_dir=out_dir)
             selected["pre_click_verifier"] = verifier
             verdict = str(verifier.get("is_target", "")).lower()
             if verdict == "yes" and verifier.get("suggestion") != "zoom":
                 if selected.get("direct_unsnapped"):
-                    refined = _refine_direct_on_crop(task, target, img_path, selected, runtime, out_dir, img_w, img_h, config)
+                    refined = _refine_direct_on_crop(task, target, img_path, selected, out_dir, img_w, img_h, config)
                     if refined:
-                        refined_verifier = active.verify_candidate(task, target, img_path, refined, runtime, out_dir=out_dir)
+                        refined_verifier = active.verify_candidate(task, target, img_path, refined, out_dir=out_dir)
                         refined["pre_click_verifier"] = refined_verifier
                         refined_verdict = str(refined_verifier.get("is_target", "")).lower()
                         if refined_verdict == "yes" and refined_verifier.get("suggestion") != "zoom":
@@ -2628,7 +2605,6 @@ def _refine_direct_on_crop(
     target: str,
     img_path: str,
     selected: dict,
-    runtime,
     out_dir: str,
     img_w: int,
     img_h: int,
@@ -2657,7 +2633,7 @@ the target, not the neighboring label/status/toggle area.
 Reply with ONLY JSON:
 {{"x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
     try:
-        reply = _runtime_exec(runtime, config, content=[
+        reply = _call_llm(config, [
             {"type": "text", "text": context},
             {"type": "image", "path": str(crop_path)},
         ])

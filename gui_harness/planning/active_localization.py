@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from PIL import Image, ImageDraw
+from openprogram.agentic_programming import llm
 
 from gui_harness.perception import detector
 from gui_harness.utils import parse_json
@@ -284,11 +285,8 @@ def verify_region_crop(
     target: str,
     img_path: str,
     region: dict,
-    runtime,
     out_dir: str,
 ) -> dict:
-    if runtime is None:
-        return {"contains_target": "uncertain", "reasoning": "no runtime"}
     box = region["bbox"]
     full_path = _full_image_with_box(img_path, box, out_dir=out_dir)
     crop_path, crop_box, scale = _scaled_region_crop(
@@ -309,7 +307,7 @@ merely a related label or neighboring control.
 Reply with ONLY JSON:
 {{"contains_target": "yes|no|uncertain", "target_visible_element": "...", "evidence": "...", "risk": "...", "suggestion": "refine|try_next"}}"""
     try:
-        reply = runtime.exec(content=[
+        reply = llm([
             {"type": "text", "text": context},
             {"type": "text", "text": "Full screenshot with proposed crop:"},
             {"type": "image", "path": full_path},
@@ -336,12 +334,9 @@ def refine_click_in_region(
     target: str,
     img_path: str,
     region: dict,
-    runtime,
     out_dir: str,
     candidates: Optional[list[dict]] = None,
 ) -> Optional[dict]:
-    if runtime is None:
-        return None
     crop_path, crop_box, scale = _scaled_region_crop(
         img_path, region["bbox"], out_dir, f"refine_{region.get('name', 'region')}"
     )
@@ -383,7 +378,7 @@ row or parent application icon.
 Reply with ONLY JSON:
 {{"candidate_id": "r0 or empty", "x": 0, "y": 0, "target_visible_element": "...", "confidence": 0.0, "reasoning": "..."}}"""
     try:
-        reply = runtime.exec(content=[
+        reply = llm([
             {"type": "text", "text": context},
             {"type": "image", "path": crop_path},
         ])
@@ -447,12 +442,9 @@ def verify_candidate(
     target: str,
     img_path: str,
     candidate: dict,
-    runtime,
     out_dir: Optional[str] = None,
 ) -> dict:
     """Ask a local crop verifier whether one candidate is really the target."""
-    if runtime is None:
-        return {"is_target": "uncertain", "reasoning": "no runtime"}
     box = _candidate_box(candidate)
     marker = [candidate.get("cx", 0), candidate.get("cy", 0)]
     crop_path, crop_box = _crop_with_marker(
@@ -487,7 +479,7 @@ uncertain.
 
 Reply with ONLY JSON:
 {{"is_target": "yes|no|uncertain", "clicked_visible_element": "text/icon under the blue cross", "target_visible_element": "expected target text/icon", "evidence": "...", "risk": "...", "suggestion": "click|zoom|try_next"}}"""
-    reply = runtime.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "text", "text": "Full screenshot with proposed click marker:"},
         {"type": "image", "path": full_path},
@@ -527,21 +519,19 @@ def propose_regions(
     img_path: str,
     img_w: int,
     img_h: int,
-    runtime,
     max_regions: int = 4,
     candidates: Optional[list[dict]] = None,
 ) -> list[dict]:
     """Ask the LLM for coarse search regions, then add cheap OS priors."""
     regions = _os_prior_regions(target, img_w, img_h)
-    if runtime is not None:
-        candidate_lines = _candidate_context_lines(
-            candidates or [],
-            target=target,
-            limit=_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_CANDIDATES", 80),
-        )
-        min_w = max(_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_MIN_W", 360), int(img_w * 0.10))
-        min_h = max(_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_MIN_H", 220), int(img_h * 0.08))
-        context = f"""Task: {task}
+    candidate_lines = _candidate_context_lines(
+        candidates or [],
+        target=target,
+        limit=_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_CANDIDATES", 80),
+    )
+    min_w = max(_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_MIN_W", 360), int(img_w * 0.10))
+    min_h = max(_env_int_or_default("GUI_HARNESS_SCREENSPOT_REGION_MIN_H", 220), int(img_h * 0.08))
+    context = f"""Task: {task}
 Target: {target}
 Screenshot size: {img_w}x{img_h}
 
@@ -559,29 +549,29 @@ Reply with ONLY JSON:
 {{"regions": [
   {{"name": "short_name", "bbox": [x1, y1, x2, y2], "candidate_ids": ["c0"], "confidence": 0.0, "reasoning": "..."}}
 ]}}"""
-        try:
-            reply = runtime.exec(content=[
-                {"type": "text", "text": context},
-                {"type": "image", "path": img_path},
-            ])
-            parsed = parse_json(reply)
-            for item in parsed.get("regions", [])[:max_regions]:
-                bbox = item.get("bbox")
-                if isinstance(bbox, list) and len(bbox) == 4:
-                    regions.append({
-                        "name": item.get("name", "llm_region"),
-                        "bbox": _expand_region_box(bbox, img_w, img_h),
-                        "raw_bbox": _clamp_box(bbox, img_w, img_h),
-                        "candidate_ids": item.get("candidate_ids", []),
-                        "confidence": float(item.get("confidence", 0) or 0),
-                        "reasoning": item.get("reasoning", ""),
-                    })
-        except Exception as exc:
-            reraise_if_fatal(exc)  # auth/timeout/transport must reach the runner
-            print(
-                f"  [crop_first] region proposal failed: {exc.__class__.__name__}: {exc}",
-                file=__import__("sys").stderr,
-            )
+    try:
+        reply = llm([
+            {"type": "text", "text": context},
+            {"type": "image", "path": img_path},
+        ])
+        parsed = parse_json(reply)
+        for item in parsed.get("regions", [])[:max_regions]:
+            bbox = item.get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                regions.append({
+                    "name": item.get("name", "llm_region"),
+                    "bbox": _expand_region_box(bbox, img_w, img_h),
+                    "raw_bbox": _clamp_box(bbox, img_w, img_h),
+                    "candidate_ids": item.get("candidate_ids", []),
+                    "confidence": float(item.get("confidence", 0) or 0),
+                    "reasoning": item.get("reasoning", ""),
+                })
+    except Exception as exc:
+        reraise_if_fatal(exc)  # auth/timeout/transport must reach the runner
+        print(
+            f"  [crop_first] region proposal failed: {exc.__class__.__name__}: {exc}",
+            file=__import__("sys").stderr,
+        )
 
     deduped: list[dict] = []
     for region in sorted(regions, key=lambda r: float(r.get("confidence", 0)), reverse=True):
@@ -625,9 +615,8 @@ def rerank_candidates(
     target: str,
     img_path: str,
     candidates: list[dict],
-    runtime,
 ) -> Optional[dict]:
-    if runtime is None or not candidates:
+    if not candidates:
         return None
     lines = []
     for cand in candidates[:120]:
@@ -655,7 +644,7 @@ it.
 
 Reply with ONLY JSON:
 {{"candidate_id": "c0", "confidence": 0.0, "reasoning": "..."}}"""
-    reply = runtime.exec(content=[
+    reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
     ])
@@ -795,7 +784,6 @@ def improve_location(
     img_h: int,
     candidates: list[dict],
     proposed: Optional[dict],
-    runtime,
     work_dir: Optional[str] = None,
 ) -> Optional[dict]:
     """Validate a proposed location and optionally run top-k region search."""
@@ -807,7 +795,7 @@ def improve_location(
 
     proposed_rejected = False
     if proposed:
-        verifier = verify_candidate(task, target, img_path, proposed, runtime, out_dir=out_dir)
+        verifier = verify_candidate(task, target, img_path, proposed, out_dir=out_dir)
         proposed = dict(proposed)
         proposed["pre_click_verifier"] = verifier
         verdict = str(verifier.get("is_target", "")).lower()
@@ -819,7 +807,7 @@ def improve_location(
             proposed = None
 
     max_regions = int(os.environ.get("GUI_HARNESS_ACTIVE_LOC_REGIONS", "4"))
-    regions = propose_regions(task, target, img_path, img_w, img_h, runtime, max_regions=max_regions, candidates=candidates)
+    regions = propose_regions(task, target, img_path, img_w, img_h, max_regions=max_regions, candidates=candidates)
     region_candidates: list[dict] = []
     for region in regions:
         rbox = region["bbox"]
@@ -834,11 +822,11 @@ def improve_location(
 
     for i, cand in enumerate(region_candidates):
         cand["id"] = f"c{i}"
-    selected = rerank_candidates(task, target, img_path, region_candidates, runtime)
+    selected = rerank_candidates(task, target, img_path, region_candidates)
     if selected:
         selected["active_regions"] = regions
         if os.environ.get("GUI_HARNESS_ACTIVE_VERIFY_SELECTED", "1").lower() in {"1", "true", "yes"}:
-            verifier = verify_candidate(task, target, img_path, selected, runtime, out_dir=out_dir)
+            verifier = verify_candidate(task, target, img_path, selected, out_dir=out_dir)
             selected["pre_click_verifier"] = verifier
             verdict = str(verifier.get("is_target", "")).lower()
             if verdict == "yes" and verifier.get("suggestion") != "zoom":

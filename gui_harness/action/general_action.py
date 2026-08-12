@@ -12,17 +12,15 @@ Write, etc.) and reports the result when done.
 
 from __future__ import annotations
 
+from openprogram.agentic_programming import llm
+
 from gui_harness.openprogram_compat import agentic_function
 
 
 @agentic_function(render_range={"callers": 0})
-def general_action(sub_task: str, task_context: str = "", runtime=None) -> dict:
+def general_action(sub_task: str, task_context: str = "") -> dict:
     """Execute a free-form sub-task on a remote Ubuntu VM using any available tools."""
     from gui_harness.utils import parse_json
-
-    if runtime is None:
-        raise ValueError("general_action() requires a runtime argument")
-    rt = runtime
 
     # Build data with VM access info
     data_parts = []
@@ -79,7 +77,7 @@ Fetch web via proxy: curl -s --proxy http://$PROXY_HOST:$PROXY_PORT 'URL'""")
         '"error": null}'
     )
 
-    reply = rt.exec(content=[
+    reply = llm([
         {"type": "text", "text": "\n\n".join(data_parts)},
     ])
 
