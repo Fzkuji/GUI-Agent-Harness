@@ -409,7 +409,7 @@ def detect_all(img_path: str, conf: float = 0.1, iou: float = 0.3):
     from gui_harness.perception.ocr import detect_text
 
     try:
-        from openprogram.webui._pause_stop import check_cancelled as _cc
+        from openprogram.agent.run_control import check_cancelled as _cc
     except Exception:
         def _cc() -> None:
             return None

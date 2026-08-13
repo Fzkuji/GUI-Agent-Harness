@@ -4,7 +4,7 @@ Installed harnesses (GUI / Research / Wiki …) delegate here for the one
 fiddly thing every one of them needs: pulling a JSON object out of a
 model reply that may be wrapped in ```json fences, prefixed with prose,
 or otherwise not clean ``json.loads``-able. One implementation, imported
-as ``from openprogram.functions.agentics.json_parsing import parse_json``.
+as ``from openprogram.programs.agentic_functions.json_parsing import parse_json``.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ host, not on its own. So the order is always:
 1. **Install OpenProgram** (the host). See
    [OpenProgram installation guide](https://github.com/Fzkuji/OpenProgram/blob/main/docs/install/install.md).
 2. **Install this harness into it.** It lands in
-   `openprogram/functions/agentics/GUI-Agent-Harness/` and is **auto-registered**
+   `openprogram/programs/applications/gui_harness/` and is **auto-registered**
    — `gui_agent` then shows up in the web UI and function list automatically.
 
 The quickest path is the **One command** below, run from the harness directory —
@@ -18,7 +18,7 @@ setup`), not via environment variables.
 
 ## One command (GUI agent only)
 
-From the harness directory (`…/functions/agentics/GUI-Agent-Harness`):
+From the harness directory (`…/programs/applications/gui_harness`):
 
 PyTorch is auto-selected: an NVIDIA GPU (nvidia-smi) gets the matching CUDA
 build, else CPU. Force it with `--cpu`/`-Cpu` or a specific `--cuda`/`-Cuda` tag.
@@ -55,7 +55,7 @@ Idempotent and re-runnable. It targets the active `venv`/conda env (or
 |------|--------|-------|
 | 1 | **PyTorch** (+ torchvision) | Auto-detects an NVIDIA GPU → CUDA build, else CPU (`--cpu` / `--cuda cuXXX` to force). Installed first so ultralytics doesn't pull a mismatched default. |
 | 2 | **OpenProgram host** | Only if not importable (editable from the repo, else PyPI). Skip with `--no-host` / `-NoHost`. |
-| 3 | **The harness** (editable, in-tree) | `pip install -e .[ocr]` → ultralytics, opencv, numpy, Pillow, pynput, easyocr. In-tree under `functions/agentics/` ⇒ **auto-registers** `gui_agent`. |
+| 3 | **The harness** (editable, in-tree) | `pip install -e .[ocr]` → ultralytics, opencv, numpy, Pillow, pynput, easyocr. In-tree under `programs/agentic_functions/` ⇒ **auto-registers** `gui_agent`. |
 | 4 | **GPA YOLO weight** | `Salesforce/GPA-GUI-Detector/model.pt` → `~/GPA-GUI-Detector/model.pt` (~40 MB). Skipped if present. Override path with `GPA_MODEL_PATH`. |
 | 5 | **EasyOCR models** | Pre-warms `en` + `ch_sim` into `~/.EasyOCR/model` (~300 MB). |
 | 6 | **Platform tools** | Linux: `xclip` (+ wmctrl/xdotool/scrot). macOS: Xcode CLT for Apple Vision OCR (best-effort; EasyOCR fallback). Windows: none. |

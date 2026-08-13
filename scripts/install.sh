@@ -34,7 +34,7 @@ die()  { printf "${c_red}ERROR${c_reset} %s\n" "$*" >&2; exit 1; }
 # ---- locate repo ------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARNESS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-# <host>/openprogram/functions/agentics/GUI-Agent-Harness  -> host is 4 up
+# <host>/openprogram/programs/applications/gui_harness  -> host is 4 up
 HOST_ROOT="$(cd "$HARNESS_ROOT/../../../.." && pwd)"
 
 # ---- args -------------------------------------------------------------------

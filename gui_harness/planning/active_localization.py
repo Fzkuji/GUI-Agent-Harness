@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from PIL import Image, ImageDraw
-from openprogram.agentic_programming import llm
+from openprogram.agentic_programming import agentic_function, llm
 
 from gui_harness.perception import detector
 from gui_harness.utils import parse_json
@@ -280,6 +280,7 @@ def _scaled_region_crop(
     return str(out), [x1, y1, x2, y2], scale
 
 
+@agentic_function(as_tool=False)
 def verify_region_crop(
     task: str,
     target: str,
@@ -329,6 +330,7 @@ Reply with ONLY JSON:
     return result
 
 
+@agentic_function(as_tool=False)
 def refine_click_in_region(
     task: str,
     target: str,
@@ -437,6 +439,7 @@ Reply with ONLY JSON:
     }
 
 
+@agentic_function(as_tool=False)
 def verify_candidate(
     task: str,
     target: str,
@@ -513,6 +516,7 @@ def _os_prior_regions(target: str, img_w: int, img_h: int) -> list[dict]:
     return regions
 
 
+@agentic_function(as_tool=False)
 def propose_regions(
     task: str,
     target: str,
@@ -610,6 +614,7 @@ def _detect_region_candidates(img_path: str, region: dict, out_dir: Optional[str
     return candidates
 
 
+@agentic_function(as_tool=False)
 def rerank_candidates(
     task: str,
     target: str,

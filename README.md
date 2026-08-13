@@ -137,7 +137,7 @@ UI components are detected once, labeled by a VLM, and stored as templates. On s
 ### 1. Install
 
 The GUI agent is a normal OpenProgram program: programs live in
-`openprogram/functions/agentics/`, and anything cloned into that folder
+`openprogram/programs/agentic_functions/`, and anything cloned into that folder
 auto-registers on the next start. So you install the OpenProgram **host**, then
 clone this repo into that folder and run its installer — the same pattern any
 harness (including your own) uses to plug into OpenProgram.
@@ -173,7 +173,7 @@ and run **its own** installer instead:
 
 **macOS / Linux**
 ```bash
-cd openprogram/functions/agentics
+cd openprogram/programs/agentic_functions
 git clone https://github.com/Fzkuji/GUI-Agent-Harness
 cd GUI-Agent-Harness
 ./scripts/install.sh            # auto-detects an NVIDIA GPU; --cpu / --cuda cuXXX to force
@@ -181,7 +181,7 @@ cd GUI-Agent-Harness
 
 **Windows (PowerShell)**
 ```powershell
-cd openprogram\functions\agentics
+cd openprogram\programs\agentic_functions
 git clone https://github.com/Fzkuji/GUI-Agent-Harness
 cd GUI-Agent-Harness
 .\scripts\install.ps1           # auto-detects an NVIDIA GPU; -Cpu / -Cuda cuXXX to force
@@ -214,11 +214,11 @@ CLI. The first time you run `openprogram` it walks you through provider setup.
 <details>
 <summary><b>How OpenProgram detects this harness (and how to build your own)</b></summary>
 
-OpenProgram walks `openprogram/functions/agentics/` at startup and loads
+OpenProgram walks `openprogram/programs/agentic_functions/` at startup and loads
 any cloned repo that satisfies the harness contract:
 
 ```
-GUI-Agent-Harness/                   ← cloned into functions/agentics/
+GUI-Agent-Harness/                   ← cloned into programs/agentic_functions/
 ├── pyproject.toml                   ← declares THIS repo's own deps only
 └── gui_harness/                     ← importable package
     ├── __init__.py                  ← kept dependency-light (lazy heavy imports)

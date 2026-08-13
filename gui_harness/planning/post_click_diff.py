@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageChops, ImageStat
-from openprogram.agentic_programming import llm
+from openprogram.agentic_programming import agentic_function, llm
 
 from gui_harness.perception import ocr, screenshot
 from gui_harness.utils import parse_json
@@ -115,6 +115,7 @@ def _crop_changed_area(after_path: str, evidence: dict, out_dir: Optional[str] =
     return str(out)
 
 
+@agentic_function(as_tool=False)
 def verify_after_click(
     task: str,
     action: str,

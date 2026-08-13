@@ -2,7 +2,7 @@
 
 Discovered automatically by OpenProgram via the
 ``AGENTIC_FUNCTIONS`` convention — when this package is symlinked
-into ``openprogram/functions/agentics/``, the loader walks for any
+into ``openprogram/programs/agentic_functions/``, the loader walks for any
 ``<pkg>/agentics/__init__.py`` exporting an ``AGENTIC_FUNCTIONS``
 list and imports it (the ``@agentic_function`` decorators fire as
 side effects and self-register).

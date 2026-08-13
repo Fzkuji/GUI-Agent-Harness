@@ -349,6 +349,7 @@ def _env_choice(name: str, default: str, choices: set[str]) -> str:
     return value if value in choices else default
 
 
+@agentic_function(as_tool=False)
 def _call_llm(config: "ScreenSpotLocatorConfig", prompt):
     timeout_s = config.runtime_timeout_s
     return llm(prompt, timeout_s=timeout_s if timeout_s > 0 else None)

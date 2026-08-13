@@ -8,7 +8,7 @@ version = "0.4.0"
 description = "Autonomous GUI agent — give it a task, it operates the desktop"
 requires-python = ">=3.11"
 # ``openprogram`` is the HOST, not a dependency: this harness only ever
-# runs inside an OpenProgram install (loaded from functions/agentics/),
+# runs inside an OpenProgram install (loaded from programs/agentic_functions/),
 # so the host is always already present. Declaring it here would make
 # ``pip install`` of this harness try to fetch/clobber the host. List
 # only the harness's own third-party runtime deps.

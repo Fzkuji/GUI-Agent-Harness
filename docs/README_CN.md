@@ -86,7 +86,7 @@ LLM不需要了解GUI自动化的工作原理——它只需调用工具。
 ### 第一步：安装
 
 GUI agent 就是个普通的 OpenProgram 程序：程序都放在
-`openprogram/functions/agentics/` 下，克隆进这个目录就会在下次启动时自动注册。
+`openprogram/programs/agentic_functions/` 下，克隆进这个目录就会在下次启动时自动注册。
 所以先装 OpenProgram **host**，再把本仓库克隆进那个目录、跑它自己的安装脚本——
 任何 harness（包括你自己写的）接到 OpenProgram 上都是这一套。
 
@@ -110,7 +110,7 @@ git clone https://github.com/Fzkuji/OpenProgram; cd OpenProgram
 
 **macOS / Linux**
 ```bash
-cd openprogram/functions/agentics
+cd openprogram/programs/agentic_functions
 git clone https://github.com/Fzkuji/GUI-Agent-Harness
 cd GUI-Agent-Harness
 ./scripts/install.sh            # 自动识别 NVIDIA GPU；--cpu / --cuda cuXXX 可强制
@@ -118,7 +118,7 @@ cd GUI-Agent-Harness
 
 **Windows (PowerShell)**
 ```powershell
-cd openprogram\functions\agentics
+cd openprogram\programs\agentic_functions
 git clone https://github.com/Fzkuji/GUI-Agent-Harness
 cd GUI-Agent-Harness
 .\scripts\install.ps1           # 自动识别 NVIDIA GPU；-Cpu / -Cuda cuXXX 可强制

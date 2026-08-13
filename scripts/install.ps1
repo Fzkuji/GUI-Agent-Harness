@@ -45,7 +45,7 @@ function Die($m){ Write-Host "ERROR $m" -ForegroundColor Red; exit 1 }
 # ---- locate repo ------------------------------------------------------------
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HarnessRoot = (Resolve-Path "$ScriptDir\..").Path
-# <host>\openprogram\functions\agentics\GUI-Agent-Harness -> host is 4 up
+# <host>\openprogram\programs\applications\gui_harness -> host is 4 up
 $HostRoot    = (Resolve-Path "$HarnessRoot\..\..\..\..").Path
 
 # ---- resolve Python ---------------------------------------------------------
