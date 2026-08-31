@@ -378,11 +378,23 @@ _MENU_BAR_WORDS = {
 def _normalize_match_text(value: str) -> str:
     """Normalize UI target text for OCR label matching."""
     value = re.sub(r"\([^)]*\)", " ", value.lower())
+    for symbol, name in {
+        "×": "multiply",
+        "*": "multiply",
+        "÷": "divide",
+        "=": "equals",
+        "+": "plus",
+        "−": "minus",
+    }.items():
+        value = value.replace(symbol, f" {name} ")
     value = re.sub(r"\bat\s+\d+\s*,\s*\d+\b", " ", value)
     value = re.sub(r"_+", " ", value)
     value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
     words = [word for word in value.split() if word not in _MATCH_STOPWORDS]
-    return " ".join(words)
+    return " ".join(
+        word for index, word in enumerate(words)
+        if index == 0 or word != words[index - 1]
+    )
 
 
 def _normalize_target_text(target: str) -> str:
@@ -442,10 +454,18 @@ def _deterministic_text_match(target: str, texts: list[dict]) -> Optional[dict]:
     target_word_count = len(target_norm.split())
     candidates = []
 
-    for text in texts[:80]:
+    target_tokens = set(target_norm.split())
+    for text in texts[:200]:
         label = (text.get("label") or text.get("name") or "").strip()
         label_norm = _normalize_match_text(label)
-        if len(label_norm.replace(" ", "")) < 2:
+        short_safe_match = (
+            label_norm in target_tokens
+            and (
+                label_norm.isdigit()
+                or (label.isupper() and 1 < len(label) <= 4)
+            )
+        )
+        if len(label_norm.replace(" ", "")) < 2 and not short_safe_match:
             continue
 
         cx = int(text.get("cx", 0) or 0)
@@ -455,7 +475,7 @@ def _deterministic_text_match(target: str, texts: list[dict]) -> Optional[dict]:
 
         match_rank = 0
         match_label = label
-        if label_norm != target_norm:
+        if label_norm != target_norm and not short_safe_match:
             split = _split_combined_menu_text(target_norm, text, label_norm)
             if not split:
                 continue
@@ -463,6 +483,8 @@ def _deterministic_text_match(target: str, texts: list[dict]) -> Optional[dict]:
             cy = split["cy"]
             match_label = split["name"]
             match_rank = 1
+        elif short_safe_match:
+            match_rank = 2
 
         distance = abs(cx - hint[0]) + abs(cy - hint[1]) if hint else 0
         length_delta = abs(len(label_norm.split()) - target_word_count)
@@ -710,7 +732,8 @@ def label_unknown_components(
     # Track temporary crop files for cleanup (Phase 5)
     temp_crops = []
 
-    for i, icon in enumerate(icons):
+    max_candidates = max(1, int(os.environ.get("GUI_HARNESS_MAX_LABEL_CANDIDATES", "4")))
+    for i, icon in enumerate(icons[:max_candidates]):
         # Skip tiny elements. Multiscale detections have already been enlarged
         # before detection, so keep smaller mapped boxes.
         min_size = 8 if icon.get("source") == "gpa_detector_multiscale" else 25
@@ -964,7 +987,8 @@ def locate_target(
 
     # Phase 2: Memory matching
     t0 = time.time()
-    known_components = match_memory_components(app_name, img_path)
+    use_memory = app_name.strip().lower() != "desktop"
+    known_components = match_memory_components(app_name, img_path) if use_memory else []
     known_names = {c["name"] for c in known_components}
     _timing["phase2_memory"] = round(time.time() - t0, 2)
     print(f"  [locate] Phase 2: {len(known_components)} matched ({_timing['phase2_memory']}s)", file=sys.stderr)
@@ -1014,7 +1038,7 @@ def locate_target(
     # Phase 3: Ask LLM to find target in known components
     t0 = time.time()
     phase3_direct_pixel_fallback = None
-    if all_known:
+    if all_known and use_memory:
         result = find_target_in_known(
             task=task,
             target=target,

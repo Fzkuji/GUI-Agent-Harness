@@ -53,6 +53,20 @@ SEMANTIC_KEYS = {
     "refresh":    {"darwin": ("command", "r"), "linux": ("ctrl", "r"), "windows": ("ctrl", "r")},
 }
 
+# macOS ANSI virtual key codes used for layout-independent shortcuts. These
+# are physical keys, so Command-S remains Save even while a non-Latin input
+# source is active.
+MACOS_KEY_CODES = {
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5,
+    "z": 6, "x": 7, "c": 8, "v": 9, "b": 11,
+    "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+    "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23,
+    "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+    "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35,
+    "l": 37, "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42,
+    ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, " ": 49,
+}
+
 
 # ═══════════════════════════════════════════
 # ActionTarget base class
@@ -180,6 +194,54 @@ class LocalTarget(ActionTarget):
             raise ValueError(f"Unknown key: {key_name}")
 
     def key_combo(self, *keys):
+        if self.platform == "darwin":
+            modifier_names = {
+                "command": "command down",
+                "cmd": "command down",
+                "super": "command down",
+                "shift": "shift down",
+                "ctrl": "control down",
+                "control": "control down",
+                "alt": "option down",
+                "option": "option down",
+            }
+            modifiers = []
+            characters = []
+            for name in keys:
+                lower = name.lower()
+                if lower in modifier_names:
+                    modifiers.append(modifier_names[lower])
+                elif len(name) == 1:
+                    characters.append(name.lower())
+                elif lower == "space":
+                    characters.append(" ")
+
+            # pynput can report a printable macOS shortcut as dispatched while
+            # the target app receives no shortcut (notably Shift-Cmd-G in a
+            # native Save panel). System Events produces the native key event
+            # for this common modifier + character shape. Keep pynput below as
+            # the compatibility path for special/function-key combinations.
+            if modifiers and len(characters) == 1:
+                using = ", ".join(dict.fromkeys(modifiers))
+                character = characters[0]
+                key_code = MACOS_KEY_CODES.get(character)
+                if key_code is not None:
+                    event = f"key code {key_code}"
+                else:
+                    event = f"keystroke {json.dumps(character)}"
+                script = (
+                    "tell application \"System Events\" to "
+                    f"{event} using {{{using}}}"
+                )
+                subprocess.run(
+                    ["osascript", "-e", script],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                return
+
         from pynput.keyboard import Controller
         kb = Controller()
         resolved = [self._resolve_key(k) for k in keys]

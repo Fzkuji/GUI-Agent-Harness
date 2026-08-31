@@ -1,57 +1,29 @@
-"""
-gui_harness.tasks.read_messages — read messages from a messaging app.
-
-High-level task: navigate → observe → extract.
-compress=True hides sub-steps from summarize().
-"""
+"""Compatibility wrapper for message-reading tasks."""
 
 from __future__ import annotations
 
-from openprogram import agentic_function
+from gui_harness.openprogram_compat import agentic_function
+from gui_harness.tasks._delegate import run_gui_task
 
 
 @agentic_function()
-def read_messages(app_name: str, contact: str = None,
-                  runtime=None) -> dict:
-    """Read messages from a messaging app.
-
-    Steps:
-      1. navigate — go to conversation (if contact specified)
-      2. observe — read the chat content
-
-    compress=True: callers see only the final result.
-
-    Args:
-        app_name: Messaging app (e.g., "WeChat", "Discord", "Telegram").
-        contact:  Optional: specific contact/channel to read from.
-        runtime:  Runtime instance (required).
-
-    Returns:
-        dict with keys: app_name, contact, messages, screenshot_path, success
-    """
-    from gui_harness.planning.observe import observe
-    from gui_harness.planning.navigate import navigate
-
-    if runtime is None:
-        raise ValueError("read_messages() requires a runtime argument")
-    rt = runtime
-
-    # Navigate if contact specified
-    if contact:
-        obs = observe(task=f"Find conversation with {contact} in {app_name}",
-                      app_name=app_name)
-        if not obs.get("target_visible"):
-            navigate(target_state=f"conversation_{contact}",
-                     app_name=app_name, runtime=rt)
-
-    # Read content
-    obs = observe(task=f"Read all visible messages in the current chat of {app_name}",
-                  app_name=app_name)
-
+def read_messages(
+    app_name: str,
+    contact: str | None = None,
+    runtime=None,
+) -> dict:
+    """Read visible messages through the canonical verified GUI task loop."""
+    scope = f" with {contact}" if contact else ""
+    result = run_gui_task(
+        f"In {app_name}, read and report all currently visible messages{scope}",
+        app_name=app_name,
+        runtime=runtime,
+    )
     return {
-        "app_name": app_name,
+        **result,
         "contact": contact,
-        "messages": obs.get("visible_text", []),
-        "screenshot_path": obs.get("screenshot_path", ""),
-        "success": True,
+        "messages": [result.get("summary", "")],
     }
+
+
+__all__ = ["read_messages"]

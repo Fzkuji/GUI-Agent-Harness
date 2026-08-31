@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import itertools
 import sys
 import os
 import time
@@ -44,25 +45,20 @@ def _default_runtime_retries() -> int:
         },
         "max_steps": {
             "description": "Maximum number of actions before giving up",
-            # Integers, not strings: the param is annotated ``max_steps: int``
-            # so the generated JSON schema is ``type: integer``. String options
-            # here produce ``enum: ["5",...]`` which contradicts the integer
-            # type and OpenAI strict-mode tool validation rejects the whole
-            # request (HTTP 400 invalid_function_parameters), breaking every
-            # turn — not just gui_agent calls — when an OpenAI/codex model is
-            # selected. Keep enum values the same type as the param.
-            "options": [5, 10, 15, 30],
+            "hidden": True,
         },
         "app_name": {
             "description": "App name for component memory",
             "placeholder": "e.g. firefox, libreoffice_calc, desktop",
+            "hidden": True,
         },
+        "allow_general": {"hidden": True},
         "runtime": {"hidden": True},
     },
 )
 def gui_agent(
     task: str,
-    max_steps: int = 15,
+    max_steps: int | None = None,
     app_name: str = "desktop",
     runtime=None,
     allow_general: bool = False,
@@ -79,42 +75,35 @@ def gui_agent(
 
     Args:
         task: what to do, in natural language.
-        max_steps: maximum number of actions (default: 15).
+        max_steps: maximum number of actions (default: 150). None uses
+            150; 0 or a negative value means no cap.
         app_name: app name for component memory (default: "desktop").
 
     Returns a dict with task, success, steps_taken, total_time, history.
     """
     if runtime is None:
         raise ValueError("gui_agent() requires a runtime argument")
+    if max_steps is None:
+        max_steps = 150
+    else:
+        n = int(max_steps)
+        max_steps = n if n > 0 else None
 
-    from gui_harness.tasks.execute_task import (
-        gui_step, build_step_feedback, save_workflow_record, conclusion,
-    )
-    from gui_harness.planning.learn import has_base_memory, learn_app_components
-
-    # ── Setup ──
+    from gui_harness.tasks.execute_task import gui_step, build_step_feedback
+    from gui_harness.tasks.result import conclusion, save_workflow_record
     task_start = time.time()
-
-    # Auto-learn app components if no base memory
-    if not has_base_memory(app_name):
-        print(f"  [learn] No base memory for '{app_name}', learning...", file=sys.stderr)
-        learn_result = learn_app_components(app_name=app_name, runtime=runtime)
-        saved = learn_result.get("components_saved", 0)
-        t = learn_result.get("timing", {})
-        print(
-            f"  [learn] Saved {saved} components "
-            f"(detect={t.get('detect', '?')}s, label={t.get('label', '?')}s, save={t.get('save', '?')}s)",
-            file=sys.stderr,
-        )
 
     # ── Loop: gui_step with explicit feedback ──
     history = []
     feedback = None
-    completed = False
-    infeasible_declared = False
+    status = "running"
+    reason_code = ""
+    handoff_instruction = ""
 
-    for step_num in range(1, max_steps + 1):
-        print(f"  [step {step_num}/{max_steps}] ...", file=sys.stderr)
+    step_nums = range(1, max_steps + 1) if max_steps is not None else itertools.count(1)
+    for step_num in step_nums:
+        cap = max_steps if max_steps is not None else "-"
+        print(f"  [step {step_num}/{cap}] ...", file=sys.stderr)
 
         try:
             result = gui_step(
@@ -127,8 +116,10 @@ def gui_agent(
         except Exception as e:
             print(f"  [step {step_num}] ERROR: {e.__class__.__name__}: {e}", file=sys.stderr)
             result = {
-                "done": False,
-                "plan": {"action": "error", "goal": ""},
+                "done": True,
+                "terminal_status": "failed",
+                "reason_code": "step_error",
+                "plan": {"action": "error", "goal": "", "reasoning": str(e)},
                 "exec_result": {"success": False, "error": str(e)},
             }
 
@@ -142,19 +133,29 @@ def gui_agent(
             or args.get("keys", "")
             or args.get("key", "")
             or args.get("sub_task", "")
+            or args.get("reasoning", "")
             or plan.get("target", "")
+            or plan.get("reasoning", "")
         )
         print(f"  [step {step_num}] {action}: {str(detail)[:200]}", file=sys.stderr)
 
         history.append({"step": step_num, **result})
 
         if result.get("done"):
-            completed = True
-            infeasible_declared = bool(result.get("infeasible"))
+            status = str(result.get("terminal_status") or (
+                "infeasible" if result.get("infeasible") else "succeeded"
+            ))
+            reason_code = str(result.get("reason_code") or status)
+            handoff_instruction = str(
+                result.get("handoff_instruction")
+                or ((plan.get("args") or {}).get("reasoning") if status == "infeasible" else "")
+                or (plan.get("reasoning") if status == "infeasible" else "")
+                or ""
+            )
             break
 
         # Build feedback for next iteration
-        feedback = build_step_feedback(result)
+        feedback = build_step_feedback(result, previous_feedback=feedback)
 
         # Compress CLI session context between steps when it grows large.
         # Each gui_step adds a screenshot + detection results + tool outputs,
@@ -165,25 +166,45 @@ def gui_agent(
         if hasattr(runtime, "compact"):
             runtime.compact(threshold_tokens=200_000)
 
+    if status == "running":
+        status = "failed"
+        reason_code = "step_limit"
+
     # ── Conclusion: LLM summarizes the result ──
     print(f"  [conclusion] ...", file=sys.stderr)
     try:
         summary = conclusion(
             task=task,
-            completed=completed,
+            completed=status == "succeeded",
             steps_taken=len(history),
+            infeasible=status == "infeasible",
+            status=status,
+            handoff_instruction=handoff_instruction,
+            img_path=str((history[-1] if history else {}).get("img_path") or ""),
         )
         print(f"  [conclusion] {summary.get('summary', '')[:300]}", file=sys.stderr)
     except Exception as e:
         print(f"  [conclusion] ERROR: {e}", file=sys.stderr)
-        summary = {"summary": str(e), "success": completed, "issues": None}
+        if status == "succeeded":
+            status = "failed"
+            reason_code = "conclusion_error"
+        summary = {
+            "summary": handoff_instruction or str(e),
+            "success": status == "succeeded",
+            "issues": None,
+        }
+    if status == "infeasible" and handoff_instruction:
+        summary["summary"] = handoff_instruction
 
     # ── Teardown ──
     total_time = round(time.time() - task_start, 2)
     final = {
         "task": task,
-        "success": summary.get("success", completed),
-        "infeasible_declared": infeasible_declared,
+        "status": status,
+        "success": status == "succeeded",
+        "reason_code": reason_code,
+        "infeasible_declared": status == "infeasible",
+        "handoff_instruction": handoff_instruction,
         "summary": summary.get("summary", ""),
         "issues": summary.get("issues"),
         "steps_taken": len(history),
@@ -213,7 +234,7 @@ def main():
         default=_default_runtime_retries(),
         help="OpenProgram exec attempts per model call for retryable provider failures.",
     )
-    parser.add_argument("--max-steps", type=int, default=15, help="Max actions (default: 15)")
+    parser.add_argument("--max-steps", type=int, default=150, help="Max actions (default: 150)")
     parser.add_argument("--app", default="desktop", help="App name for memory (default: desktop)")
     parser.add_argument("--no-general", action="store_true",
                         help="Disable command-line ('general') action; force GUI-only interaction.")

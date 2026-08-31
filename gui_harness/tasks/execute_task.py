@@ -17,11 +17,8 @@ Architecture:
 
 from __future__ import annotations
 
-import inspect
 import json
 import os
-import sys
-import time
 import traceback
 from typing import Optional
 
@@ -30,361 +27,15 @@ from openprogram.agentic_programming import llm
 from gui_harness.openprogram_compat import agentic_function, build_action_catalog
 
 from gui_harness.utils import parse_json
-from gui_harness.perception import screenshot as _screenshot
-from gui_harness.action import input as _input
-from gui_harness.action.general_action import general_action
-from gui_harness.planning.component_memory import (
-    locate_target,
-    detect_components,
-    match_memory_components,
-    identify_state,
-    record_transition,
-    get_available_transitions,
+from gui_harness.perception.observe import observe_screen
+from gui_harness.action.dispatch import (
+    action_fail as _action_fail,
+    build_action_registry as _build_action_registry,
+    dispatch_action,
 )
-
-
-def _artifact_dir() -> str | None:
-    path = os.environ.get("GUI_HARNESS_ARTIFACT_DIR")
-    if path:
-        os.makedirs(path, exist_ok=True)
-    return path
-
-
-def _copy_artifact(src: str | None, name: str) -> str | None:
-    if not src or not os.path.exists(src):
-        return None
-    out_dir = _artifact_dir()
-    if not out_dir:
-        return None
-    dst = os.path.join(out_dir, name)
-    try:
-        import shutil
-        shutil.copy2(src, dst)
-        return dst
-    except Exception:
-        return None
-def build_catalog(available: dict) -> str:
-    """Format an action registry into a catalog string for the planner prompt.
-
-    Shows only parameters with source="llm" — the args the planner must decide.
-    Context-filled and runtime params are hidden.
-    """
-    lines = []
-    for name, spec in available.items():
-        description = spec.get("description", "")
-        input_spec = spec.get("input", {})
-        llm_params = []
-        param_details = []
-        for param_name, param_info in input_spec.items():
-            if param_info.get("source") != "llm":
-                continue
-            type_obj = param_info.get("type", str)
-            type_name = getattr(type_obj, "__name__", None) or str(type_obj)
-            llm_params.append(f"{param_name}: {type_name}")
-            detail = f"    {param_name}"
-            if "description" in param_info:
-                detail += f": {param_info['description']}"
-            opts = param_info.get("options")
-            if opts:
-                option_text = ", ".join(f'"{o}"' for o in opts)
-                detail += f" (options: {option_text})"
-            param_details.append(detail)
-        sig = f"{name}({', '.join(llm_params)})" if llm_params else f"{name}()"
-        lines.append(sig)
-        if description:
-            lines.append(f"    {description}")
-        lines.extend(param_details)
-        if llm_params:
-            example_args = ", ".join(
-                f'"{p.split(":")[0].strip()}": "..."' for p in llm_params
-            )
-            lines.append(f'    call: {{"call": "{name}", "args": {{{example_args}}}}}')
-        else:
-            lines.append(f'    call: {{"call": "{name}"}}')
-        lines.append("")
-    return "\n".join(lines)
-
-
-# ═══════════════════════════════════════════
-# Action wrappers (callable from dispatch)
-# ═══════════════════════════════════════════
-
-def _action_click(target: str, task: str, img_path: str, app_name: str, runtime) -> dict:
-    location = locate_target(task=task, target=target, img_path=img_path, app_name=app_name, runtime=runtime)
-    if not location:
-        return {"success": False, "error": f"Target not found: {target}"}
-    _input.mouse_click(location["cx"], location["cy"])
-    return {"success": True, "location": location}
-
-
-def _action_double_click(target: str, task: str, img_path: str, app_name: str, runtime) -> dict:
-    location = locate_target(task=task, target=target, img_path=img_path, app_name=app_name, runtime=runtime)
-    if not location:
-        return {"success": False, "error": f"Target not found: {target}"}
-    _input.mouse_double_click(location["cx"], location["cy"])
-    return {"success": True, "location": location}
-
-
-def _action_right_click(target: str, task: str, img_path: str, app_name: str, runtime) -> dict:
-    location = locate_target(task=task, target=target, img_path=img_path, app_name=app_name, runtime=runtime)
-    if not location:
-        return {"success": False, "error": f"Target not found: {target}"}
-    _input.mouse_right_click(location["cx"], location["cy"])
-    return {"success": True, "location": location}
-
-
-def _action_drag(target: str, target_end: str, task: str, img_path: str, app_name: str, runtime) -> dict:
-    start = locate_target(task=task, target=f"Find START: {target}", img_path=img_path, app_name=app_name, runtime=runtime)
-    if not start:
-        return {"success": False, "error": f"Start not found: {target}"}
-    end = locate_target(task=task, target=f"Find END: {target_end}", img_path=img_path, app_name=app_name, runtime=runtime)
-    if not end:
-        return {"success": False, "error": f"End not found: {target_end}"}
-    _input.mouse_drag(start["cx"], start["cy"], end["cx"], end["cy"])
-    return {"success": True}
-
-
-def _action_type(text: str) -> dict:
-    _input.type_text(text)
-    return {"success": True}
-
-
-def _action_press(key: str) -> dict:
-    _input.key_press(key)
-    return {"success": True}
-
-
-def _action_hotkey(keys: str) -> dict:
-    key_list = [k.strip() for k in keys.split("+")]
-    _input.key_combo(*key_list)
-    return {"success": True}
-
-
-def _action_scroll(direction: str) -> dict:
-    _input.key_press("pageup" if direction.lower() == "up" else "pagedown")
-    return {"success": True}
-
-
-def _action_done(reasoning: str = "") -> dict:
-    return {"success": True, "done": True, "reasoning": reasoning}
-
-
-def _action_fail(reasoning: str = "") -> dict:
-    return {"success": True, "done": True, "infeasible": True, "reasoning": reasoning}
-
-
-def _normalize_plan(plan: dict) -> dict:
-    """Accept accidental nested step-shaped JSON and extract the action plan."""
-    if not isinstance(plan, dict):
-        return {"call": "general", "args": {"sub_task": str(plan)[:200]}}
-    inner = plan.get("plan")
-    if (
-        isinstance(inner, dict)
-        and ("call" in inner or "action" in inner or inner.get("done") is True)
-        and "call" not in plan
-        and "action" not in plan
-    ):
-        return inner
-    return plan
-
-
-def _build_action_registry(allow_general: bool = False):
-    """Build the action function registry for LLM dispatch.
-
-    When allow_general=False, the "general" (command-line) action is omitted,
-    forcing the planner to accomplish the task via GUI primitives only.
-    Used for benchmarks (OSWorld GIMP etc.) whose evaluators require that
-    the change happen inside the target app's live state, not on disk.
-    """
-    registry = {
-        "click": {
-            "function": _action_click,
-            "description": "Click a UI element on screen (we locate it for you)",
-            "input": {
-                "target": {"source": "llm", "type": str, "description": "description of element to click"},
-                "task": {"source": "context"},
-                "img_path": {"source": "context"},
-                "app_name": {"source": "context"},
-            },
-            "output": {"success": bool},
-        },
-        "double_click": {
-            "function": _action_double_click,
-            "description": "Double-click a UI element on screen",
-            "input": {
-                "target": {"source": "llm", "type": str, "description": "description of element to double-click"},
-                "task": {"source": "context"},
-                "img_path": {"source": "context"},
-                "app_name": {"source": "context"},
-            },
-            "output": {"success": bool},
-        },
-        "right_click": {
-            "function": _action_right_click,
-            "description": "Right-click a UI element on screen",
-            "input": {
-                "target": {"source": "llm", "type": str, "description": "description of element to right-click"},
-                "task": {"source": "context"},
-                "img_path": {"source": "context"},
-                "app_name": {"source": "context"},
-            },
-            "output": {"success": bool},
-        },
-        "drag": {
-            "function": _action_drag,
-            "description": "Drag from one element to another",
-            "input": {
-                "target": {"source": "llm", "type": str, "description": "description of drag start element"},
-                "target_end": {"source": "llm", "type": str, "description": "description of drag end element"},
-                "task": {"source": "context"},
-                "img_path": {"source": "context"},
-                "app_name": {"source": "context"},
-            },
-            "output": {"success": bool},
-        },
-        "type": {
-            "function": _action_type,
-            "description": "Type text using keyboard",
-            "input": {
-                "text": {"source": "llm", "type": str, "description": "text to type"},
-            },
-            "output": {"success": bool},
-        },
-        "press": {
-            "function": _action_press,
-            "description": "Press a keyboard key (enter, tab, escape, etc.)",
-            "input": {
-                "key": {"source": "llm", "type": str, "description": "key to press"},
-            },
-            "output": {"success": bool},
-        },
-        "hotkey": {
-            "function": _action_hotkey,
-            "description": "Press a keyboard shortcut (e.g., ctrl+s, ctrl+c)",
-            "input": {
-                "keys": {"source": "llm", "type": str, "description": "key combination like ctrl+s"},
-            },
-            "output": {"success": bool},
-        },
-        "scroll": {
-            "function": _action_scroll,
-            "description": "Scroll the page up or down",
-            "input": {
-                "direction": {"source": "llm", "type": str, "description": "up or down"},
-            },
-            "output": {"success": bool},
-        },
-        "general": {
-            "function": general_action,
-            "description": "Execute command-line operations on the VM (only for tasks that cannot be done via GUI)",
-            "input": {
-                "sub_task": {"source": "llm", "type": str, "description": "what to do via command line"},
-                "task_context": {"source": "context"},
-            },
-            "output": {"success": bool, "output": str},
-        },
-        "done": {
-            "function": _action_done,
-            "description": "Mark the task as fully complete",
-            "input": {
-                "reasoning": {"source": "llm", "type": str, "description": "why the task is complete"},
-            },
-            "output": {"success": bool},
-        },
-        "fail": {
-            "function": _action_fail,
-            "description": "Declare the task infeasible and stop with an explicit FAIL/INFEASIBLE reason",
-            "input": {
-                "reasoning": {"source": "llm", "type": str, "description": "explicit reason containing FAIL/INFEASIBLE and the blocker"},
-            },
-            "output": {"success": bool, "done": bool, "infeasible": bool},
-        },
-    }
-    if not allow_general:
-        registry.pop("general", None)
-    return registry
-
-
-# ═══════════════════════════════════════════
-# 1. Observe — pure Python, no LLM
-# ═══════════════════════════════════════════
-
-def _observe(app_name: str) -> dict:
-    """Take screenshot, detect components, match memory, identify state.
-
-    Pure Python — no LLM calls. Produces all observation data needed
-    by verify_step and plan_next_action.
-    """
-    t_start = time.time()
-
-    # Screenshot
-    img_path = _screenshot.take()
-    time.sleep(0.3)
-
-    # Component detection (GPA + OCR)
-    t0 = time.time()
-    detection = detect_components(img_path)
-    icons = detection.get("icons", []) if isinstance(detection, dict) else []
-    texts = detection.get("texts", []) if isinstance(detection, dict) else []
-    t_detect = round(time.time() - t0, 2)
-
-    # Memory matching (template match against saved components)
-    t0 = time.time()
-    matched = match_memory_components(app_name, img_path)
-    matched_names = {c["name"] for c in matched}
-    t_match = round(time.time() - t0, 2)
-
-    # State identification (Jaccard similarity against known states)
-    current_state, _ = identify_state(app_name, img_path)
-
-    # Known transitions from current state
-    transitions = get_available_transitions(app_name, current_state) if current_state else []
-
-    t_total = round(time.time() - t_start, 2)
-    print(
-        f"    [observe] {len(icons)} icons, {len(texts)} texts, "
-        f"{len(matched)} matched, state={current_state}, "
-        f"{len(transitions)} transitions ({t_total}s: detect={t_detect}s, match={t_match}s)",
-        file=sys.stderr,
-    )
-
-    # Build component info string for LLM
-    comp_lines = []
-    for c in matched[:30]:
-        comp_lines.append(f"  [{c['name']}] at ({c['cx']}, {c['cy']})")
-    text_lines = []
-    for t_item in texts[:40]:
-        label = t_item.get("label", "")
-        if label and len(label) > 1:
-            text_lines.append(f"  '{label}' at ({t_item.get('cx', 0)}, {t_item.get('cy', 0)})")
-
-    component_info = ""
-    if comp_lines:
-        component_info += "\n<known_components>\n" + "\n".join(comp_lines) + "\n</known_components>"
-    if text_lines:
-        component_info += "\n<screen_text>\n" + "\n".join(text_lines) + "\n</screen_text>"
-
-    # Build transitions info string for LLM
-    transitions_info = ""
-    if transitions:
-        trans_lines = [
-            f"  {t['action']}:{t['target']} -> state {t['to_state']} (used {t['use_count']}x)"
-            for t in transitions[:10]
-        ]
-        transitions_info = "\n<known_transitions>\n" + "\n".join(trans_lines) + "\n</known_transitions>"
-
-    return {
-        "img_path": img_path,
-        "screenshot_artifact": _copy_artifact(img_path, f"observe_{int(time.time() * 1000)}.png"),
-        "icons": icons,
-        "texts": texts,
-        "matched": matched,
-        "matched_names": matched_names,
-        "current_state": current_state,
-        "transitions": transitions,
-        "component_info": component_info,
-        "transitions_info": transitions_info,
-    }
+from gui_harness.planning.component_memory import (
+    record_transition,
+)
 
 
 # ═══════════════════════════════════════════
@@ -407,21 +58,28 @@ def verify_step(
     feedback: dict,
 ) -> dict:
     """Evaluate whether the previous action achieved its goal."""
-    feedback_text = f"Previous step goal: {feedback.get('goal', 'unknown')}\n"
-    feedback_text += f"Action taken: {feedback.get('action', 'unknown')}"
-    if feedback.get("target"):
-        feedback_text += f" on '{feedback['target']}'"
-    feedback_text += f"\nExecution: {'succeeded' if feedback.get('success') else 'failed'}"
-    if feedback.get("error"):
-        feedback_text += f"\nError: {feedback['error']}"
+    initial_observation = bool(feedback.get("initial_observation"))
+    if initial_observation:
+        feedback_text = (
+            "No action has run. Evaluate whether the current screen already "
+            "satisfies the task, including read-only inspect/describe tasks."
+        )
+    else:
+        feedback_text = f"Previous step goal: {feedback.get('goal', 'unknown')}\n"
+        feedback_text += f"Action taken: {feedback.get('action', 'unknown')}"
+        if feedback.get("target"):
+            feedback_text += f" on '{feedback['target']}'"
+        feedback_text += f"\nExecution: {'succeeded' if feedback.get('success') else 'failed'}"
+        if feedback.get("error"):
+            feedback_text += f"\nError: {feedback['error']}"
 
     context = (
         f"<task>{task}</task>\n\n"
         f"<previous_step>\n{feedback_text}\n</previous_step>"
         f"{component_info}\n\n"
-        "The screenshot was taken AFTER the previous action ran. Compare "
-        "the step's stated goal with what is now visible and decide "
-        "whether the action achieved it.\n"
+        "For an initial observation, decide whether the current screen itself "
+        "already satisfies the task. Otherwise, the screenshot was taken AFTER "
+        "the previous action; compare the stated goal with what is visible.\n"
         "- step_succeeded=true when the expected change is visible (app "
         "opened, text appeared, button state changed, file listed).\n"
         "- step_succeeded=false when there is no visible change, a wrong "
@@ -518,6 +176,15 @@ def plan_next_action(
         "Guidelines:\n"
         "- Prefer GUI interaction (click, type, hotkey) over command-line "
         '("general").\n'
+        "- When the active app accepts keyboard input, prefer type/press/hotkey "
+        "over clicking an on-screen keypad.\n"
+        "- For click targets, use the shortest exact visible label first. Do "
+        "not replace a failed exact label with a longer positional description; "
+        "choose a keyboard path or another control instead.\n"
+        "- For a clearly visible unlabeled control or blank editing surface, "
+        "include its screenshot pixel coordinates as `(x,y)` in the click "
+        "target. Use the `<screen_coordinates>` bounds; do not invent "
+        "coordinates when the control is not visible.\n"
         "- If <known_transitions> lists a relevant action, prefer it — "
         "it worked before.\n"
         '- If a "general" sub-task already succeeded in a previous step, '
@@ -532,13 +199,16 @@ def plan_next_action(
         '- Choose "done" ONLY with strong evidence the task is fully '
         "complete; if a command ran but its output is unverified, plan a "
         "verify action instead.\n"
-        '- Choose "fail" when the task is genuinely infeasible: the requested '
-        "operation is impossible in the target app, requires unavailable "
+        '- Choose "fail" when the task is genuinely infeasible or you cannot '
+        "finish it and a human must act: the requested operation is "
+        "impossible in the target app, requires unavailable "
         "plugins/data/hardware, contradicts itself, or the required option "
-        "does not exist. The fail reasoning MUST explicitly include "
-        "FAIL/INFEASIBLE and the concrete blocker. Do not use fail just "
-        "because an attempt failed; recover first when there is a plausible "
-        "path.\n"
+        "does not exist; you cannot do it and a human must operate "
+        "(login, a physical action, or missing permission); or another try "
+        "still has no GUI path. The fail reasoning MUST explicitly include "
+        "FAIL/INFEASIBLE, the concrete blocker, and what a human must do. "
+        "Do not use fail just because an attempt failed; recover first when "
+        "there is a plausible path.\n"
         '- Before choosing "done", the app must be in a clean handoff '
         "state: no Save, Save As, Export, Open, confirmation, warning, "
         "or options dialog should be left blocking the main workspace. If "
@@ -546,6 +216,26 @@ def plan_next_action(
         "closed, or cancel/close it before marking the task complete.\n"
         "- If the previous step failed, plan a recovery (retry or an "
         "alternative approach).\n\n"
+        "- A shortcut being dispatched is not proof that the UI accepted it. "
+        "If verification shows no expected change, treat that shortcut as "
+        "failed. Do not choose the same failed action fingerprint more than "
+        "twice unless the visible focus or dialog state has materially changed.\n"
+        "- In a macOS Open/Save panel, if Shift-Command-G does not visibly "
+        "open Go to Folder after one attempt, use the panel's visible location "
+        "or disclosure controls instead of repeating the shortcut.\n\n"
+        "- When a macOS Save panel is already open and the task names an "
+        "absolute output file, use `set_save_path` with that exact full path. "
+        "It sets both Where and Save As but does not save. Verify the exact "
+        "filename and directory basename on the next screenshot, then use "
+        "`press` with key `enter` to activate the native default Save button. "
+        "Do not coordinate-click Save after `set_save_path`. A truncated or "
+        "shared-prefix Where label is not proof of the requested directory.\n\n"
+        "- If `<frontmost_app>` names the target app but no target window is "
+        "visible, open the Window menu once and select one specific existing "
+        "window title. Do not create additional windows. If selecting that "
+        "title or Bring All to Front still leaves every target window outside "
+        "the observed desktop/Space, choose `fail`: state that the window is "
+        "outside the observable Space and the human must move or unminimize it.\n\n"
         "- Treat the verification checklist as the current running plan. "
         "If it lists remaining_plan or completion_risks, choose the next "
         "action that resolves the highest-impact item. Do not choose "
@@ -570,7 +260,8 @@ def plan_next_action(
         {"type": "text", "text": "\n".join(parts)},
         {"type": "image", "path": img_path},
     ]
-    valid = set(_build_action_registry(allow_general=allow_general))
+    registry = _build_action_registry(allow_general=allow_general)
+    valid = set(registry)
 
     def _parse(r: str):
         try:
@@ -581,30 +272,49 @@ def plan_next_action(
                 return {"call": "done", "goal": "task complete", "reasoning": (r or "")[:200]}
             return None
 
+    def _validation_error(candidate: dict | None) -> str:
+        call_name = (candidate or {}).get("call") or (candidate or {}).get("action")
+        if candidate is None or call_name not in valid:
+            return f"unavailable action: {call_name or '(unparseable reply)'}"
+        args = (candidate or {}).get("args") or {}
+        missing = []
+        for name, info in registry[call_name].get("input", {}).items():
+            if info.get("source") != "llm":
+                continue
+            value = args.get(name, (candidate or {}).get(name))
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing.append(name)
+        return f"missing required arguments: {', '.join(missing)}" if missing else ""
+
     reply = llm(base_content)
     plan = _parse(reply)
-    call = (plan or {}).get("call") or (plan or {}).get("action")
+    validation_error = _validation_error(plan)
 
     # The planner picked an action that is not in the registry — a
     # mode-forbidden action (e.g. "general" in GUI-only) or a
     # hallucinated name. Re-prompt ONCE, keeping the screenshot, instead
     # of letting _dispatch hard-fail the step.
-    if plan is None or call not in valid:
-        bad = call or "(unparseable reply)"
+    if validation_error:
         retry_msg = (
-            f'"{bad}" is not an available action. You MUST pick exactly '
-            f"one action from this list: {sorted(valid)}. "
-            "Reply again with the same JSON format."
+            f"Invalid plan: {validation_error}. You MUST pick exactly one "
+            f"action from {sorted(valid)} and provide every argument shown "
+            "for that action. Reply again with the same JSON format."
         )
         reply = llm(base_content + [{"type": "text", "text": retry_msg}])
         plan = _parse(reply)
-        call = (plan or {}).get("call") or (plan or {}).get("action")
+        validation_error = _validation_error(plan)
 
-    if plan is None or call not in valid:
-        # Retry exhausted — end the loop cleanly rather than dispatching
-        # an unknown action.
-        return {"call": "done", "goal": "planner did not pick a valid action",
-                "reasoning": str(reply)[:200]}
+    if validation_error:
+        return {
+            "call": "planner_error",
+            "goal": "planner must return one valid action",
+            "reasoning": str(reply)[:200],
+            "reason_code": (
+                "planner_invalid_arguments"
+                if validation_error.startswith("missing required arguments")
+                else "planner_invalid_action"
+            ),
+        }
     return plan
 
 
@@ -625,62 +335,14 @@ def _normalize_plan(parsed: dict) -> dict:
     return parsed
 
 
-# ═══════════════════════════════════════════
-# 4. Dispatch — pure Python, execute planned action
-# ═══════════════════════════════════════════
-
-def _dispatch(plan: dict, img_path: str, app_name: str, task: str, runtime, allow_general: bool = False) -> dict:
-    """Execute the planned action. Pure Python dispatch (no LLM except via locate_target)."""
-    plan = _normalize_plan(plan)
-    action_name = plan.get("call", plan.get("action", "general"))
-    registry = _build_action_registry(allow_general=allow_general)
-
-    dispatch_context = {
-        "task": task,
-        "img_path": img_path,
-        "app_name": app_name,
-        "task_context": f"<task>{task}</task>",
-    }
-
+def _action_fingerprint(plan: dict) -> str:
+    action = str(plan.get("call", plan.get("action", "")))
+    args = plan.get("args", {})
     try:
-        if action_name in registry:
-            spec = registry[action_name]
-            func = spec["function"]
-            args = dict(plan.get("args", {}))
-            # Accept flat plan keys for backward compatibility
-            for key in spec.get("input", {}):
-                if key not in args and key in plan:
-                    args[key] = plan[key]
-            # Fill context params
-            for key, info in spec.get("input", {}).items():
-                if info.get("source") == "context" and key not in args:
-                    if key in dispatch_context:
-                        args[key] = dispatch_context[key]
-            # Inject runtime if needed
-            sig = inspect.signature(func)
-            if "runtime" in sig.parameters and "runtime" not in args:
-                args["runtime"] = runtime
-            valid_params = set(sig.parameters.keys())
-            args = {k: v for k, v in args.items() if k in valid_params}
-            result = func(**args)
-        elif allow_general:
-            sub_task = plan.get("sub_task", plan.get("task", plan.get("target", str(plan)[:200])))
-            result = general_action(sub_task=sub_task, task_context=f"<task>{task}</task>")
-        else:
-            result = {
-                "success": False,
-                "error": f"Action '{action_name}' not available in GUI-only mode. "
-                         f"Pick a GUI action: {sorted(registry)}",
-            }
-    except Exception as e:
-        result = {
-            "success": False,
-            "error": str(e),
-            "error_type": e.__class__.__name__,
-            "traceback": traceback.format_exc(),
-        }
-
-    return result
+        encoded = json.dumps(args, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        encoded = str(args)
+    return f"{action}:{encoded}"
 
 
 # ═══════════════════════════════════════════
@@ -732,7 +394,7 @@ def gui_step(
         raise ValueError("gui_step() requires a runtime argument")
 
     # ── 1. Observe (pure Python) ──
-    obs = _observe(app_name)
+    obs = observe_screen(app_name)
 
     # ── 2. Verify previous step (LLM, only if feedback exists) ──
     verification = None
@@ -775,6 +437,20 @@ def gui_step(
             f"Remaining plan: {json.dumps(remaining, ensure_ascii=False)}\n"
             f"Completion risks: {json.dumps(risks, ensure_ascii=False)}"
         )
+    recent_actions = (feedback or {}).get("recent_actions") or []
+    if recent_actions:
+        compact_actions = [
+            {
+                "action": item.get("fingerprint", ""),
+                "success": bool(item.get("success")),
+            }
+            for item in recent_actions[-8:]
+        ]
+        verification_summary += (
+            "\nRecent bounded action history: "
+            + json.dumps(compact_actions, ensure_ascii=False)
+            + f"\nConsecutive failures: {(feedback or {}).get('consecutive_failures', 0)}"
+        )
 
     plan = plan_next_action(
         task=task,
@@ -789,8 +465,32 @@ def gui_step(
     plan = _normalize_plan(plan)
     action_name = plan.get("call", plan.get("action", "general"))
 
+    if action_name == "planner_error":
+        return {
+            "done": True,
+            "terminal_status": "failed",
+            "reason_code": plan.get("reason_code", "planner_invalid_action"),
+            "plan": plan,
+            "verification": verification,
+            "state": obs["current_state"],
+            "img_path": obs["img_path"],
+            "screenshot_artifact": obs.get("screenshot_artifact"),
+        }
+
     # Plan says done or explicitly infeasible?
     if action_name in {"done", "fail"}:
+        if action_name == "done" and verification is None:
+            verification = verify_step(
+                task=task,
+                img_path=obs["img_path"],
+                component_info=obs["component_info"],
+                feedback={
+                    "goal": task,
+                    "action": "initial_observation",
+                    "success": True,
+                    "initial_observation": True,
+                },
+            )
         remaining = (verification or {}).get("remaining_plan") or []
         risks = (verification or {}).get("completion_risks") or []
         done_allowed = (
@@ -825,6 +525,16 @@ def gui_step(
             }
         return {
             "done": True,
+            "terminal_status": (
+                "infeasible" if action_name == "fail" else "succeeded"
+            ),
+            "reason_code": (
+                "infeasible" if action_name == "fail" else "completed"
+            ),
+            "handoff_instruction": (
+                str((plan.get("args") or {}).get("reasoning") or plan.get("reasoning") or "")
+                if action_name == "fail" else ""
+            ),
             "plan": plan,
             "infeasible": action_name == "fail",
             "verification": verification,
@@ -834,7 +544,35 @@ def gui_step(
         }
 
     # ── 4. Action (pure Python dispatch) ──
-    exec_result = _dispatch(plan, obs["img_path"], app_name, task, runtime, allow_general=allow_general)
+    recent = (feedback or {}).get("recent_actions") or []
+    fingerprint = _action_fingerprint(plan)
+    failed_same_action = sum(
+        item.get("fingerprint") == fingerprint and not item.get("success")
+        for item in recent[-8:]
+    )
+    if failed_same_action >= 3:
+        return {
+            "done": True,
+            "terminal_status": "failed",
+            "reason_code": "repeated_action",
+            "plan": plan,
+            "exec_result": {
+                "success": False,
+                "error": "same failed action selected four times",
+            },
+            "verification": verification,
+            "state": obs["current_state"],
+            "img_path": obs["img_path"],
+            "screenshot_artifact": obs.get("screenshot_artifact"),
+        }
+    exec_result = dispatch_action(
+        plan,
+        img_path=obs["img_path"],
+        app_name=app_name,
+        task=task,
+        runtime=runtime,
+        allow_general=allow_general,
+    )
 
     return {
         "done": False,
@@ -851,7 +589,10 @@ def gui_step(
 # build_step_feedback — pure Python
 # ═══════════════════════════════════════════
 
-def build_step_feedback(result: dict) -> dict:
+def build_step_feedback(
+    result: dict,
+    previous_feedback: Optional[dict] = None,
+) -> dict:
     """Extract key information from a step result for the next iteration.
 
     Pure Python — no LLM. Produces a structured feedback dict that
@@ -860,14 +601,34 @@ def build_step_feedback(result: dict) -> dict:
     plan = result.get("plan", {})
     exec_result = result.get("exec_result", {})
     verification = result.get("verification")
+    success = bool(exec_result.get("success"))
+    recent_actions = list((previous_feedback or {}).get("recent_actions") or [])[-7:]
+    if verification and recent_actions:
+        # This step's screenshot verifies the action represented by the last
+        # previous-history item. Reconcile the mechanical dispatch result with
+        # the authoritative visible result before the planner sees history.
+        previous_action = dict(recent_actions[-1])
+        previous_action["success"] = bool(verification.get("step_succeeded"))
+        previous_action["verified"] = True
+        recent_actions[-1] = previous_action
+    recent_actions.append({
+        "fingerprint": _action_fingerprint(plan),
+        "success": success,
+        "state": result.get("state"),
+    })
+    previous_failures = int(
+        (previous_feedback or {}).get("consecutive_failures") or 0
+    )
 
     feedback = {
         "goal": plan.get("goal", ""),
         "action": plan.get("call", plan.get("action", "")),
         "target": plan.get("args", {}).get("target", plan.get("target", "")),
-        "success": exec_result.get("success", False),
+        "success": success,
         "error": exec_result.get("error", ""),
         "prev_state": result.get("state"),
+        "recent_actions": recent_actions,
+        "consecutive_failures": previous_failures + 1 if not success else 0,
     }
 
     if verification:
@@ -877,96 +638,6 @@ def build_step_feedback(result: dict) -> dict:
         feedback["ready_to_done"] = bool(verification.get("ready_to_done"))
 
     return feedback
-
-
-# ═══════════════════════════════════════════
-# conclusion — LLM summarizes the task result
-# ═══════════════════════════════════════════
-
-@agentic_function(render_range={"callers": 0})
-def conclusion(task: str, completed: bool, steps_taken: int) -> dict:
-    """Summarize what was accomplished during the GUI task."""
-    img_path = _screenshot.take()
-
-    status = "COMPLETED" if completed else f"INCOMPLETE (used all {steps_taken} steps)"
-    context = (
-        f"<original_user_task>{task}</original_user_task>\n\n"
-        f"(Internal run status — DO NOT mention this in the summary: "
-        f"status={status}, steps={steps_taken})\n\n"
-        "Your job: write a `summary` that DIRECTLY ANSWERS the user's "
-        "<original_user_task>, grounded in the attached screenshot.\n\n"
-        "REQUIRED STRUCTURE for `summary` (must follow exactly):\n"
-        "  Sentence 1: restate what the user asked, in your own words. "
-        "Start with 'User asked: ...'.\n"
-        "  Sentence 2+: answer it using SPECIFIC visible content from the "
-        "screenshot — app/window name, visible text strings, UI elements, "
-        "values, counts. Quote on-screen text where useful.\n"
-        "  Final clause (optional, ≤1 sentence): briefly note what was done.\n\n"
-        "HARD BANS — these will be rejected:\n"
-        "  - Do NOT use the words 'COMPLETED', 'INCOMPLETE', 'Steps used', "
-        "'状态显示为', '状态为', 'Status:', or any reference to step counts "
-        "or internal run status. The user does not care about that.\n"
-        "  - Do NOT write meta-descriptions like '当前可见内容为任务状态/说明文本' "
-        "or 'task completed as requested' or 'observed the screen' "
-        "WITHOUT then stating what is actually on the screen.\n"
-        "  - Do NOT invent content not visible in the screenshot.\n\n"
-        "GOOD examples:\n"
-        "  task='看一下屏幕里有什么内容' →\n"
-        "    'User asked what is on screen. Screen shows Chrome on the "
-        "Baidu Tieba homepage; top nav has 首页/分类/我的; main pane lists "
-        "5 thread titles, first is \"今日热门话题\".'\n"
-        "  task='open Calculator' →\n"
-        "    'User asked to open Calculator. Calculator window is now in "
-        "the foreground, display reads 0, standard layout visible.'\n\n"
-        "HONEST-FALLBACK example — use this style ONLY if the screenshot "
-        "is truly blank/black/unreadable or you genuinely cannot see "
-        "content:\n"
-        "  'User asked what is on screen. The captured screenshot is "
-        "blank/unreadable, so I cannot describe actual on-screen content. "
-        "No reliable answer can be given from the available data.'\n"
-        "  (Do NOT use this fallback just because the run had few steps "
-        "— if the screenshot shows anything, describe it.)\n\n"
-        "Reply with ONLY this JSON object:\n"
-        '{"summary": "<sentence-1 restating task + sentences answering '
-        'it from the screenshot>", "success": true, '
-        '"issues": "any problems encountered, or null"}'
-    )
-
-    reply = llm([
-        {"type": "text", "text": context},
-        {"type": "image", "path": img_path},
-    ])
-
-    try:
-        return parse_json(reply)
-    except Exception:
-        return {
-            "summary": reply[:500],
-            "success": completed,
-            "issues": None,
-            "parse_error": traceback.format_exc(),
-            "raw_reply": reply[:1000],
-        }
-
-
-# ═══════════════════════════════════════════
-# Workflow recording
-# ═══════════════════════════════════════════
-
-def save_workflow_record(result: dict, app_name: str):
-    """Save the workflow record for future reference."""
-    from gui_harness.memory import app_memory
-    try:
-        app_dir = app_memory.get_app_dir(app_name)
-        workflows_dir = app_dir / "workflows"
-        workflows_dir.mkdir(parents=True, exist_ok=True)
-
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        record_path = workflows_dir / f"workflow_{ts}.json"
-        with open(record_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, default=str)
-    except Exception as e:
-        print(f"  [workflow] save error: {e}", file=sys.stderr)
 
 
 # ═══════════════════════════════════════════

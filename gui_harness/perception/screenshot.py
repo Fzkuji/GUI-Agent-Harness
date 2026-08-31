@@ -41,9 +41,30 @@ def screenshot(path: str | None = None) -> str:
     ensure_dpi_aware()  # unify ImageGrab (physical) + pynput click space on Windows
     path = path or _shot_path()
     if SYSTEM == "Darwin":
-        subprocess.run(["/usr/sbin/screencapture", "-x", path],
-                       capture_output=True, timeout=5)
-        return path
+        capture_path = f"{path}.capture"
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                if os.path.exists(capture_path):
+                    os.unlink(capture_path)
+                result = subprocess.run(
+                    ["/usr/sbin/screencapture", "-x", capture_path],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and os.path.exists(capture_path):
+                    os.replace(capture_path, path)
+                    return path
+                last_error = RuntimeError(
+                    "screencapture failed with return code "
+                    f"{result.returncode}: {result.stderr!r}"
+                )
+            except subprocess.TimeoutExpired as exc:
+                last_error = exc
+            if attempt < 2:
+                time.sleep(0.5 * (attempt + 1))
+        assert last_error is not None
+        raise last_error
 
     # Windows + Linux: Pillow ImageGrab (no extra dependency).
     try:
