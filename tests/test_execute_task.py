@@ -250,10 +250,8 @@ def test_fail_terminal_preserves_blocker_and_handoff(monkeypatch):
         "plan_next_action",
         lambda **_kwargs: {
             "call": "fail",
-            "args": {
-                "blocker": "login is required",
-                "handoff_instruction": "Log in, then retry the task.",
-            },
+            "blocker": "login is required",
+            "handoff_instruction": "Log in, then retry the task.",
         },
     )
 

@@ -529,11 +529,19 @@ def gui_step(
                 "infeasible" if action_name == "fail" else "completed"
             ),
             "handoff_instruction": (
-                str((plan.get("args") or {}).get("handoff_instruction") or "")
+                str(
+                    (plan.get("args") or {}).get("handoff_instruction")
+                    or plan.get("handoff_instruction")
+                    or ""
+                )
                 if action_name == "fail" else ""
             ),
             "blocker": (
-                str((plan.get("args") or {}).get("blocker") or "")
+                str(
+                    (plan.get("args") or {}).get("blocker")
+                    or plan.get("blocker")
+                    or ""
+                )
                 if action_name == "fail" else ""
             ),
             "plan": plan,
