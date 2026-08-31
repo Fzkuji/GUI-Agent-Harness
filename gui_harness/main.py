@@ -3,9 +3,9 @@
 GUI Agent — main entry point.
 
 Usage:
-    python3 -m gui_harness "Open Firefox and go to google.com"
-    python3 gui_harness/main.py "Send hello to John in WeChat"
-    python3 gui_harness/main.py --vm http://172.16.105.128:5000 "Click the OK button"
+    python3 -m gui_harness --work-dir /tmp/gui-firefox "Open Firefox and go to google.com"
+    python3 gui_harness/main.py --work-dir /tmp/gui-wechat "Send hello to John in WeChat"
+    python3 gui_harness/main.py --work-dir /tmp/gui-vm --vm http://172.16.105.128:5000 "Click the OK button"
 """
 
 import argparse
