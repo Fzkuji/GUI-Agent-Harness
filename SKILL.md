@@ -17,22 +17,22 @@ Use `gui-agent` when the user asks you to:
 ## How to Use
 
 ```bash
-gui-agent "your task description here"
+gui-agent --work-dir /tmp/gui-agent "your task description here"
 ```
 
 Examples:
 
 ```bash
 # Desktop automation
-gui-agent "Open Firefox and go to google.com"
-gui-agent "Send hello to John in WeChat"
-gui-agent "Install the Orchis GNOME theme"
+gui-agent --work-dir /tmp/gui-firefox "Open Firefox and go to google.com"
+gui-agent --work-dir /tmp/gui-wechat "Send hello to John in WeChat"
+gui-agent --work-dir /tmp/gui-theme "Install the Orchis GNOME theme"
 
 # Remote VM
-gui-agent --vm http://172.16.82.132:5000 "Open GitHub in Chrome"
+gui-agent --work-dir /tmp/gui-vm --vm http://172.16.82.132:5000 "Open GitHub in Chrome"
 
 # With specific model
-gui-agent --provider claude-code --model opus "Crop the top 20% of the image in GIMP"
+gui-agent --work-dir /tmp/gui-gimp --provider claude-code --model opus "Crop the top 20% of the image in GIMP"
 ```
 
 ## Options
@@ -42,12 +42,18 @@ gui-agent [OPTIONS] TASK
 
 TASK                  Natural language task description
 
+--work-dir PATH       Required writable directory for runtime files
 --vm URL              Remote VM HTTP API
---provider NAME       Force LLM provider: claude-code, openclaw, anthropic, openai
+--provider NAME       Force provider: openai-codex, claude-code, anthropic, openai, gemini-cli, gemini
 --model NAME          Override model name (e.g., opus, sonnet, gpt-4o)
---max-steps N         Max actions before stopping (default: 15)
+--runtime-retries N   Provider attempts for retryable model failures (default: 5)
+--max-steps N         Max actions before stopping (default: 150)
 --app NAME            App name for component memory (default: desktop)
+--no-general          Disable command-line fallback; use GUI actions only
 ```
+
+The command exits with status 0 only when the task result is `succeeded`.
+Failed and infeasible tasks exit with status 1.
 
 ## What It Does Internally
 

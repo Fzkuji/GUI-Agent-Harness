@@ -205,8 +205,8 @@ def plan_next_action(
         "plugins/data/hardware, contradicts itself, or the required option "
         "does not exist; you cannot do it and a human must operate "
         "(login, a physical action, or missing permission); or another try "
-        "still has no GUI path. The fail reasoning MUST explicitly include "
-        "FAIL/INFEASIBLE, the concrete blocker, and what a human must do. "
+        "still has no GUI path. A fail action MUST provide both the concrete "
+        "`blocker` and a specific `handoff_instruction` for a human. "
         "Do not use fail just because an attempt failed; recover first when "
         "there is a plausible path.\n"
         '- Before choosing "done", the app must be in a clean handoff '
@@ -315,18 +315,18 @@ def plan_next_action(
     return plan
 
 
-def _normalize_plan(parsed: dict) -> dict:
+def _normalize_plan(parsed: object) -> dict:
     """Accept direct action JSON or an accidental gui_step-shaped wrapper."""
     if not isinstance(parsed, dict):
-        return {"action": "general", "sub_task": str(parsed)[:200], "goal": str(parsed)[:100]}
+        raise TypeError("planner reply must be a JSON object")
 
     nested = parsed.get("plan")
     if isinstance(nested, dict):
-        if parsed.get("done") and "call" not in nested and "action" not in nested:
+        if parsed.get("done") is True and "call" not in nested and "action" not in nested:
             return {"call": "done", "goal": "task complete", "reasoning": "planner returned done wrapper"}
         return nested
 
-    if parsed.get("done") and "call" not in parsed and "action" not in parsed:
+    if parsed.get("done") is True and "call" not in parsed and "action" not in parsed:
         return {"call": "done", "goal": "task complete", "reasoning": "planner returned done"}
 
     return parsed
@@ -491,7 +491,7 @@ def gui_step(
         remaining = (verification or {}).get("remaining_plan") or []
         risks = (verification or {}).get("completion_risks") or []
         done_allowed = (
-            bool((verification or {}).get("ready_to_done"))
+            (verification or {}).get("ready_to_done") is True
             and not remaining
             and not risks
         )
@@ -529,7 +529,11 @@ def gui_step(
                 "infeasible" if action_name == "fail" else "completed"
             ),
             "handoff_instruction": (
-                str((plan.get("args") or {}).get("reasoning") or plan.get("reasoning") or "")
+                str((plan.get("args") or {}).get("handoff_instruction") or "")
+                if action_name == "fail" else ""
+            ),
+            "blocker": (
+                str((plan.get("args") or {}).get("blocker") or "")
                 if action_name == "fail" else ""
             ),
             "plan": plan,

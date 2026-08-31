@@ -16,13 +16,18 @@ observe_module = importlib.import_module("gui_harness.perception.observe")
 
 
 def test_fail_action_is_unsuccessful_and_preserves_handoff_reason():
-    result = _action_fail("FAIL/INFEASIBLE: human must log in")
+    result = _action_fail(
+        blocker="login is required",
+        handoff_instruction="Log in, then retry the task.",
+    )
 
     assert result == {
         "success": False,
         "done": True,
         "infeasible": True,
-        "reasoning": "FAIL/INFEASIBLE: human must log in",
+        "blocker": "login is required",
+        "handoff_instruction": "Log in, then retry the task.",
+        "reasoning": "FAIL/INFEASIBLE: login is required",
     }
 
 
@@ -65,6 +70,40 @@ def test_invalid_planner_reply_is_not_converted_to_done(monkeypatch):
 
     assert result["call"] == "planner_error"
     assert result["reason_code"] == "planner_invalid_action"
+
+
+def test_json_primitive_planner_replies_are_rejected(monkeypatch):
+    replies = iter(['"done"', "[]"])
+    monkeypatch.setattr(module, "llm", lambda *_args, **_kwargs: next(replies))
+
+    result = module.plan_next_action._fn(
+        task="task",
+        img_path="screen.png",
+        component_info="",
+        verification_summary="",
+        transitions_info="",
+        action_catalog="",
+        allow_general=True,
+    )
+
+    assert result["call"] == "planner_error"
+    assert result["reason_code"] == "planner_invalid_action"
+
+
+def test_string_done_flag_is_not_completion(monkeypatch):
+    replies = iter(['{"done":"false"}', '{"done":"false"}'])
+    monkeypatch.setattr(module, "llm", lambda *_args, **_kwargs: next(replies))
+
+    result = module.plan_next_action._fn(
+        task="task",
+        img_path="screen.png",
+        component_info="",
+        verification_summary="",
+        transitions_info="",
+        action_catalog="",
+    )
+
+    assert result["call"] == "planner_error"
 
 
 def test_planner_action_missing_required_arguments_is_rejected(monkeypatch):
@@ -154,6 +193,77 @@ def test_first_step_read_only_done_can_pass_current_screen_verification(monkeypa
 
     assert result["done"] is True
     assert result["terminal_status"] == "succeeded"
+
+
+def test_string_ready_to_done_cannot_report_success(monkeypatch):
+    monkeypatch.setattr(module, "observe_screen", lambda _app: _observation())
+    monkeypatch.setattr(
+        module,
+        "verify_step",
+        lambda **_kwargs: {
+            "step_succeeded": False,
+            "observation": "task is incomplete",
+            "completion_evidence": "",
+            "remaining_plan": [],
+            "completion_risks": [],
+            "ready_to_done": "false",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "plan_next_action",
+        lambda **_kwargs: {"call": "done", "reasoning": "complete"},
+    )
+
+    result = module.gui_step._fn(
+        task="task", feedback=None, app_name="desktop", runtime=object(),
+    )
+
+    assert result["done"] is False
+    assert result["plan"]["blocked_by_completion_verify"] is True
+
+
+def test_fail_requires_blocker_and_handoff(monkeypatch):
+    replies = iter([
+        '{"call":"fail","args":{"blocker":"login required"}}',
+        '{"call":"fail","args":{"blocker":"login required"}}',
+    ])
+    monkeypatch.setattr(module, "llm", lambda *_args, **_kwargs: next(replies))
+
+    result = module.plan_next_action._fn(
+        task="task",
+        img_path="screen.png",
+        component_info="",
+        verification_summary="",
+        transitions_info="",
+        action_catalog="",
+    )
+
+    assert result["call"] == "planner_error"
+    assert result["reason_code"] == "planner_invalid_arguments"
+
+
+def test_fail_terminal_preserves_blocker_and_handoff(monkeypatch):
+    monkeypatch.setattr(module, "observe_screen", lambda _app: _observation())
+    monkeypatch.setattr(
+        module,
+        "plan_next_action",
+        lambda **_kwargs: {
+            "call": "fail",
+            "args": {
+                "blocker": "login is required",
+                "handoff_instruction": "Log in, then retry the task.",
+            },
+        },
+    )
+
+    result = module.gui_step._fn(
+        task="task", feedback=None, app_name="desktop", runtime=object(),
+    )
+
+    assert result["terminal_status"] == "infeasible"
+    assert result["blocker"] == "login is required"
+    assert result["handoff_instruction"] == "Log in, then retry the task."
 
 
 def test_fourth_identical_failed_action_stops_even_when_interleaved(monkeypatch):

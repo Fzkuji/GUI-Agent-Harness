@@ -102,7 +102,7 @@ System Settings → Privacy & Security so the agent can capture and control.
 
 ## Remote VM mode (optional)
 
-`gui-agent --vm http://VM_IP:5000 "…"` drives a remote desktop. The VM needs a
+`gui-agent --work-dir /tmp/gui-vm --vm http://VM_IP:5000 "…"` drives a remote desktop. The VM needs a
 small HTTP server exposing `POST /execute` and `GET /screenshot` (e.g. an OSWorld
 env). See [VM_SETUP.md](VM_SETUP.md).
 

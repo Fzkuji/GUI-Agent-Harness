@@ -48,8 +48,8 @@
 一个将任意LLM变成GUI自动化代理的CLI工具。你给它一个自然语言任务，它自主操作桌面——截图、点击、输入、验证，循环执行直到任务完成。
 
 ```bash
-gui-agent "安装 Orchis GNOME 主题"
-gui-agent --vm http://172.16.82.132:5000 "在Chrome中打开GitHub和Python文档"
+gui-agent --work-dir /tmp/gui-theme "安装 Orchis GNOME 主题"
+gui-agent --work-dir /tmp/gui-vm --vm http://172.16.82.132:5000 "在Chrome中打开GitHub和Python文档"
 ```
 
 **设计为LLM工具。** 预期的工作流程是：
@@ -197,17 +197,20 @@ gui-agent [OPTIONS] TASK
   TASK                  自然语言任务描述
 
 选项:
+  --work-dir PATH       必填。runtime 使用的可写工作目录
   --vm URL              远程VM HTTP API（如 http://172.16.82.132:5000）
-  --provider NAME       强制指定LLM provider：claude-code, openclaw, anthropic, openai
+  --provider NAME       指定 provider：openai-codex, claude-code, anthropic, openai, gemini-cli, gemini
   --model NAME          覆盖模型名（如 opus, sonnet, gpt-4o）
-  --max-steps N         最大操作步数（默认：15）
+  --runtime-retries N   可重试模型错误的最大尝试次数（默认：5）
+  --max-steps N         最大操作步数（默认：150）
   --app NAME            应用名称，用于组件记忆（默认：desktop）
+  --no-general          禁用命令行 fallback，只允许 GUI 动作
 ```
 
 ## 架构
 
 ```
-gui-agent "任务描述"
+gui-agent --work-dir /tmp/gui-agent "任务描述"
     │
     ▼
 gui_agent()                    ← @agentic_function，驱动循环

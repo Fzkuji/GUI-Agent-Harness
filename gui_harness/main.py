@@ -98,6 +98,7 @@ def gui_agent(
     feedback = None
     status = "running"
     reason_code = ""
+    blocker = ""
     handoff_instruction = ""
 
     step_nums = range(1, max_steps + 1) if max_steps is not None else itertools.count(1)
@@ -146,8 +147,14 @@ def gui_agent(
                 "infeasible" if result.get("infeasible") else "succeeded"
             ))
             reason_code = str(result.get("reason_code") or status)
+            blocker = str(
+                result.get("blocker")
+                or ((plan.get("args") or {}).get("blocker") if status == "infeasible" else "")
+                or ""
+            )
             handoff_instruction = str(
                 result.get("handoff_instruction")
+                or ((plan.get("args") or {}).get("handoff_instruction") if status == "infeasible" else "")
                 or ((plan.get("args") or {}).get("reasoning") if status == "infeasible" else "")
                 or (plan.get("reasoning") if status == "infeasible" else "")
                 or ""
@@ -203,6 +210,7 @@ def gui_agent(
         "status": status,
         "success": status == "succeeded",
         "reason_code": reason_code,
+        "blocker": blocker,
         "infeasible_declared": status == "infeasible",
         "handoff_instruction": handoff_instruction,
         "summary": summary.get("summary", ""),
@@ -302,7 +310,8 @@ def main():
         if v and v.get("observation"):
             print(f"     observed: {v['observation'][:200]}")
     print("=" * 60)
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

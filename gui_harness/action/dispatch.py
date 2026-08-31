@@ -112,12 +112,20 @@ def action_done(reasoning: str = "") -> dict:
     return {"success": True, "done": True, "reasoning": reasoning}
 
 
-def action_fail(reasoning: str = "") -> dict:
+def action_fail(
+    reasoning: str = "",
+    blocker: str = "",
+    handoff_instruction: str = "",
+) -> dict:
+    blocker = blocker or reasoning
+    handoff_instruction = handoff_instruction or reasoning
     return {
         "success": False,
         "done": True,
         "infeasible": True,
-        "reasoning": reasoning,
+        "blocker": blocker,
+        "handoff_instruction": handoff_instruction,
+        "reasoning": reasoning or f"FAIL/INFEASIBLE: {blocker}",
     }
 
 
@@ -252,7 +260,18 @@ def build_action_registry(allow_general: bool = False) -> dict:
         "fail": {
             "function": action_fail,
             "description": "Declare the task infeasible and stop with an explicit blocker",
-            "input": {"reasoning": {"source": "llm", "type": str, "description": "FAIL/INFEASIBLE, concrete blocker, and required human action"}},
+            "input": {
+                "blocker": {
+                    "source": "llm",
+                    "type": str,
+                    "description": "concrete reason the agent cannot complete the task",
+                },
+                "handoff_instruction": {
+                    "source": "llm",
+                    "type": str,
+                    "description": "specific action a human must take before retrying",
+                },
+            },
             "output": {"success": bool, "done": bool, "infeasible": bool},
         },
     }

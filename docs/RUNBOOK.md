@@ -103,7 +103,7 @@ gui-agent --help
 ### 3.1 最简用法
 
 ```bash
-gui-agent "打开 Firefox 访问 google.com"
+gui-agent --work-dir /tmp/gui-firefox "打开 Firefox 访问 google.com"
 ```
 
 agent 自己截屏、识别界面、点击、验证，直到任务完成或用完 step。
@@ -113,28 +113,30 @@ agent 自己截屏、识别界面、点击、验证，直到任务完成或用�
 ```bash
 gui-agent [OPTIONS] TASK
 
+--work-dir PATH       必填。runtime 使用的可写工作目录
 --vm URL              远程 VM HTTP API（如 http://172.16.82.132:5000）
---provider NAME       强制指定 LLM provider: claude-code / anthropic / openai
+--provider NAME       指定 provider: openai-codex / claude-code / anthropic / openai / gemini-cli / gemini
 --model NAME          模型名（opus / sonnet / gpt-4o）
---max-steps N         最大步数（默认 15）
+--runtime-retries N   可重试模型错误的最大尝试次数（默认 5）
+--max-steps N         最大步数（默认 150）
 --app NAME            component 记忆的 app 名（默认 desktop）
---allow-general       允许 agent 走命令行 fallback（GUI 应用默认关）
+--no-general          禁用命令行 fallback，只允许 GUI 动作
 ```
 
 ### 3.3 示例
 
 ```bash
 # 本地桌面
-gui-agent "把 Desktop 上的 report.pdf 移到 Documents"
+gui-agent --work-dir /tmp/gui-files "把 Desktop 上的 report.pdf 移到 Documents"
 
 # OSWorld VM
-gui-agent --vm http://172.16.82.132:5000 "在 Chrome 里打开 GitHub"
+gui-agent --work-dir /tmp/gui-vm --vm http://172.16.82.132:5000 "在 Chrome 里打开 GitHub"
 
 # 指定模型
-gui-agent --provider claude-code --model opus "Crop 图片顶部 20%"
+gui-agent --work-dir /tmp/gui-crop --provider claude-code --model opus "Crop 图片顶部 20%"
 
 # 提高步数上限
-gui-agent --max-steps 30 "完成整个多步任务"
+gui-agent --work-dir /tmp/gui-long --max-steps 30 "完成整个多步任务"
 ```
 
 ### 3.4 程序内调用
@@ -197,7 +199,7 @@ ln -s /path/to/GUI-Agent-Harness ~/.openclaw/skills/gui-agent
 帮我把 Desktop 上的 report.pdf 移到 Documents 文件夹
 ```
 
-Claude 应该识别出这是 GUI 任务，然后调用 `gui-agent "..."`。
+Claude 应该识别出这是 GUI 任务，然后调用 `gui-agent --work-dir /tmp/gui-agent "..."`。
 
 ---
 
@@ -365,10 +367,10 @@ Waiting for VM at http://172.16.82.132:5000... (超时)
 
 ### 7.8 想让 agent 强制走 GUI，不能用命令行
 
-默认 GUI 应用（GIMP 等）已经关掉 `allow_general`。如果用 CLI 想打开：
+CLI 默认允许命令行 fallback。需要强制只走 GUI 时使用：
 
 ```bash
-gui-agent --allow-general "任务描述"
+gui-agent --work-dir /tmp/gui-only --no-general "任务描述"
 ```
 
 ---

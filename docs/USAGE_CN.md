@@ -47,7 +47,7 @@ TASK                  自然语言任务描述
 --vm URL              远程 VM HTTP API，例如 http://172.16.82.132:5000
 --provider NAME       指定 provider：auto、claude-code、anthropic、openai 等
 --model NAME          指定模型名
---max-steps N         最大行动步数，默认 15
+--max-steps N         最大行动步数，默认 150
 --app NAME            组件记忆的 app 名，默认 desktop
 --no-general          禁用命令行 general action，只允许 GUI 动作
 ```
