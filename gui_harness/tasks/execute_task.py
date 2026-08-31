@@ -267,9 +267,6 @@ def plan_next_action(
         try:
             return _normalize_plan(parse_json(r))
         except Exception:
-            rl = (r or "").lower()
-            if '"done"' in rl or "task is complete" in rl:
-                return {"call": "done", "goal": "task complete", "reasoning": (r or "")[:200]}
             return None
 
     def _validation_error(candidate: dict | None) -> str:

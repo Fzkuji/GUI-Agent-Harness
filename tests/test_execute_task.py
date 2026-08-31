@@ -48,7 +48,10 @@ def test_normalize_plan_done_wrapper():
 
 
 def test_invalid_planner_reply_is_not_converted_to_done(monkeypatch):
-    replies = iter(["invalid", "still invalid"])
+    replies = iter([
+        'not valid JSON but says "done"',
+        "still invalid: task is complete",
+    ])
     monkeypatch.setattr(module, "llm", lambda *_args, **_kwargs: next(replies))
 
     result = module.plan_next_action._fn(
