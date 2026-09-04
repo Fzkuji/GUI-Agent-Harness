@@ -18,7 +18,7 @@ Architecture:
 from __future__ import annotations
 
 import json
-import os
+import time
 import traceback
 from typing import Optional
 
@@ -29,7 +29,7 @@ from gui_harness.openprogram_compat import agentic_function, build_action_catalo
 from gui_harness.utils import parse_json
 from gui_harness.perception.observe import observe_screen
 from gui_harness.action.dispatch import (
-    action_fail as _action_fail,
+    action_fail as _action_fail,  # noqa: F401 - legacy import used by callers
     build_action_registry as _build_action_registry,
     dispatch_action,
 )
@@ -49,6 +49,7 @@ from gui_harness.planning.component_memory import (
         "img_path": {"description": "Path to current screenshot (after previous action)"},
         "component_info": {"description": "Formatted string of detected UI components"},
         "feedback": {"description": "Dict from previous step: goal, action, target, success, error"},
+        "timeout_s": {"hidden": True},
     },
 )
 def verify_step(
@@ -56,6 +57,7 @@ def verify_step(
     img_path: str,
     component_info: str,
     feedback: dict,
+    timeout_s: float | None = None,
 ) -> dict:
     """Evaluate whether the previous action achieved its goal."""
     initial_observation = bool(feedback.get("initial_observation"))
@@ -116,7 +118,7 @@ def verify_step(
     reply = llm([
         {"type": "text", "text": context},
         {"type": "image", "path": img_path},
-    ])
+    ], timeout_s=timeout_s)
 
     try:
         result = parse_json(reply)
@@ -151,6 +153,7 @@ def verify_step(
         "verification_summary": {"description": "What happened in the previous step (or empty)"},
         "transitions_info": {"description": "Known transitions from current UI state (or empty)"},
         "action_catalog": {"description": "Available actions and their parameter schemas"},
+        "timeout_s": {"hidden": True},
     },
 )
 def plan_next_action(
@@ -161,6 +164,7 @@ def plan_next_action(
     transitions_info: str,
     action_catalog: str,
     allow_general: bool = False,
+    timeout_s: float | None = None,
 ) -> dict:
     """Decide the next action to take toward completing the task."""
     parts = [f"<task>{task}</task>"]
@@ -283,7 +287,21 @@ def plan_next_action(
                 missing.append(name)
         return f"missing required arguments: {', '.join(missing)}" if missing else ""
 
-    reply = llm(base_content)
+    deadline = (
+        time.monotonic() + float(timeout_s)
+        if timeout_s is not None and float(timeout_s) > 0
+        else None
+    )
+
+    def remaining_timeout() -> float | None:
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("GUI planning exceeded its time limit")
+        return remaining
+
+    reply = llm(base_content, timeout_s=remaining_timeout())
     plan = _parse(reply)
     validation_error = _validation_error(plan)
 
@@ -297,7 +315,10 @@ def plan_next_action(
             f"action from {sorted(valid)} and provide every argument shown "
             "for that action. Reply again with the same JSON format."
         )
-        reply = llm(base_content + [{"type": "text", "text": retry_msg}])
+        reply = llm(
+            base_content + [{"type": "text", "text": retry_msg}],
+            timeout_s=remaining_timeout(),
+        )
         plan = _parse(reply)
         validation_error = _validation_error(plan)
 
@@ -360,6 +381,7 @@ def gui_step(
     app_name: str,
     runtime=None,
     allow_general: bool = False,
+    timeout_s: float | None = None,
 ) -> dict:
     """Execute one step of a GUI task: observe -> verify -> plan -> action.
 
@@ -390,6 +412,20 @@ def gui_step(
     if runtime is None:
         raise ValueError("gui_step() requires a runtime argument")
 
+    deadline = (
+        time.monotonic() + float(timeout_s)
+        if timeout_s is not None and float(timeout_s) > 0
+        else None
+    )
+
+    def remaining_timeout() -> float | None:
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("GUI step exceeded its time limit")
+        return remaining
+
     # ── 1. Observe (pure Python) ──
     obs = observe_screen(app_name)
 
@@ -401,6 +437,7 @@ def gui_step(
             img_path=obs["img_path"],
             component_info=obs["component_info"],
             feedback=feedback,
+            timeout_s=remaining_timeout(),
         )
 
         # Record state transition: previous state → current state
@@ -457,6 +494,7 @@ def gui_step(
         transitions_info=obs["transitions_info"],
         action_catalog=catalog,
         allow_general=allow_general,
+        timeout_s=remaining_timeout(),
     )
 
     plan = _normalize_plan(plan)
@@ -487,6 +525,7 @@ def gui_step(
                     "success": True,
                     "initial_observation": True,
                 },
+                timeout_s=remaining_timeout(),
             )
         remaining = (verification or {}).get("remaining_plan") or []
         risks = (verification or {}).get("completion_risks") or []
@@ -574,6 +613,7 @@ def gui_step(
             "img_path": obs["img_path"],
             "screenshot_artifact": obs.get("screenshot_artifact"),
         }
+    remaining_timeout()
     exec_result = dispatch_action(
         plan,
         img_path=obs["img_path"],
@@ -668,7 +708,8 @@ def execute_task(
 
     If work_dir is omitted, a fresh tempdir is created and set on the runtime.
     """
-    import os, tempfile
+    import os
+    import tempfile
     from gui_harness.main import gui_agent
     if work_dir is None:
         work_dir = tempfile.mkdtemp(prefix="gui_harness_")

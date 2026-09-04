@@ -314,16 +314,32 @@ class VMTarget(ActionTarget):
 
     def _exec(self, command: str, timeout: int = 30) -> dict:
         result = subprocess.run(
-            ["/usr/bin/curl", "-s", "--connect-timeout", "10", "-m", str(timeout),
+            ["/usr/bin/curl", "-fsS", "--connect-timeout", "10", "-m", str(timeout),
              "-X", "POST", f"{self.url}/execute",
              "-H", "Content-Type: application/json",
-             "-d", json.dumps({"command": command})],
+             "-d", json.dumps({
+                 "command": command,
+                 "shell": True,
+                 "timeout": timeout,
+             })],
             capture_output=True, text=True, timeout=timeout + 5,
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"VM execute failed ({result.returncode}): "
+                f"{result.stderr.strip() or result.stdout[:200]}"
+            )
         try:
-            return json.loads(result.stdout)
+            payload = json.loads(result.stdout)
         except json.JSONDecodeError:
-            return {"error": f"Failed to parse: {result.stdout[:200]}"}
+            raise RuntimeError(f"VM execute returned invalid JSON: {result.stdout[:200]}")
+        if not isinstance(payload, dict):
+            raise RuntimeError("VM execute returned a non-object response")
+        if payload.get("error"):
+            raise RuntimeError(str(payload["error"]))
+        if payload.get("returncode", 0) != 0:
+            raise RuntimeError(f"VM command failed: returncode={payload['returncode']}")
+        return payload
 
     def _exec_script(self, script: str, timeout: int = 30) -> dict:
         b64 = base64.b64encode(script.encode()).decode()

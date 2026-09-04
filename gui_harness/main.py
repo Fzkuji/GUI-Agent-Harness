@@ -9,7 +9,6 @@ Usage:
 """
 
 import argparse
-import itertools
 import sys
 import os
 import time
@@ -53,6 +52,10 @@ def _default_runtime_retries() -> int:
             "hidden": True,
         },
         "allow_general": {"hidden": True},
+        "max_seconds": {"hidden": True},
+        "browser_backend": {"hidden": True},
+        "vm_url": {"hidden": True},
+        "preferred_capability": {"hidden": True},
         "runtime": {"hidden": True},
     },
 )
@@ -62,13 +65,16 @@ def gui_agent(
     app_name: str = "desktop",
     runtime=None,
     allow_general: bool = False,
+    max_seconds: float | None = None,
+    browser_backend: str = "",
+    vm_url: str = "",
+    preferred_capability: str = "",
 ) -> dict:
-    """Drive the desktop GUI to complete a task.
+    """Complete a GUI task through model-selected bounded capabilities.
 
-    Loops observe -> verify -> plan -> act on the real screen until the
-    task is done or max_steps is reached. Use it for work that can only
-    be done through a graphical application; anything reachable from a
-    shell or a file is cheaper and more reliable without it.
+    Each iteration sees the complete prior capability history, then selects
+    computer_use, browser_use, vm_use, or a terminal decision. ``max_steps``
+    and ``max_seconds`` are safety boundaries, not normal completion rules.
 
     The runtime's working directory must be configured before calling —
     relative paths resolve against it.
@@ -89,117 +95,189 @@ def gui_agent(
         n = int(max_steps)
         max_steps = n if n > 0 else None
 
-    from gui_harness.tasks.execute_task import gui_step, build_step_feedback
+    from gui_harness.tasks import capability_loop
     from gui_harness.tasks.result import conclusion, save_workflow_record
     task_start = time.time()
+    deadline = (
+        task_start + float(max_seconds)
+        if max_seconds is not None and float(max_seconds) > 0
+        else None
+    )
 
-    # ── Loop: gui_step with explicit feedback ──
-    history = []
-    feedback = None
+    history: list[dict] = []
+    feedback_by_capability: dict[str, dict | None] = {
+        "computer_use": None,
+        "vm_use": None,
+    }
     status = "running"
     reason_code = ""
     blocker = ""
     handoff_instruction = ""
+    terminal_reason = ""
+    iterations = 0
+    capability_calls = 0
+    decision_limit = max_steps * 3 + 3 if max_steps is not None else None
 
-    step_nums = range(1, max_steps + 1) if max_steps is not None else itertools.count(1)
-    for step_num in step_nums:
-        cap = max_steps if max_steps is not None else "-"
-        print(f"  [step {step_num}/{cap}] ...", file=sys.stderr)
-
-        try:
-            result = gui_step(
-                task=task,
-                feedback=feedback,
-                app_name=app_name,
-                runtime=runtime,
-                allow_general=allow_general,
-            )
-        except Exception as e:
-            print(f"  [step {step_num}] ERROR: {e.__class__.__name__}: {e}", file=sys.stderr)
-            result = {
-                "done": True,
-                "terminal_status": "failed",
-                "reason_code": "step_error",
-                "plan": {"action": "error", "goal": "", "reasoning": str(e)},
-                "exec_result": {"success": False, "error": str(e)},
-            }
-
-        # Log
-        plan = result.get("plan", {})
-        action = plan.get("call", plan.get("action", "?"))
-        args = plan.get("args", {})
-        detail = (
-            args.get("target", "")
-            or args.get("text", "")
-            or args.get("keys", "")
-            or args.get("key", "")
-            or args.get("sub_task", "")
-            or args.get("reasoning", "")
-            or plan.get("target", "")
-            or plan.get("reasoning", "")
+    while status == "running":
+        if decision_limit is not None and iterations >= decision_limit:
+            status = "failed"
+            reason_code = "decision_limit"
+            terminal_reason = "GUI Agent reached its Runtime decision limit."
+            break
+        if deadline is not None and time.time() >= deadline:
+            status = "failed"
+            reason_code = "timeout"
+            terminal_reason = "GUI Agent exceeded its Runtime time limit."
+            break
+        iterations += 1
+        print(f"  [decision {iterations}] ...", file=sys.stderr)
+        availability = capability_loop.capability_status(
+            vm_url=vm_url,
+            browser_backend=browser_backend,
         )
-        print(f"  [step {step_num}] {action}: {str(detail)[:200]}", file=sys.stderr)
-
-        history.append({"step": step_num, **result})
-
-        if result.get("done"):
-            status = str(result.get("terminal_status") or (
-                "infeasible" if result.get("infeasible") else "succeeded"
-            ))
-            reason_code = str(result.get("reason_code") or status)
-            blocker = str(
-                result.get("blocker")
-                or ((plan.get("args") or {}).get("blocker") if status == "infeasible" else "")
-                or ""
+        try:
+            remaining_seconds = (
+                max(0.001, deadline - time.time())
+                if deadline is not None else None
             )
+            decision = capability_loop.plan_next_capability(
+                task=task,
+                history=history,
+                availability=availability,
+                preferred_capability=preferred_capability,
+                timeout_s=remaining_seconds,
+            )
+        except Exception as exc:
+            decision = {
+                "call": "terminal",
+                "args": {
+                    "status": "failed",
+                    "reason": str(exc),
+                    "reason_code": "planner_error",
+                },
+            }
+        if deadline is not None and time.time() >= deadline:
+            status = "failed"
+            reason_code = "timeout"
+            terminal_reason = "GUI Agent exceeded its Runtime time limit."
+            break
+        call = str(decision.get("call") or "")
+        args = decision.get("args")
+        args = dict(args) if isinstance(args, dict) else {}
+        if call == "terminal":
+            terminal = capability_loop.validate_terminal_decision(
+                decision, history,
+            )
+            if not terminal.get("accepted"):
+                history.append({
+                    "type": "terminal_rejected",
+                    "decision": decision,
+                    "reason": terminal.get("reason", "unsupported terminal"),
+                })
+                continue
+            status = str(terminal["status"])
+            reason_code = str(
+                terminal.get("reason_code")
+                or ("completed" if status == "succeeded" else status)
+            )
+            terminal_reason = str(terminal.get("reason") or "")
+            blocker = str(terminal.get("blocker") or "")
             handoff_instruction = str(
-                result.get("handoff_instruction")
-                or ((plan.get("args") or {}).get("handoff_instruction") if status == "infeasible" else "")
-                or ((plan.get("args") or {}).get("reasoning") if status == "infeasible" else "")
-                or (plan.get("reasoning") if status == "infeasible" else "")
-                or ""
+                terminal.get("handoff_instruction") or ""
             )
             break
-
-        # Build feedback for next iteration
-        feedback = build_step_feedback(result, previous_feedback=feedback)
-
-        # Compress CLI session context between steps when it grows large.
-        # Each gui_step adds a screenshot + detection results + tool outputs,
-        # which accumulate in the persistent claude-code subprocess's session.
-        # Only the `feedback` dict carries semantic state forward, so the raw
-        # history is redundant. Threshold is set below the model's 80% default
-        # so compact fires while the session is still responsive.
+        if call not in capability_loop.CAPABILITIES:
+            history.append({
+                "type": "terminal_rejected",
+                "decision": decision,
+                "reason": f"unknown capability: {call}",
+            })
+            continue
+        if max_steps is not None and capability_calls >= max_steps:
+            status = "failed"
+            reason_code = "safety_step_limit"
+            terminal_reason = "GUI Agent reached its Runtime action limit."
+            break
+        if not availability.get(call, {}).get("available"):
+            result = {
+                "status": "failed",
+                "success": False,
+                "reason_code": "capability_unavailable",
+                "summary": f"{call} is not currently available",
+            }
+        else:
+            remaining_seconds = (
+                max(1.0, deadline - time.time()) if deadline is not None else None
+            )
+            try:
+                result = capability_loop.call_capability(
+                    call,
+                    args,
+                    runtime=runtime,
+                    app_name=app_name,
+                    allow_general=allow_general,
+                    browser_backend=browser_backend,
+                    vm_url=vm_url,
+                    feedback=feedback_by_capability.get(call),
+                    max_seconds=remaining_seconds,
+                )
+            except Exception as exc:
+                result = {
+                    "status": "failed",
+                    "success": False,
+                    "reason_code": "capability_operation_failed",
+                    "summary": str(exc),
+                    "error_type": exc.__class__.__name__,
+                }
+        capability_calls += 1
+        history.append({
+            "type": "capability_call",
+            "step": capability_calls,
+            "capability": call,
+            "input": args,
+            "output": result,
+        })
+        if call in feedback_by_capability:
+            feedback_by_capability[call] = result.get("next_feedback")
         if hasattr(runtime, "compact"):
             runtime.compact(threshold_tokens=200_000)
 
-    if status == "running":
-        status = "failed"
-        reason_code = "step_limit"
-
     # ── Conclusion: LLM summarizes the result ──
-    print(f"  [conclusion] ...", file=sys.stderr)
-    try:
-        summary = conclusion(
-            task=task,
-            completed=status == "succeeded",
-            steps_taken=len(history),
-            infeasible=status == "infeasible",
-            status=status,
-            handoff_instruction=handoff_instruction,
-            img_path=str((history[-1] if history else {}).get("img_path") or ""),
-        )
-        print(f"  [conclusion] {summary.get('summary', '')[:300]}", file=sys.stderr)
-    except Exception as e:
-        print(f"  [conclusion] ERROR: {e}", file=sys.stderr)
-        if status == "succeeded":
-            status = "failed"
-            reason_code = "conclusion_error"
+    print("  [conclusion] ...", file=sys.stderr)
+    if deadline is not None and time.time() >= deadline:
         summary = {
-            "summary": handoff_instruction or str(e),
+            "summary": handoff_instruction or terminal_reason or "GUI Agent timed out.",
             "success": status == "succeeded",
-            "issues": None,
+            "issues": "Conclusion skipped because the Runtime deadline expired.",
         }
+    else:
+        try:
+            remaining_seconds = (
+                max(0.001, deadline - time.time())
+                if deadline is not None else None
+            )
+            summary = conclusion(
+                task=task,
+                completed=status == "succeeded",
+                steps_taken=capability_calls,
+                infeasible=status == "infeasible",
+                status=status,
+                handoff_instruction=handoff_instruction,
+                img_path=_last_image_path(history),
+                timeout_s=remaining_seconds,
+                history=history,
+            )
+            print(f"  [conclusion] {summary.get('summary', '')[:300]}", file=sys.stderr)
+        except Exception as e:
+            print(f"  [conclusion] ERROR: {e}", file=sys.stderr)
+            if status == "succeeded":
+                status = "failed"
+                reason_code = "conclusion_error"
+            summary = {
+                "summary": handoff_instruction or terminal_reason or str(e),
+                "success": status == "succeeded",
+                "issues": None,
+            }
     if status == "infeasible" and handoff_instruction:
         summary["summary"] = handoff_instruction
 
@@ -215,13 +293,26 @@ def gui_agent(
         "handoff_instruction": handoff_instruction,
         "summary": summary.get("summary", ""),
         "issues": summary.get("issues"),
-        "steps_taken": len(history),
+        "steps_taken": capability_calls,
+        "iterations": iterations,
         "total_time": total_time,
         "history": history,
     }
     save_workflow_record(final, app_name)
 
     return final
+
+
+def _last_image_path(history: list[dict]) -> str:
+    for entry in reversed(history):
+        output = entry.get("output")
+        if not isinstance(output, dict):
+            continue
+        step = output.get("step")
+        if isinstance(step, dict) and step.get("img_path"):
+            return str(step["img_path"])
+        return ""
+    return ""
 
 
 # ═══════════════════════════════════════════
@@ -243,16 +334,14 @@ def main():
         help="OpenProgram exec attempts per model call for retryable provider failures.",
     )
     parser.add_argument("--max-steps", type=int, default=150, help="Max actions (default: 150)")
+    parser.add_argument("--max-seconds", type=float, help="Runtime safety time limit")
     parser.add_argument("--app", default="desktop", help="App name for memory (default: desktop)")
     parser.add_argument("--no-general", action="store_true",
                         help="Disable command-line ('general') action; force GUI-only interaction.")
     args = parser.parse_args()
 
-    # VM adapter
     if args.vm:
-        from gui_harness.adapters.vm_adapter import patch_for_vm
-        patch_for_vm(args.vm)
-        print(f"VM mode: {args.vm}")
+        print(f"VM capability: {args.vm}")
 
     # Runtime — delegate auto-detection to openprogram.providers
     kwargs = {}
@@ -276,6 +365,8 @@ def main():
         app_name=args.app,
         runtime=runtime,
         allow_general=not args.no_general,
+        max_seconds=args.max_seconds,
+        vm_url=args.vm or "",
     )
 
     # Report
@@ -287,28 +378,15 @@ def main():
     print(f"Time: {result.get('total_time', '?')}s")
     print()
     for h in result.get("history", []):
-        plan = h.get("plan", {})
-        action = plan.get("action", plan.get("call", "?"))
-        args = plan.get("args", {})
-        # Show the most relevant arg for each action type
-        detail = (
-            args.get("target", "")
-            or args.get("text", "")
-            or args.get("keys", "")
-            or args.get("key", "")
-            or args.get("direction", "")
-            or args.get("sub_task", "")
-            or args.get("reasoning", "")
-            or plan.get("target", "")
+        if h.get("type") != "capability_call":
+            continue
+        capability = h.get("capability", "?")
+        capability_input = h.get("input") or {}
+        capability_output = h.get("output") or {}
+        print(
+            f"  {h.get('step', '?')}. [{capability_output.get('status', '?')}] "
+            f"{capability}: {str(capability_input.get('task', ''))[:200]}"
         )
-        exec_ok = h.get("exec_result", {}).get("success", h.get("done", False))
-        v = h.get("verification")
-        status = "OK" if exec_ok else "FAIL"
-        print(f"  {h['step']}. [{status}] {action}: {str(detail)[:200]}")
-        if plan.get("goal"):
-            print(f"     goal: {plan['goal'][:200]}")
-        if v and v.get("observation"):
-            print(f"     observed: {v['observation'][:200]}")
     print("=" * 60)
     return 0 if success else 1
 

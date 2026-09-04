@@ -11,24 +11,68 @@ Usage:
 
 from __future__ import annotations
 
-import json
+from contextlib import contextmanager
 import os
 import subprocess
+import threading
 import time
+
+from gui_harness.perception import screenshot as _screenshot
+
+
+_HOST_TAKE = _screenshot.take
+_HOST_TAKE_WINDOW = _screenshot.take_window
+_TARGET_LOCK = threading.RLock()
+
+
+def _select_vm(vm_url: str) -> None:
+    url = vm_url.rstrip("/")
+    from gui_harness.action import input as _input
+
+    _input.configure(vm_url=url)
+    _screenshot.take = lambda path="/tmp/gui_agent_screen.png": _vm_screenshot(
+        url, path
+    )
+    _screenshot.take_window = (
+        lambda app, out=None: _vm_screenshot(
+            url, out or "/tmp/gui_agent_screen.png"
+        )
+    )
 
 
 def patch_for_vm(vm_url: str):
     """Configure all subsystems to use the VM backend."""
-    url = vm_url.rstrip("/")
+    with _TARGET_LOCK:
+        _select_vm(vm_url)
 
-    # 1. Configure input backend
+
+@contextmanager
+def target_session(vm_url: str | None = None):
+    """Select one screen target for a bounded call and restore it afterwards."""
     from gui_harness.action import input as _input
-    _input.configure(vm_url=url)
 
-    # 2. Patch screenshot to download from VM
-    import gui_harness.perception.screenshot as _ss
-    _ss.take = lambda path="/tmp/gui_agent_screen.png": _vm_screenshot(url, path)
-    _ss.take_window = lambda app, out=None: _vm_screenshot(url, out or "/tmp/gui_agent_screen.png")
+    with _TARGET_LOCK:
+        previous_target = _input.get_default_name()
+        previous_target_object = _input.get_target(previous_target)
+        previous_backend = _input._backend
+        previous_vm_url = _input._vm_url
+        previous_take = _screenshot.take
+        previous_take_window = _screenshot.take_window
+        try:
+            if vm_url:
+                _select_vm(vm_url)
+            else:
+                _input.set_default("local")
+                _screenshot.take = _HOST_TAKE
+                _screenshot.take_window = _HOST_TAKE_WINDOW
+            yield
+        finally:
+            _input.register(previous_target, previous_target_object)
+            _input.set_default(previous_target)
+            _input._backend = previous_backend
+            _input._vm_url = previous_vm_url
+            _screenshot.take = previous_take
+            _screenshot.take_window = previous_take_window
 
 
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
