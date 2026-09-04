@@ -9,6 +9,8 @@ import importlib.util
 import os
 from pathlib import Path
 import platform
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -32,136 +34,39 @@ def _cancel():
 
 
 class _WindowControlIndicator:
-    """Non-activating visual feedback aligned to one exact target window."""
+    """Small client for the native indicator process; failures stay visual."""
 
-    _PURPLE = (0.35, 0.27, 0.92, 0.94)
-
-    def __init__(self, owner):
-        appkit = owner.appkit
-        frame = owner.window.frame()
-        main_top = appkit.NSMaxY(appkit.NSScreen.mainScreen().frame())
-        cocoa_frame = appkit.NSMakeRect(
-            frame.origin.x,
-            main_top - frame.origin.y - frame.size.height,
-            frame.size.width,
-            frame.size.height,
-        )
-        style = (
-            appkit.NSWindowStyleMaskBorderless
-            | appkit.NSWindowStyleMaskNonactivatingPanel
-        )
-        panel = appkit.NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            cocoa_frame, style, appkit.NSBackingStoreBuffered, False,
-        )
-        panel.setOpaque_(False)
-        panel.setTitle_("OpenProgram GUI Agent control")
-        panel.setBackgroundColor_(appkit.NSColor.clearColor())
-        panel.setHasShadow_(False)
-        panel.setIgnoresMouseEvents_(True)
-        panel.setHidesOnDeactivate_(False)
-        panel.setLevel_(appkit.NSFloatingWindowLevel)
-        panel.setBecomesKeyOnlyIfNeeded_(True)
-        panel.setReleasedWhenClosed_(False)
-        panel.setCollectionBehavior_(
-            appkit.NSWindowCollectionBehaviorCanJoinAllSpaces
-            | appkit.NSWindowCollectionBehaviorTransient
-            | appkit.NSWindowCollectionBehaviorIgnoresCycle
-        )
-
-        content = appkit.NSView.alloc().initWithFrame_(
-            appkit.NSMakeRect(0, 0, frame.size.width, frame.size.height),
-        )
-        content.setWantsLayer_(True)
-        content.layer().setBackgroundColor_(appkit.NSColor.clearColor().CGColor())
-        panel.setContentView_(content)
-
-        badge = appkit.NSView.alloc().initWithFrame_(
-            appkit.NSMakeRect(12, frame.size.height - 38, min(224, frame.size.width - 24), 28),
-        )
-        badge.setWantsLayer_(True)
-        badge.layer().setCornerRadius_(14)
-        badge.layer().setBackgroundColor_(self._color(appkit, self._PURPLE).CGColor())
-        content.addSubview_(badge)
-
-        icon = self._symbol(appkit, "rectangle.inset.filled.and.person.filled", "display")
-        icon_view = appkit.NSImageView.alloc().initWithFrame_(appkit.NSMakeRect(8, 6, 16, 16))
-        icon_view.setImage_(icon)
-        icon_view.setContentTintColor_(appkit.NSColor.whiteColor())
-        badge.addSubview_(icon_view)
-
-        label = appkit.NSTextField.labelWithString_(
-            f"GUI Agent · {owner.identity['app_name']}",
-        )
-        label.setFrame_(appkit.NSMakeRect(30, 5, badge.frame().size.width - 38, 18))
-        label.setTextColor_(appkit.NSColor.whiteColor())
-        label.setFont_(appkit.NSFont.systemFontOfSize_weight_(12, appkit.NSFontWeightSemibold))
-        label.setLineBreakMode_(appkit.NSLineBreakByTruncatingTail)
-        badge.addSubview_(label)
-
-        marker = appkit.NSView.alloc().initWithFrame_(appkit.NSMakeRect(-100, -100, 42, 42))
-        marker.setWantsLayer_(True)
-        marker.layer().setCornerRadius_(21)
-        marker.layer().setBackgroundColor_(
-            self._color(appkit, (0.35, 0.27, 0.92, 0.30)).CGColor(),
-        )
-        marker.layer().setBorderColor_(self._color(appkit, self._PURPLE).CGColor())
-        marker.layer().setBorderWidth_(2)
-        marker.setHidden_(True)
-        content.addSubview_(marker)
-
-        marker_icon = appkit.NSImageView.alloc().initWithFrame_(appkit.NSMakeRect(9, 9, 24, 24))
-        marker_icon.setContentTintColor_(appkit.NSColor.whiteColor())
-        marker.addSubview_(marker_icon)
-
-        self.appkit = appkit
-        self.owner = owner
-        self.panel = panel
-        self.marker = marker
-        self.marker_icon = marker_icon
-
-    @staticmethod
-    def _color(appkit, rgba):
-        return appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(*rgba)
-
-    @staticmethod
-    def _symbol(appkit, name, fallback):
-        image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
-            name, None,
-        )
-        return image or appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
-            fallback, None,
-        )
-
-    def show(self):
-        self.panel.orderFrontRegardless()
-        self.panel.displayIfNeeded()
-        self.appkit.NSRunLoop.currentRunLoop().runUntilDate_(
-            self.appkit.NSDate.dateWithTimeIntervalSinceNow_(0.02),
+    def __init__(self, identity):
+        self.process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "gui_harness.adapters.mac_indicator",
+                str(identity["window_id"]),
+                identity["app_name"],
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
         )
 
     def show_action(self, action, bounds):
-        if bounds:
-            target = self.owner.window.frame()
-            x = bounds["x"] - target.origin.x + bounds["width"] / 2 - 21
-            y = target.size.height - (
-                bounds["y"] - target.origin.y + bounds["height"] / 2
-            ) - 21
-            self.marker.setFrameOrigin_(self.appkit.NSMakePoint(x, y))
-        symbol = {
-            "window_press": "cursorarrow.click.2",
-            "window_set_text": "text.cursor",
-            "window_scroll": "arrow.up.and.down",
-        }.get(action, "cursorarrow")
-        self.marker_icon.setImage_(self._symbol(self.appkit, symbol, "cursorarrow"))
-        self.marker.setHidden_(False)
-        self.show()
+        if self.process.stdin is None:
+            return
+        payload = {"action": action, "bounds": bounds}
+        self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        self.process.stdin.flush()
 
     def close(self):
-        self.panel.orderOut_(None)
-        self.panel.close()
-        self.appkit.NSRunLoop.currentRunLoop().runUntilDate_(
-            self.appkit.NSDate.dateWithTimeIntervalSinceNow_(0.01),
-        )
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        try:
+            self.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            self.process.terminate()
+            self.process.wait(timeout=1)
 
 
 def window_support():
@@ -284,8 +189,7 @@ class MacWindow:
 
     def start_indicator(self):
         try:
-            self._indicator = _WindowControlIndicator(self)
-            self._indicator.show()
+            self._indicator = _WindowControlIndicator(self.identity)
         except Exception:
             self._indicator = None
 
@@ -402,7 +306,8 @@ class MacWindow:
             code = self.ax.AXUIElementPerformAction(element, action)
         if code != 0:
             raise WindowUnavailable(f"Accessibility action failed ({code}); no foreground fallback")
-        bounds = getattr(self, "element_bounds", {}).get(token)
+        bounds = self.element_frame(element)
+        getattr(self, "element_bounds", {})[token] = bounds
         indicator = getattr(self, "_indicator", None)
         if indicator is not None:
             try:

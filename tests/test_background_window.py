@@ -114,8 +114,10 @@ def test_successful_window_action_updates_indicator_at_control_bounds():
     window.identity = {"window_id": 42}
     window.elements = {"current": (element, ["AXPress"], False)}
     window.element_bounds = {
-        "current": {"x": 120.0, "y": 240.0, "width": 80.0, "height": 24.0},
+        "current": {"x": 10.0, "y": 20.0, "width": 30.0, "height": 40.0},
     }
+    current_bounds = {"x": 120.0, "y": 240.0, "width": 80.0, "height": 24.0}
+    window.element_frame = lambda node: current_bounds
     window._indicator = type(
         "Indicator", (), {"show_action": lambda self, action, bounds: events.append((action, bounds))},
     )()
@@ -129,8 +131,9 @@ def test_successful_window_action_updates_indicator_at_control_bounds():
     result = window.dispatch({"call": "window_press", "args": {"target": "current"}})
 
     assert result["action_status"] == "applied"
-    assert result["control_bounds"] == window.element_bounds["current"]
-    assert events == [("window_press", window.element_bounds["current"])]
+    assert result["control_bounds"] == current_bounds
+    assert window.element_bounds["current"] == current_bounds
+    assert events == [("window_press", current_bounds)]
 
 
 def test_indicator_draw_failure_does_not_fail_accessibility_action():
@@ -144,6 +147,7 @@ def test_indicator_draw_failure_does_not_fail_accessibility_action():
     window.identity = {"window_id": 42}
     window.elements = {"current": (element, ["AXPress"], False)}
     window.element_bounds = {"current": None}
+    window.element_frame = lambda node: None
     window._indicator = type(
         "Indicator",
         (),
@@ -157,6 +161,67 @@ def test_indicator_draw_failure_does_not_fail_accessibility_action():
     )()
 
     assert window.dispatch({"call": "window_press", "args": {"target": "current"}})["success"] is True
+
+
+def test_missing_current_bounds_clears_previous_action_marker():
+    from gui_harness.adapters.mac_window import MacWindow
+
+    events = []
+    root = object()
+    element = object()
+    window = MacWindow.__new__(MacWindow)
+    window.validate = lambda: None
+    window.ax_window = root
+    window.identity = {"window_id": 42}
+    window.elements = {"current": (element, ["AXPress"], False)}
+    window.element_bounds = {"current": {"x": 1, "y": 2, "width": 3, "height": 4}}
+    window.element_frame = lambda node: None
+    window._indicator = type(
+        "Indicator", (), {"show_action": lambda self, action, bounds: events.append((action, bounds))},
+    )()
+    window.attr = lambda node, name: root if node is element and name == "AXParent" else None
+    window.ax = type(
+        "AX",
+        (),
+        {"AXUIElementPerformAction": staticmethod(lambda *args: 0)},
+    )()
+
+    window.dispatch({"call": "window_press", "args": {"target": "current"}})
+
+    assert events == [("window_press", None)]
+    assert window.element_bounds["current"] is None
+
+
+def test_indicator_only_shows_uncovered_target_on_current_space():
+    from gui_harness.adapters.mac_indicator import visible_target
+
+    target = {
+        "kCGWindowNumber": 42,
+        "kCGWindowOwnerPID": 100,
+        "kCGWindowAlpha": 1,
+        "kCGWindowBounds": {"X": 10, "Y": 20, "Width": 300, "Height": 200},
+    }
+    unrelated = {
+        "kCGWindowNumber": 7,
+        "kCGWindowOwnerPID": 200,
+        "kCGWindowAlpha": 1,
+        "kCGWindowBounds": {"X": 20, "Y": 30, "Width": 100, "Height": 100},
+    }
+    separate = {
+        **unrelated,
+        "kCGWindowBounds": {"X": 500, "Y": 500, "Width": 100, "Height": 100},
+    }
+    system_chrome = {
+        **unrelated,
+        "kCGWindowLayer": 20,
+        "kCGWindowBounds": {"X": 0, "Y": 0, "Width": 1000, "Height": 1000},
+    }
+
+    assert visible_target([target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([unrelated, target], 42, 999) is None
+    assert visible_target([separate, target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([system_chrome, target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([], 42, 999) is None
 
 
 def test_switching_window_does_not_verify_old_window_feedback(monkeypatch):
