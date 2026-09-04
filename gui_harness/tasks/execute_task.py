@@ -27,15 +27,35 @@ from openprogram.agentic_programming import llm
 from gui_harness.openprogram_compat import agentic_function, build_action_catalog
 
 from gui_harness.utils import parse_json
-from gui_harness.perception.observe import observe_screen
-from gui_harness.action.dispatch import (
-    action_fail as _action_fail,  # noqa: F401 - legacy import used by callers
-    build_action_registry as _build_action_registry,
-    dispatch_action,
-)
-from gui_harness.planning.component_memory import (
-    record_transition,
-)
+from gui_harness.adapters.mac_window import current_window
+
+
+def _build_action_registry(allow_general=False):
+    window = current_window()
+    if window:
+        return window.registry()
+    from gui_harness.action.dispatch import build_action_registry
+    return build_action_registry(allow_general=allow_general)
+
+
+def observe_screen(app_name):
+    from gui_harness.perception.observe import observe_screen as observe
+    return observe(app_name)
+
+
+def dispatch_action(*args, **kwargs):
+    from gui_harness.action.dispatch import dispatch_action as dispatch
+    return dispatch(*args, **kwargs)
+
+
+def _action_fail(*args, **kwargs):
+    from gui_harness.action.dispatch import action_fail
+    return action_fail(*args, **kwargs)
+
+
+def record_transition(**kwargs):
+    from gui_harness.planning.component_memory import record_transition as record
+    return record(**kwargs)
 
 
 # ═══════════════════════════════════════════
@@ -283,7 +303,7 @@ def plan_next_action(
             if info.get("source") != "llm":
                 continue
             value = args.get(name, (candidate or {}).get(name))
-            if value is None or (isinstance(value, str) and not value.strip()):
+            if value is None or (isinstance(value, str) and not value.strip() and not info.get("allow_empty")):
                 missing.append(name)
         return f"missing required arguments: {', '.join(missing)}" if missing else ""
 
@@ -427,7 +447,8 @@ def gui_step(
         return remaining
 
     # ── 1. Observe (pure Python) ──
-    obs = observe_screen(app_name)
+    window = current_window()
+    obs = window.observe() if window else observe_screen(app_name)
 
     # ── 2. Verify previous step (LLM, only if feedback exists) ──
     verification = None
@@ -614,7 +635,7 @@ def gui_step(
             "screenshot_artifact": obs.get("screenshot_artifact"),
         }
     remaining_timeout()
-    exec_result = dispatch_action(
+    exec_result = window.dispatch(plan) if window else dispatch_action(
         plan,
         img_path=obs["img_path"],
         app_name=app_name,

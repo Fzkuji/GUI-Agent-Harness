@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import platform
 import traceback
 from typing import Any
 
 from openprogram.agentic_programming import llm
 
 from gui_harness.adapters.vm_adapter import target_session
+from gui_harness.adapters.mac_window import WindowUnavailable, window_inventory, window_session, window_support
 from gui_harness.openprogram_compat import agentic_function
 from gui_harness.utils import parse_json
 
@@ -37,11 +39,15 @@ def capability_status(*, vm_url: str = "", browser_backend: str = "") -> dict:
         page_count = len(context.get("surfaces") or [])
     except Exception:
         browser_available = False
+    desktop_status = {
+        "available": not missing, "target": "local desktop", "missing_dependencies": missing,
+    }
+    if platform.system() == "Darwin":
+        desktop_status = {**window_support(), "target": "background application window"}
+        desktop_status["background_windows"] = window_inventory() if desktop_status["available"] else []
     return {
         "computer_use": {
-            "available": not missing,
-            "target": "local desktop",
-            "missing_dependencies": missing,
+            **desktop_status,
         },
         "browser_use": {
             "available": browser_available,
@@ -101,6 +107,10 @@ verified completion. For infeasible, provide blocker and handoff_instruction.
 Reply with only JSON:
 {{"call":"computer_use|browser_use|vm_use|terminal","args":{{...}}}}
 
+On macOS, computer_use operates a background application window; use `app_name`
+and `window_id` from background_windows. It cannot activate apps or use global input.
+Select another window explicitly when the task needs it. Unsupported background
+actions require a concrete handoff rather than foreground fallback.
 Capability args use a concise `task` sub-task. browser_use may additionally use
 `url`; terminal uses `status`, `reason`, and when infeasible, `blocker` plus
 `handoff_instruction`.
@@ -178,10 +188,32 @@ def computer_use(
     runtime=None,
     allow_general: bool = False,
     max_seconds: float | None = None,
+    window_id: int | None = None,
 ) -> dict:
     """Perform one bounded Harness step on the local desktop."""
     if runtime is None:
         raise ValueError("computer_use requires a runtime argument")
+    if platform.system() == "Darwin" or window_id is not None:
+        previous = (feedback or {}).get("window_target")
+        if previous and (window_id is not None and window_id != previous.get("window_id")):
+            previous = None
+            feedback = None
+        if previous and window_id is None:
+            window_id = previous.get("window_id")
+            app_name = previous.get("bundle_id") or app_name
+        try:
+            with window_session(app_name, window_id, previous) as window:
+                step = gui_step(task=task, feedback=feedback, app_name=app_name,
+                                runtime=runtime, allow_general=False, timeout_s=max_seconds)
+                result = _step_result(step, feedback)
+                result["target"] = window.identity
+                if result.get("next_feedback") is not None:
+                    result["next_feedback"]["window_target"] = window.identity
+                return result
+        except WindowUnavailable as exc:
+            return {"status": "infeasible", "success": False, "completion_verified": False,
+                    "reason_code": "background_window_unavailable", "blocker": str(exc),
+                    "summary": str(exc), "handoff_instruction": "Check the target window and macOS permissions; perform unsupported actions manually. No foreground fallback was attempted."}
     with target_session():
         step = gui_step(
             task=task,
@@ -337,7 +369,8 @@ def call_capability(
     if name == "computer_use":
         return computer_use(
             task=task,
-            app_name=app_name,
+            app_name=str(args.get("app_name") or app_name),
+            window_id=args.get("window_id"),
             feedback=feedback,
             runtime=runtime,
             allow_general=allow_general,
