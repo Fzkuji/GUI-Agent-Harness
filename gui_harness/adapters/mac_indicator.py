@@ -25,11 +25,12 @@ def _overlaps(left, right):
     return lx < rx + rw and rx < lx + lw and ly < ry + rh and ry < ly + lh
 
 
-def visible_target(rows, window_id, owner_pid):
+def visible_target(rows, window_id, target_pid, owner_pid):
     """Return the live target bounds only while no unrelated window covers it."""
     target_index = next(
         (index for index, row in enumerate(rows)
-         if int(row.get("kCGWindowNumber", -1)) == window_id),
+         if int(row.get("kCGWindowNumber", -1)) == window_id
+         and int(row.get("kCGWindowOwnerPID", -1)) == target_pid),
         None,
     )
     if target_index is None:
@@ -61,9 +62,10 @@ def _color(appkit, red, green, blue, alpha):
 
 
 class Indicator:
-    def __init__(self, appkit, window_id, app_name):
+    def __init__(self, appkit, window_id, target_pid, app_name):
         self.appkit = appkit
         self.window_id = window_id
+        self.target_pid = target_pid
         self.action = None
         self.action_bounds = None
         style = appkit.NSWindowStyleMaskBorderless | appkit.NSWindowStyleMaskNonactivatingPanel
@@ -127,7 +129,9 @@ class Indicator:
         self.action_bounds = bounds if isinstance(bounds, dict) else None
 
     def update(self, rows):
-        target = visible_target(rows, self.window_id, os.getpid())
+        target = visible_target(
+            rows, self.window_id, self.target_pid, os.getpid(),
+        )
         if target is None:
             self.panel.orderOut_(None)
             return
@@ -164,12 +168,12 @@ def main(argv=None):
     import Quartz
 
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 2:
+    if len(args) != 3:
         return 2
-    window_id, app_name = int(args[0]), args[1]
+    window_id, target_pid, app_name = int(args[0]), int(args[1]), args[2]
     app = AppKit.NSApplication.sharedApplication()
     app.finishLaunching()
-    indicator = Indicator(AppKit, window_id, app_name)
+    indicator = Indicator(AppKit, window_id, target_pid, app_name)
     try:
         while True:
             ready, _, _ = select.select([sys.stdin], [], [], 0.05)

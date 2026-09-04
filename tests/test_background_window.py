@@ -217,11 +217,69 @@ def test_indicator_only_shows_uncovered_target_on_current_space():
         "kCGWindowBounds": {"X": 0, "Y": 0, "Width": 1000, "Height": 1000},
     }
 
-    assert visible_target([target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
-    assert visible_target([unrelated, target], 42, 999) is None
-    assert visible_target([separate, target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
-    assert visible_target([system_chrome, target], 42, 999) == (10.0, 20.0, 300.0, 200.0)
-    assert visible_target([], 42, 999) is None
+    assert visible_target([target], 42, 100, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([unrelated, target], 42, 100, 999) is None
+    assert visible_target([separate, target], 42, 100, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([system_chrome, target], 42, 100, 999) == (10.0, 20.0, 300.0, 200.0)
+    assert visible_target([{**target, "kCGWindowOwnerPID": 101}], 42, 100, 999) is None
+    assert visible_target([], 42, 100, 999) is None
+
+
+def test_indicator_helper_receives_exact_window_and_process(monkeypatch):
+    from gui_harness.adapters import mac_window
+
+    calls = []
+    process = type("Process", (), {"stdin": None})()
+    monkeypatch.setattr(
+        mac_window.subprocess,
+        "Popen",
+        lambda args, **kwargs: calls.append((args, kwargs)) or process,
+    )
+
+    mac_window._WindowControlIndicator({
+        "window_id": 42, "pid": 100, "app_name": "Example",
+    })
+
+    assert calls[0][0][-3:] == ["42", "100", "Example"]
+
+
+def test_indicator_close_kills_and_reaps_stuck_helper():
+    from gui_harness.adapters import mac_window
+
+    events = []
+    waits = iter([
+        mac_window.subprocess.TimeoutExpired("indicator", 1),
+        mac_window.subprocess.TimeoutExpired("indicator", 1),
+        0,
+    ])
+    def wait(self, timeout=None):
+        events.append(("wait", timeout))
+        value = next(waits)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    process = type(
+        "Process",
+        (),
+        {
+            "stdin": None,
+            "wait": wait,
+            "terminate": lambda self: events.append(("terminate", None)),
+            "kill": lambda self: events.append(("kill", None)),
+        },
+    )()
+    indicator = mac_window._WindowControlIndicator.__new__(
+        mac_window._WindowControlIndicator,
+    )
+    indicator.process = process
+
+    indicator.close()
+
+    assert events == [
+        ("wait", 1), ("terminate", None), ("wait", 1),
+        ("kill", None), ("wait", None),
+    ]
 
 
 def test_switching_window_does_not_verify_old_window_feedback(monkeypatch):

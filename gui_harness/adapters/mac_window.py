@@ -43,6 +43,7 @@ class _WindowControlIndicator:
                 "-m",
                 "gui_harness.adapters.mac_indicator",
                 str(identity["window_id"]),
+                str(identity["pid"]),
                 identity["app_name"],
             ],
             stdin=subprocess.PIPE,
@@ -61,12 +62,25 @@ class _WindowControlIndicator:
 
     def close(self):
         if self.process.stdin is not None:
-            self.process.stdin.close()
+            try:
+                self.process.stdin.close()
+            except OSError:
+                pass
         try:
             self.process.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            self.process.terminate()
-            self.process.wait(timeout=1)
+            try:
+                self.process.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                self.process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                try:
+                    self.process.kill()
+                except ProcessLookupError:
+                    pass
+                self.process.wait()
 
 
 def window_support():
