@@ -82,6 +82,83 @@ def test_application_lock_rejects_concurrent_operations(monkeypatch):
     assert mac_window.current_window() is None
 
 
+def test_window_session_starts_and_closes_nonblocking_indicator(monkeypatch):
+    import os
+    from gui_harness.adapters import mac_window
+
+    events = []
+    window = type(
+        "Window",
+        (),
+        {
+            "pid": os.getpid(),
+            "start_indicator": lambda self: events.append("start"),
+            "close_indicator": lambda self: events.append("close"),
+        },
+    )()
+    monkeypatch.setattr(mac_window, "MacWindow", lambda *args: window)
+    with mac_window.window_session("fixture"):
+        assert events == ["start"]
+    assert events == ["start", "close"]
+
+
+def test_successful_window_action_updates_indicator_at_control_bounds():
+    from gui_harness.adapters.mac_window import MacWindow
+
+    events = []
+    root = object()
+    element = object()
+    window = MacWindow.__new__(MacWindow)
+    window.validate = lambda: None
+    window.ax_window = root
+    window.identity = {"window_id": 42}
+    window.elements = {"current": (element, ["AXPress"], False)}
+    window.element_bounds = {
+        "current": {"x": 120.0, "y": 240.0, "width": 80.0, "height": 24.0},
+    }
+    window._indicator = type(
+        "Indicator", (), {"show_action": lambda self, action, bounds: events.append((action, bounds))},
+    )()
+    window.attr = lambda node, name: root if node is element and name == "AXParent" else None
+    window.ax = type(
+        "AX",
+        (),
+        {"AXUIElementPerformAction": staticmethod(lambda *args: 0)},
+    )()
+
+    result = window.dispatch({"call": "window_press", "args": {"target": "current"}})
+
+    assert result["action_status"] == "applied"
+    assert result["control_bounds"] == window.element_bounds["current"]
+    assert events == [("window_press", window.element_bounds["current"])]
+
+
+def test_indicator_draw_failure_does_not_fail_accessibility_action():
+    from gui_harness.adapters.mac_window import MacWindow
+
+    root = object()
+    element = object()
+    window = MacWindow.__new__(MacWindow)
+    window.validate = lambda: None
+    window.ax_window = root
+    window.identity = {"window_id": 42}
+    window.elements = {"current": (element, ["AXPress"], False)}
+    window.element_bounds = {"current": None}
+    window._indicator = type(
+        "Indicator",
+        (),
+        {"show_action": lambda *args: (_ for _ in ()).throw(RuntimeError("draw failed"))},
+    )()
+    window.attr = lambda node, name: root if node is element and name == "AXParent" else None
+    window.ax = type(
+        "AX",
+        (),
+        {"AXUIElementPerformAction": staticmethod(lambda *args: 0)},
+    )()
+
+    assert window.dispatch({"call": "window_press", "args": {"target": "current"}})["success"] is True
+
+
 def test_switching_window_does_not_verify_old_window_feedback(monkeypatch):
     from contextlib import contextmanager
     @contextmanager

@@ -31,6 +31,139 @@ def _cancel():
     check_cancelled()
 
 
+class _WindowControlIndicator:
+    """Non-activating visual feedback aligned to one exact target window."""
+
+    _PURPLE = (0.35, 0.27, 0.92, 0.94)
+
+    def __init__(self, owner):
+        appkit = owner.appkit
+        frame = owner.window.frame()
+        main_top = appkit.NSMaxY(appkit.NSScreen.mainScreen().frame())
+        cocoa_frame = appkit.NSMakeRect(
+            frame.origin.x,
+            main_top - frame.origin.y - frame.size.height,
+            frame.size.width,
+            frame.size.height,
+        )
+        style = (
+            appkit.NSWindowStyleMaskBorderless
+            | appkit.NSWindowStyleMaskNonactivatingPanel
+        )
+        panel = appkit.NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            cocoa_frame, style, appkit.NSBackingStoreBuffered, False,
+        )
+        panel.setOpaque_(False)
+        panel.setTitle_("OpenProgram GUI Agent control")
+        panel.setBackgroundColor_(appkit.NSColor.clearColor())
+        panel.setHasShadow_(False)
+        panel.setIgnoresMouseEvents_(True)
+        panel.setHidesOnDeactivate_(False)
+        panel.setLevel_(appkit.NSFloatingWindowLevel)
+        panel.setBecomesKeyOnlyIfNeeded_(True)
+        panel.setReleasedWhenClosed_(False)
+        panel.setCollectionBehavior_(
+            appkit.NSWindowCollectionBehaviorCanJoinAllSpaces
+            | appkit.NSWindowCollectionBehaviorTransient
+            | appkit.NSWindowCollectionBehaviorIgnoresCycle
+        )
+
+        content = appkit.NSView.alloc().initWithFrame_(
+            appkit.NSMakeRect(0, 0, frame.size.width, frame.size.height),
+        )
+        content.setWantsLayer_(True)
+        content.layer().setBackgroundColor_(appkit.NSColor.clearColor().CGColor())
+        panel.setContentView_(content)
+
+        badge = appkit.NSView.alloc().initWithFrame_(
+            appkit.NSMakeRect(12, frame.size.height - 38, min(224, frame.size.width - 24), 28),
+        )
+        badge.setWantsLayer_(True)
+        badge.layer().setCornerRadius_(14)
+        badge.layer().setBackgroundColor_(self._color(appkit, self._PURPLE).CGColor())
+        content.addSubview_(badge)
+
+        icon = self._symbol(appkit, "rectangle.inset.filled.and.person.filled", "display")
+        icon_view = appkit.NSImageView.alloc().initWithFrame_(appkit.NSMakeRect(8, 6, 16, 16))
+        icon_view.setImage_(icon)
+        icon_view.setContentTintColor_(appkit.NSColor.whiteColor())
+        badge.addSubview_(icon_view)
+
+        label = appkit.NSTextField.labelWithString_(
+            f"GUI Agent · {owner.identity['app_name']}",
+        )
+        label.setFrame_(appkit.NSMakeRect(30, 5, badge.frame().size.width - 38, 18))
+        label.setTextColor_(appkit.NSColor.whiteColor())
+        label.setFont_(appkit.NSFont.systemFontOfSize_weight_(12, appkit.NSFontWeightSemibold))
+        label.setLineBreakMode_(appkit.NSLineBreakByTruncatingTail)
+        badge.addSubview_(label)
+
+        marker = appkit.NSView.alloc().initWithFrame_(appkit.NSMakeRect(-100, -100, 42, 42))
+        marker.setWantsLayer_(True)
+        marker.layer().setCornerRadius_(21)
+        marker.layer().setBackgroundColor_(
+            self._color(appkit, (0.35, 0.27, 0.92, 0.30)).CGColor(),
+        )
+        marker.layer().setBorderColor_(self._color(appkit, self._PURPLE).CGColor())
+        marker.layer().setBorderWidth_(2)
+        marker.setHidden_(True)
+        content.addSubview_(marker)
+
+        marker_icon = appkit.NSImageView.alloc().initWithFrame_(appkit.NSMakeRect(9, 9, 24, 24))
+        marker_icon.setContentTintColor_(appkit.NSColor.whiteColor())
+        marker.addSubview_(marker_icon)
+
+        self.appkit = appkit
+        self.owner = owner
+        self.panel = panel
+        self.marker = marker
+        self.marker_icon = marker_icon
+
+    @staticmethod
+    def _color(appkit, rgba):
+        return appkit.NSColor.colorWithSRGBRed_green_blue_alpha_(*rgba)
+
+    @staticmethod
+    def _symbol(appkit, name, fallback):
+        image = appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
+            name, None,
+        )
+        return image or appkit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
+            fallback, None,
+        )
+
+    def show(self):
+        self.panel.orderFrontRegardless()
+        self.panel.displayIfNeeded()
+        self.appkit.NSRunLoop.currentRunLoop().runUntilDate_(
+            self.appkit.NSDate.dateWithTimeIntervalSinceNow_(0.02),
+        )
+
+    def show_action(self, action, bounds):
+        if bounds:
+            target = self.owner.window.frame()
+            x = bounds["x"] - target.origin.x + bounds["width"] / 2 - 21
+            y = target.size.height - (
+                bounds["y"] - target.origin.y + bounds["height"] / 2
+            ) - 21
+            self.marker.setFrameOrigin_(self.appkit.NSMakePoint(x, y))
+        symbol = {
+            "window_press": "cursorarrow.click.2",
+            "window_set_text": "text.cursor",
+            "window_scroll": "arrow.up.and.down",
+        }.get(action, "cursorarrow")
+        self.marker_icon.setImage_(self._symbol(self.appkit, symbol, "cursorarrow"))
+        self.marker.setHidden_(False)
+        self.show()
+
+    def close(self):
+        self.panel.orderOut_(None)
+        self.panel.close()
+        self.appkit.NSRunLoop.currentRunLoop().runUntilDate_(
+            self.appkit.NSDate.dateWithTimeIntervalSinceNow_(0.01),
+        )
+
+
 def window_support():
     missing = [name for name in ("AppKit", "ApplicationServices", "Quartz", "ScreenCaptureKit")
                if importlib.util.find_spec(name) is None]
@@ -105,6 +238,8 @@ class MacWindow:
             raise WindowUnavailable("Cannot uniquely associate the captured window with Accessibility")
         self.ax_window = candidates[0]
         self.elements = {}
+        self.element_bounds = {}
+        self._indicator = None
         self.validate()
         self._deadline = None
 
@@ -133,6 +268,34 @@ class MacWindow:
             raise WindowUnavailable("Window Accessibility observation timed out")
         code, value = self.ax.AXUIElementCopyAttributeValue(element, name, None)
         return value if code == 0 else None
+
+    def element_frame(self, element):
+        position, size = self.attr(element, "AXPosition"), self.attr(element, "AXSize")
+        if position is None or size is None:
+            return None
+        ok1, point = self.ax.AXValueGetValue(position, self.ax.kAXValueCGPointType, None)
+        ok2, extent = self.ax.AXValueGetValue(size, self.ax.kAXValueCGSizeType, None)
+        if not ok1 or not ok2:
+            return None
+        return {
+            "x": float(point.x), "y": float(point.y),
+            "width": float(extent.width), "height": float(extent.height),
+        }
+
+    def start_indicator(self):
+        try:
+            self._indicator = _WindowControlIndicator(self)
+            self._indicator.show()
+        except Exception:
+            self._indicator = None
+
+    def close_indicator(self):
+        indicator, self._indicator = getattr(self, "_indicator", None), None
+        if indicator is not None:
+            try:
+                indicator.close()
+            except Exception:
+                pass
 
     def validate(self):
         _cancel()
@@ -165,6 +328,7 @@ class MacWindow:
         path = Path(directory) / "observation.png"
         path.write_bytes(bytes(data))
         self.elements = {}
+        self.element_bounds = {}
         controls, pending = [], [(self.ax_window, 0)]
         while pending and len(controls) < 400:
             _cancel()
@@ -179,8 +343,11 @@ class MacWindow:
             allowed = [str(a) for a in (actions or []) if a in ("AXPress", "AXScrollUpByPage", "AXScrollDownByPage")]
             can_write = code_value == 0 and bool(writable) and role in ("AXTextField", "AXTextArea", "AXComboBox")
             self.elements[token] = (element, allowed, can_write)
+            bounds = self.element_frame(element)
+            self.element_bounds[token] = bounds
             controls.append({"id": token, "role": role, "label": str(self.attr(element, "AXTitle") or self.attr(element, "AXDescription") or "")[:500],
-                             "value": str(self.attr(element, "AXValue") or "")[:1500], "actions": allowed, "writable_text": can_write})
+                             "value": str(self.attr(element, "AXValue") or "")[:1500], "actions": allowed, "writable_text": can_write,
+                             "bounds": bounds})
             if depth < 20:
                 pending.extend((child, depth+1) for child in reversed(self.attr(element, "AXChildren") or []))
         self.validate()
@@ -235,7 +402,15 @@ class MacWindow:
             code = self.ax.AXUIElementPerformAction(element, action)
         if code != 0:
             raise WindowUnavailable(f"Accessibility action failed ({code}); no foreground fallback")
-        return {"success": True, "action_status": "applied", "target": self.identity, "control_id": token}
+        bounds = getattr(self, "element_bounds", {}).get(token)
+        indicator = getattr(self, "_indicator", None)
+        if indicator is not None:
+            try:
+                indicator.show_action(name, bounds)
+            except Exception:
+                pass
+        return {"success": True, "action_status": "applied", "target": self.identity,
+                "control_id": token, "control_bounds": bounds}
 
 
 def window_inventory():
@@ -273,9 +448,17 @@ def window_session(app_name, window_id=None, previous=None):
         except BlockingIOError as exc:
             raise WindowUnavailable("Another GUI operation currently owns this application") from exc
         token = _current.set(window)
+        start_indicator = getattr(window, "start_indicator", None)
+        if start_indicator is not None:
+            start_indicator()
         try:
             yield window
         finally:
-            _current.reset(token)
+            try:
+                close_indicator = getattr(window, "close_indicator", None)
+                if close_indicator is not None:
+                    close_indicator()
+            finally:
+                _current.reset(token)
     finally:
         os.close(fd)
